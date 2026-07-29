@@ -22,7 +22,7 @@ use tokio::sync::Barrier;
 async fn append_persists_fragment_event_evidence_and_fts_atomically() {
     let harness = Harness::new().await;
     let scope = full_scope();
-    let supporting = harness.text_event(scope.clone(), "verified source", Vec::new());
+    let supporting = Harness::text_event(scope.clone(), "verified source", Vec::new());
     harness
         .repository
         .append(&supporting)
@@ -35,7 +35,7 @@ async fn append_persists_fragment_event_evidence_and_fts_atomically() {
         method: VerificationMethod::Tool,
         note: Some("verified by deterministic fixture".to_owned()),
     };
-    let draft = harness.text_event(
+    let draft = Harness::text_event(
         scope.clone(),
         "2018 payment migration failed",
         vec![evidence],
@@ -76,13 +76,12 @@ async fn append_persists_fragment_event_evidence_and_fts_atomically() {
     assert_eq!(hits[0].fragment_id, draft.fragment_id);
     assert_eq!(hits[0].body, "2018 payment migration failed");
 
-    let evidence_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM evidence_refs WHERE owner_fragment_id = ?1",
-    )
-    .bind(draft.fragment_id.to_string())
-    .fetch_one(harness.store.pool())
-    .await
-    .expect("count evidence references");
+    let evidence_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM evidence_refs WHERE owner_fragment_id = ?1")
+            .bind(draft.fragment_id.to_string())
+            .fetch_one(harness.store.pool())
+            .await
+            .expect("count evidence references");
     assert_eq!(evidence_count, 1);
 
     let stored_scope_key: String =
@@ -98,7 +97,7 @@ async fn append_persists_fragment_event_evidence_and_fts_atomically() {
 async fn duplicate_event_is_idempotent_but_conflicting_payload_is_rejected() {
     let harness = Harness::new().await;
     let scope = full_scope();
-    let draft = harness.text_event(scope.clone(), "evidence", Vec::new());
+    let draft = Harness::text_event(scope.clone(), "evidence", Vec::new());
 
     let first = harness
         .repository
@@ -114,7 +113,7 @@ async fn duplicate_event_is_idempotent_but_conflicting_payload_is_rejected() {
     assert!(!duplicate.created);
     assert_eq!(duplicate.event, first.event);
 
-    let mut conflicting = harness.text_event(scope, "different", Vec::new());
+    let mut conflicting = Harness::text_event(scope, "different", Vec::new());
     conflicting.id = draft.id;
     assert!(matches!(
         harness.repository.append(&conflicting).await,
@@ -123,6 +122,54 @@ async fn duplicate_event_is_idempotent_but_conflicting_payload_is_rejected() {
             ..
         })
     ));
+}
+
+#[tokio::test]
+async fn append_rejects_a_stage_that_disagrees_with_the_fragment() {
+    let harness = Harness::new().await;
+    let mut draft = Harness::text_event(full_scope(), "stage invariant", Vec::new());
+    draft.stage = jc_memory_protocol::CognitiveStage::FutureHypothesis;
+
+    assert!(matches!(
+        harness.repository.append(&draft).await,
+        Err(StorageError::InvalidDraft {
+            reason: "stage does not match fragment kind and validity"
+        })
+    ));
+    assert_eq!(harness.authoritative_counts().await, (0, 0, 0, 0, 0));
+}
+
+#[tokio::test]
+async fn content_dedup_rejects_an_incompatible_storage_representation() {
+    let harness = Harness::new().await;
+    let scope = full_scope();
+    let bytes = b"same representation bytes";
+    let text = Harness::text_event(
+        scope.clone(),
+        std::str::from_utf8(bytes).expect("fixture UTF-8"),
+        Vec::new(),
+    );
+    harness.repository.append(&text).await.expect("append text");
+    let before = harness.authoritative_counts().await;
+    let blob_id = BlobId::from_str(&hex::encode(Sha256::digest(bytes))).expect("valid blob ID");
+    let blob = Harness::event(
+        scope,
+        FragmentContent::Blob {
+            blob_id,
+            media_type: "text/plain; charset=utf-8".to_owned(),
+            byte_len: bytes.len() as u64,
+        },
+        Vec::new(),
+    );
+
+    assert!(matches!(
+        harness.repository.append(&blob).await,
+        Err(StorageError::IdentityConflict {
+            entity: "fragment_content",
+            ..
+        })
+    ));
+    assert_eq!(harness.authoritative_counts().await, before);
 }
 
 #[tokio::test]
@@ -136,11 +183,7 @@ async fn evidence_foreign_key_failure_rolls_back_every_derived_row() {
         method: VerificationMethod::Manual,
         note: None,
     };
-    let draft = harness.text_event(
-        full_scope(),
-        "must roll back",
-        vec![invalid_evidence],
-    );
+    let draft = Harness::text_event(full_scope(), "must roll back", vec![invalid_evidence]);
 
     assert!(matches!(
         harness.repository.append(&draft).await,
@@ -156,7 +199,7 @@ async fn concurrent_appends_allocate_gapless_sequences_per_exact_scope() {
     let repository = Arc::clone(&harness.repository);
     let barrier = Arc::new(Barrier::new(8));
     let drafts: Vec<_> = (0..8)
-        .map(|index| harness.text_event(scope.clone(), &format!("event {index}"), Vec::new()))
+        .map(|index| Harness::text_event(scope.clone(), &format!("event {index}"), Vec::new()))
         .collect();
     let mut tasks = Vec::new();
 
@@ -183,7 +226,7 @@ async fn concurrent_appends_allocate_gapless_sequences_per_exact_scope() {
     assert_eq!(sequences, (0..8).collect::<Vec<_>>());
 
     let other_scope = MemoryScope::new(NamespaceId::new());
-    let other = harness.text_event(other_scope, "other scope", Vec::new());
+    let other = Harness::text_event(other_scope, "other scope", Vec::new());
     assert_eq!(
         harness
             .repository
@@ -202,7 +245,7 @@ async fn fts_search_is_scope_bound_escaped_and_hard_limited() {
     let first_scope = full_scope();
     let second_scope = MemoryScope::new(NamespaceId::new());
     for index in 0..120 {
-        let draft = harness.text_event(
+        let draft = Harness::text_event(
             first_scope.clone(),
             &format!("payment migration memory {index}"),
             Vec::new(),
@@ -213,7 +256,7 @@ async fn fts_search_is_scope_bound_escaped_and_hard_limited() {
             .await
             .expect("append searchable fragment");
     }
-    let other = harness.text_event(
+    let other = Harness::text_event(
         second_scope.clone(),
         "payment migration memory external",
         Vec::new(),
@@ -262,8 +305,8 @@ async fn fts_search_is_scope_bound_escaped_and_hard_limited() {
 async fn all_fragment_content_kinds_and_microsecond_times_round_trip() {
     let harness = Harness::new().await;
     let scope = full_scope();
-    let blob_id = BlobId::from_str(&hex::encode(Sha256::digest(b"binary evidence")))
-        .expect("valid blob ID");
+    let blob_id =
+        BlobId::from_str(&hex::encode(Sha256::digest(b"binary evidence"))).expect("valid blob ID");
     let contents = vec![
         FragmentContent::Text {
             text: "round trip text".to_owned(),
@@ -279,7 +322,7 @@ async fn all_fragment_content_kinds_and_microsecond_times_round_trip() {
     ];
 
     for content in contents {
-        let draft = harness.event(scope.clone(), content, Vec::new());
+        let draft = Harness::event(scope.clone(), content, Vec::new());
         harness
             .repository
             .append(&draft)
@@ -304,7 +347,7 @@ async fn all_fragment_content_kinds_and_microsecond_times_round_trip() {
         );
     }
 
-    let duplicate_content = harness.text_event(scope, "round trip text", Vec::new());
+    let duplicate_content = Harness::text_event(scope, "round trip text", Vec::new());
     harness
         .repository
         .append(&duplicate_content)
@@ -322,8 +365,12 @@ async fn all_fragment_content_kinds_and_microsecond_times_round_trip() {
 #[tokio::test]
 async fn invalid_fragment_enum_is_reported_as_corrupt_row() {
     let harness = Harness::new().await;
-    let draft = harness.text_event(full_scope(), "enum corruption", Vec::new());
-    harness.repository.append(&draft).await.expect("append event");
+    let draft = Harness::text_event(full_scope(), "enum corruption", Vec::new());
+    harness
+        .repository
+        .append(&draft)
+        .await
+        .expect("append event");
     sqlx::query("UPDATE fragments SET kind = 'unknown_kind' WHERE id = ?1")
         .bind(draft.fragment_id.to_string())
         .execute(harness.store.pool())
@@ -339,9 +386,18 @@ async fn invalid_fragment_enum_is_reported_as_corrupt_row() {
 #[tokio::test]
 async fn invalid_fragment_json_is_reported_as_corrupt_row() {
     let harness = Harness::new().await;
-    let draft = harness.text_event(full_scope(), "json corruption", Vec::new());
-    harness.repository.append(&draft).await.expect("append event");
-    let mut connection = harness.store.pool().acquire().await.expect("acquire connection");
+    let draft = Harness::text_event(full_scope(), "json corruption", Vec::new());
+    harness
+        .repository
+        .append(&draft)
+        .await
+        .expect("append event");
+    let mut connection = harness
+        .store
+        .pool()
+        .acquire()
+        .await
+        .expect("acquire connection");
     connection
         .execute("PRAGMA ignore_check_constraints = ON")
         .await
@@ -366,9 +422,18 @@ async fn invalid_fragment_json_is_reported_as_corrupt_row() {
 #[tokio::test]
 async fn out_of_range_fragment_number_is_reported_as_corrupt_row() {
     let harness = Harness::new().await;
-    let draft = harness.text_event(full_scope(), "number corruption", Vec::new());
-    harness.repository.append(&draft).await.expect("append event");
-    let mut connection = harness.store.pool().acquire().await.expect("acquire connection");
+    let draft = Harness::text_event(full_scope(), "number corruption", Vec::new());
+    harness
+        .repository
+        .append(&draft)
+        .await
+        .expect("append event");
+    let mut connection = harness
+        .store
+        .pool()
+        .acquire()
+        .await
+        .expect("acquire connection");
     connection
         .execute("PRAGMA ignore_check_constraints = ON")
         .await
@@ -393,14 +458,23 @@ async fn out_of_range_fragment_number_is_reported_as_corrupt_row() {
 #[tokio::test]
 async fn missing_fragment_content_is_reported_as_corrupt_row() {
     let harness = Harness::new().await;
-    let draft = harness.text_event(full_scope(), "reference corruption", Vec::new());
-    harness.repository.append(&draft).await.expect("append event");
+    let draft = Harness::text_event(full_scope(), "reference corruption", Vec::new());
+    harness
+        .repository
+        .append(&draft)
+        .await
+        .expect("append event");
     let content_id: String = sqlx::query_scalar("SELECT content_id FROM fragments WHERE id = ?1")
         .bind(draft.fragment_id.to_string())
         .fetch_one(harness.store.pool())
         .await
         .expect("read content ID");
-    let mut connection = harness.store.pool().acquire().await.expect("acquire connection");
+    let mut connection = harness
+        .store
+        .pool()
+        .acquire()
+        .await
+        .expect("acquire connection");
     connection
         .execute("PRAGMA foreign_keys = OFF")
         .await
@@ -425,8 +499,12 @@ async fn missing_fragment_content_is_reported_as_corrupt_row() {
 #[tokio::test]
 async fn invalid_event_stage_is_reported_as_corrupt_row() {
     let harness = Harness::new().await;
-    let draft = harness.text_event(full_scope(), "event corruption", Vec::new());
-    harness.repository.append(&draft).await.expect("append event");
+    let draft = Harness::text_event(full_scope(), "event corruption", Vec::new());
+    harness
+        .repository
+        .append(&draft)
+        .await
+        .expect("append event");
     sqlx::query("UPDATE events SET stage = 'unknown_stage' WHERE id = ?1")
         .bind(draft.id.to_string())
         .execute(harness.store.pool())
@@ -451,8 +529,8 @@ struct Harness {
 impl Harness {
     async fn new() -> Self {
         let directory = tempfile::tempdir().expect("create repository temp directory");
-        let config = SqliteConfig::new(directory.path().join("memory.sqlite3"))
-            .with_max_connections(12);
+        let config =
+            SqliteConfig::new(directory.path().join("memory.sqlite3")).with_max_connections(12);
         let store = SqliteStore::open(&config)
             .await
             .expect("open repository database");
@@ -464,8 +542,8 @@ impl Harness {
         }
     }
 
-    fn text_event(&self, scope: MemoryScope, text: &str, evidence: Vec<EvidenceRef>) -> EventDraft {
-        self.event(
+    fn text_event(scope: MemoryScope, text: &str, evidence: Vec<EvidenceRef>) -> EventDraft {
+        Self::event(
             scope,
             FragmentContent::Text {
                 text: text.to_owned(),
@@ -475,7 +553,6 @@ impl Harness {
     }
 
     fn event(
-        &self,
         scope: MemoryScope,
         content: FragmentContent,
         evidence: Vec<EvidenceRef>,
@@ -550,7 +627,8 @@ fn fixed_time() -> DateTime<Utc> {
 
 fn canonical_scope_key(scope: &MemoryScope) -> String {
     hex::encode(Sha256::digest(
-        serde_json::to_vec(scope).expect("serialize scope"),
+        serde_json::to_vec(&serde_json::to_value(scope).expect("canonicalize scope"))
+            .expect("serialize scope"),
     ))
 }
 
