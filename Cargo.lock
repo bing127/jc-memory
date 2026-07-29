@@ -798,8 +798,11 @@ dependencies = [
  "chrono",
  "jc-memory-graph",
  "jc-memory-protocol",
+ "serde",
  "serde_json",
  "sha2",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]
@@ -840,6 +843,12 @@ dependencies = [
 [[package]]
 name = "jc-memory-semantic"
 version = "0.1.0"
+dependencies = [
+ "jc-memory-protocol",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
 
 [[package]]
 name = "jc-memory-storage"
