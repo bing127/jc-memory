@@ -8,6 +8,7 @@ license-file.workspace = true
 [dependencies]
 aes-gcm.workspace = true
 async-trait.workspace = true
+chrono.workspace = true
 fs2.workspace = true
 getrandom.workspace = true
 hex.workspace = true
