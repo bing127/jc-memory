@@ -10,6 +10,7 @@ chrono.workspace = true
 jc-memory-protocol = { path = "../memory-protocol" }
 serde_json.workspace = true
 sha2.workspace = true
+hex.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

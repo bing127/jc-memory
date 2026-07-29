@@ -784,6 +784,7 @@ name = "jc-memory-events"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "hex",
  "jc-memory-protocol",
  "proptest",
  "serde_json",
