@@ -5,5 +5,13 @@ edition.workspace = true
 rust-version.workspace = true
 license-file.workspace = true
 
+[dependencies]
+chrono.workspace = true
+jc-memory-graph = { path = "../memory-graph" }
+jc-memory-protocol = { path = "../memory-protocol" }
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
 [lints]
 workspace = true

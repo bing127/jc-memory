@@ -876,6 +876,14 @@ dependencies = [
 [[package]]
 name = "jc-memory-surface"
 version = "0.1.0"
+dependencies = [
+ "chrono",
+ "jc-memory-graph",
+ "jc-memory-protocol",
+ "serde",
+ "thiserror",
+ "tokio",
+]
 
 [[package]]
 name = "jobserver"
