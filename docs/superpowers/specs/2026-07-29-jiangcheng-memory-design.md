@@ -1,339 +1,227 @@
-# Jiangcheng Memory Design
+# 疆诚记忆设计规格
 
-**Status:** Approved design for implementation planning  
-**Date:** 2026-07-29  
-**Product:** 疆诚记忆 / Jiangcheng Memory  
-**Repository:** `jiangcheng-memory` (hosted in the existing `jc-memory` directory)  
-**CLI:** `jcmem`  
-**Daemon:** `jcmemd`
+- **状态：** 已确认，待进入实施计划
+- **日期：** 2026-07-29
+- **产品名称：** 疆诚记忆
+- **英文名称：** Jiangcheng Memory
+- **仓库标识：** `jiangcheng-memory`（使用现有 `jc-memory` 目录作为仓库根目录）
+- **命令行工具：** `jcmem`
+- **守护进程：** `jcmemd`
 
-## 1. Purpose
+## 1. 项目目标
 
-Jiangcheng Memory is a model-independent, memory-native agent kernel and
-neurocognitive memory database. It preserves an agent's identity, evidence,
-experience, preferences, project state, and learned procedures independently
-of any particular LLM.
+疆诚记忆是一个独立于具体模型的 Memory-Native Agent Kernel 与神经认知记忆数据库。它在不依赖特定大语言模型的前提下，持续保存 Agent 的身份、原始证据、经验、偏好、项目状态和程序性知识。
 
-The responsibility boundary is strict:
+职责边界必须保持清晰：
 
-- Memory preserves the past and learns conservative, evidence-linked patterns.
-- An LLM proposes hypotheses, predictions, plans, and action candidates.
-- The runtime applies policy, obtains approval, selects actions, and commits
-  verified outcomes.
-- Tools affect the external environment and return observable results.
+- Memory 保存过去，并从带证据的历史中保守地学习规律；
+- LLM 只负责提出假设、预测、计划和行动候选；
+- Runtime 负责应用策略、请求审批、选择行动和提交已验证结果；
+- Tool 负责作用于现实环境并返回可观察结果。
 
-Changing model providers must not change the authoritative memory database or
-promote model output into verified fact.
+更换模型提供方不得改变权威记忆数据，也不得把模型输出自动提升为已验证事实。
 
-## 2. Product And Release Boundary
+## 2. 产品与发布边界
 
-The current directory is the repository root. Internal package and publication
-identifiers use `jiangcheng-memory` and the `jc-memory-*` crate prefix.
+当前目录直接作为仓库根目录。内部包名和发布标识统一使用 `jiangcheng-memory`，Rust crate 使用 `jc-memory-*` 前缀。
 
-The project is private source for the initial release:
+项目首个版本按私有源码管理：
 
-- `LICENSE` reserves all rights.
-- Documentation does not describe the project as open source.
-- Release workflows are manually triggered and produce private artifacts by
-  default.
-- No workflow publishes automatically to crates.io, npm, PyPI, or a public
-  GitHub release.
+- `LICENSE` 声明保留所有权利；
+- 文档不把项目描述为开源项目；
+- Release 工作流默认仅允许手动触发并生成私有构建产物；
+- 不自动发布到 crates.io、npm、PyPI 或公开 GitHub Release。
 
-The system is local-first and runs without Python, an external LLM, or a cloud
-vector database. Python is required only for model training, evaluation, and
-ONNX export.
+系统默认本地优先，运行时不强制依赖 Python、外部 LLM 或云端向量数据库。Python 只用于模型训练、评测和 ONNX 导出。
 
-## 3. Delivery Strategy
+## 3. 交付策略
 
-Implementation uses staged vertical slices. Each milestone must provide an
-integrated, runnable, and tested capability rather than disconnected
-scaffolding.
+实施采用分阶段纵向闭环。每个里程碑必须提供已集成、可运行、可测试的能力，不能只创建未接通的脚手架。
 
-1. Protocol, domain types, immutable events, SQLite/FTS5, BlobStore, and
-   migrations.
-2. Point, Edge, Surface, state versions, pattern separation, bounded recall,
-   Explain, and Memory Packet.
-3. Consolidation, deterministic neural fallback, ACL/isolation/audit, snapshot,
-   restore, and rebuild.
-4. Agent Runtime, capability registries, model/tool loop, HTTP, gRPC, Sidecar,
-   and MCP.
-5. Node, Python, Go, Kotlin, Swift, and Java SDKs; Hermes, OpenClaw, Mem0,
-   Graphiti, and Dify adapters; examples and contract tests.
-6. ONNX toolchain, benchmark harnesses, CI, private release artifacts, and
-   documentation closure.
+1. 协议、领域类型、不可变事件、SQLite/FTS5、BlobStore 和 Migration；
+2. Point、Edge、Surface、状态版本、模式分离、有界召回、Explain 和 Memory Packet；
+3. 记忆巩固、确定性神经模型 Fallback、ACL/隔离/审计、Snapshot、Restore 和 Rebuild；
+4. Agent Runtime、能力注册、模型与工具闭环、HTTP、gRPC、Sidecar 和 MCP；
+5. Node、Python、Go、Kotlin、Swift、Java SDK，Hermes、OpenClaw、Mem0、Graphiti、Dify 适配器，以及示例和契约测试；
+6. ONNX 工具链、Benchmark、CI、私有发布产物和文档收口。
 
-Every milestone keeps the repository compilable and tests the modules it adds.
-Directories are created when they gain real code, tests, public extension
-interfaces, fixtures, documentation, or build configuration.
+每个里程碑完成后，仓库必须保持可编译、可运行、可测试。目录仅在具备真实代码、测试、公共扩展接口、Fixture、文档或构建配置时创建。
 
-## 4. Architecture
+## 4. 总体架构
 
-Dependencies flow in one direction:
+依赖只能按以下方向流动：
 
 ```text
-protocol and domain types
+协议与领域类型
         |
-immutable events + BlobStore + SQLite
+不可变事件 + BlobStore + SQLite
         |
-episodic / semantic / graph / surface / activation
+情景记忆 / 语义记忆 / 图 / Surface / 激活
         |
-recall + explain + consolidation + security
+Recall + Explain + Consolidation + Security
         |
-memory-core public embedded facade
+memory-core 公共嵌入式门面
         |
-runtime / sidecar / server / MCP
+Runtime / Sidecar / Server / MCP
         |
-SDKs / adapters / examples / benchmarks
+SDK / Adapter / Example / Benchmark
 ```
 
-`memory-core` is the high-level embedded API. Lower-level crates never depend
-on services, SDKs, or adapters. Protocol types shared across process boundaries
-are versioned in `memory-protocol` and Protobuf definitions.
+`memory-core` 是高层嵌入式 API 的唯一公共门面。下层 crate 不得反向依赖 Service、SDK 或 Adapter。跨进程共享的协议类型在 `memory-protocol` 和 Protobuf 定义中进行版本化。
 
-The initial physical store is SQLite in WAL mode. FTS5 supplies local full-text
-retrieval. A content-addressed BlobStore holds large and binary content. Neural
-components are optional plugins with deterministic local fallbacks.
+首个版本使用 SQLite WAL 作为物理存储，使用 FTS5 提供本地全文检索，使用内容寻址 BlobStore 保存大内容和二进制数据。神经能力是可选插件，并始终提供确定性本地 Fallback。
 
-## 5. Temporal Cognitive Model
+## 5. 时间认知模型
 
-The implementation distinguishes these stages in types, persistence, and
-documentation:
+类型、持久化和文档必须严格区分：
 
-1. verifiable past evidence;
-2. current observation;
-3. LLM future hypotheses;
-4. runtime decision;
-5. tool action;
-6. actual result;
-7. result verification.
+1. 过去的可验证证据；
+2. 当前观察；
+3. LLM 对未来的假设；
+4. Runtime 决策；
+5. 工具行动；
+6. 实际结果；
+7. 结果验证。
 
-An observed interaction produces an immutable transition record containing the
-observation, recalled evidence, model hypotheses, runtime selection, tool
-action, actual result, and verification status. Consolidation adds structure to
-that record; it never overwrites it.
+一次交互形成不可变状态转移记录，内容包括当前观察、召回证据、模型假设、Runtime 选择、工具行动、实际结果和验证状态。记忆巩固只能在其上增加结构，不能覆盖原始记录。
 
-## 6. Authoritative Domain Model
+## 6. 权威领域模型
 
-`CognitiveFragment` is the minimum input unit. It includes namespace and
-optional tenant, user, agent, project, session, and trace scopes; kind, content,
-source, perspective, occurrence and observation times; confidence, importance,
-validity, security label, evidence, and metadata.
+`CognitiveFragment` 是最小输入单元。它包含 Namespace，以及可选的 Tenant、User、Agent、Project、Session 和 Trace Scope；同时包含种类、内容、来源、视角、发生时间、观察时间、置信度、重要度、有效性、安全标签、证据和元数据。
 
-Fragment kinds cover observations, claims, inferences, predictions, decisions,
-actions, tool calls, tool results, outcomes, corrections, constraints,
-preferences, facts, failures, successes, plans, approvals, rejections, and state
-transitions. Validity distinguishes unverified, verified, disputed, superseded,
-invalidated, and quarantined data.
+`FragmentKind` 覆盖 Observation、Claim、Inference、Prediction、Decision、Action、ToolCall、ToolResult、Outcome、Correction、Constraint、Preference、Fact、Failure、Success、Plan、Approval、Rejection 和 StateTransition。`ValidityStatus` 区分 Unverified、Verified、Disputed、Superseded、Invalidated 和 Quarantined。
 
-The authoritative records are:
+下列数据属于不可丢失的权威记录：
 
-- original fragments and events;
-- content blobs and evidence references;
-- explicit corrections and verification events;
-- scopes, permissions, security labels, and audit records;
-- state transitions and versions;
-- human approvals and rejections.
+- 原始 Fragment 和 Event；
+- 内容 Blob 和 EvidenceRef；
+- 显式纠正与验证事件；
+- Scope、权限、安全标签和审计记录；
+- 状态转移和状态版本；
+- 人工批准和拒绝。
 
-These records cannot be silently replaced by summaries, embeddings, graph
-relationships, or surfaces.
+摘要、Embedding、图关系或 Surface 不得静默覆盖这些记录。
 
-## 7. Point, Edge, And Surface
+## 7. Point、Edge 与 Surface
 
-A Point is an atomic cognitive change backed by one or more fragments. An Edge
-is a typed, directed, time-aware relationship with weight, confidence,
-provenance, model version, and human/tool verification flags. Co-occurrence may
-create a low-confidence candidate association but never a verified causal edge.
+Point 是由一个或多个原始 Fragment 支撑的原子认知变化。Edge 是带类型、方向、有效时间、权重、置信度、来源、模型版本、人工确认标志和工具验证标志的关系。共同出现只能产生低置信候选关联，不能直接生成已验证因果边。
 
-Online edge updates are bounded and auditable. Reinforcement and weakening
-record the triggering success or failure evidence and clip weights to a defined
-range.
+在线边权更新必须有界且可审计。强化和弱化都要记录触发它的成功或失败证据，并把权重限制在明确范围内。
 
-A Surface is a versioned dynamic cognitive space with semantic center, member
-points and edges, activation threshold, time range, current and historical
-states, confidence, boundaries, evidence, and model version. Points may belong
-to multiple surfaces. Merge, split, freeze, deactivate, conflict detection, and
-incremental member/center updates preserve surface history.
+Surface 是有版本历史的动态认知空间，包含语义中心、成员 Point 和 Edge、激活阈值、时间范围、当前状态、历史状态、置信度、边界、证据和模型版本。一个 Point 可以属于多个 Surface。合并、分裂、冻结、失活、冲突检测、成员更新和中心更新都必须保留历史版本。
 
-## 8. Storage And Transaction Semantics
+## 8. 存储与事务语义
 
-SQLite enables WAL, foreign keys, busy timeout, migrations, transactions,
-indexes, FTS5, and integrity checks. Logical tables cover the entities named in
-the product requirements, including fragments, events, graph data, state
-versions, recalls, transitions, capabilities, approvals, audit logs, snapshots,
-quarantine, and migrations.
+SQLite 必须启用 WAL、外键、Busy Timeout、Migration、事务、完整索引、FTS5 和完整性检查。逻辑表覆盖需求中定义的 Fragment、Event、图、状态版本、Recall、Transition、Capability、Approval、Audit、Snapshot、Quarantine 和 Migration 数据。
 
-An authoritative write follows this sequence:
+权威写入遵循以下顺序：
 
 ```text
-validate scope and ACL
--> persist fragment and content reference
--> persist event or transition
--> persist evidence references
--> commit the SQLite transaction
--> incrementally build or queue rebuildable derivatives
+校验 Scope 和 ACL
+-> 持久化 Fragment 与内容引用
+-> 持久化 Event 或 Transition
+-> 持久化 EvidenceRef
+-> 提交 SQLite 事务
+-> 增量生成或排队生成可重建派生数据
 ```
 
-Blob writes use a temporary file, SHA-256 verification, atomic rename, and then
-a database reference. A failed database transaction can leave only an
-unreferenced blob, which auditable garbage collection may remove. Startup
-recovery checks references, checksums, and interrupted jobs.
+Blob 写入采用临时文件、SHA-256 校验、原子重命名，再提交数据库引用。数据库事务失败时最多留下无引用 Blob，由可审计 GC 回收。启动恢复负责检查引用、校验和与中断任务。
 
-Corrections, contradictions, supersession, and ordinary forgetting append new
-events and relationships. Governance-authorized hard deletion removes
-authoritative records, blobs, and derivatives and leaves a content-free deletion
-receipt in the audit trail.
+Correction、Contradiction、Supersession 和普通 Forget 都通过追加新事件和关系实现。经过治理授权的彻底删除会清理权威记录、Blob 和全部派生数据，并在审计日志中留下不包含敏感正文的删除凭证。
 
-Rebuildable data includes embeddings, FTS/vector indexes, candidate edges,
-surface membership, summaries, and caches.
+可重建数据包括 Embedding、FTS/向量索引、候选 Edge、Surface Member、摘要和缓存。
 
-## 9. State And Conflict Semantics
+## 9. 状态与冲突语义
 
-State uses an immutable version chain with valid-time intervals and supporting
-evidence. `CurrentState` returns the latest valid, visible version.
-`HistoricalState` evaluates the requested time. If visible evidence conflicts
-at the same point in time, recall returns the conflict and missing evidence
-rather than silently selecting a fact.
+状态使用带有效时间范围和支撑证据的不可变版本链。`CurrentState` 返回当前有效且对调用者可见的最新版本；`HistoricalState` 按指定时间计算历史版本。同一时点存在可见冲突证据时，Recall 返回冲突和缺失证据，不得静默选择一个事实。
 
-Predictions remain predictions. A prediction can be validated or disproved only
-by a later verification event linked to actual evidence.
+Prediction 始终保持预测身份。只有后续带真实证据的验证事件才能将其标记为已验证或已否定。
 
-## 10. Recall And Explain
+## 10. Recall 与 Explain
 
-All recall modes use the same bounded pipeline:
+所有召回模式共用同一条有界流水线：
 
 ```text
-scope/ACL pre-filter
--> exact, FTS, and vector seed retrieval
--> bounded candidate set
--> intent-specific edge selection
--> bounded local spreading activation
--> surface activation
--> evidence completeness check
--> rerank and minimal evidence subgraph
--> scope/ACL output recheck
--> Memory Packet and Explain trace
+Scope/ACL 检索前过滤
+-> Exact、FTS 和 Vector 种子检索
+-> 有界候选集
+-> 按 Intent 选择 Edge 类型
+-> 有限跳数局部扩散激活
+-> Surface 激活
+-> 证据完整性检查
+-> 重排并构造最小证据子图
+-> Scope/ACL 返回前复核
+-> Memory Packet 与 Explain Trace
 ```
 
-Configuration limits seed count, neighbors per layer, hop count, total nodes,
-and execution time. Recall never performs unbounded propagation over the entire
-graph.
+配置必须限制种子数量、每层邻居数量、跳数、总节点数和执行时间。任何 Recall 模式都不得对全图执行无界传播。
 
-The deterministic fallback provides stable lexical vectors, rule-based routing,
-classification, and reranking for offline operation and repeatable tests. ONNX
-models may improve candidate selection and ranking but cannot change
-authoritative validity.
+确定性 Fallback 提供稳定的词法向量、基于规则的路由、分类和重排，从而保证离线运行与可重复测试。ONNX 模型可以改进候选选择和排序，但不能改变权威数据的 Validity。
 
-Memory Packet is model-independent. Explain records seeds, traversed paths,
-activated surfaces, evidence, inferred relationships, verified facts,
-conflicts, coverage, and missing evidence.
+Memory Packet 与具体模型无关。Explain 记录起始种子、经过路径、激活 Surface、最终证据、推断关系、已验证事实、冲突、覆盖率和缺失证据。
 
-## 11. Consolidation And Neural Plugins
+## 11. 记忆巩固与神经插件
 
-Consolidation runs resumable, checkpointed, resource-bounded jobs for replay,
-deduplication, edge adjustment, surface discovery/merge/split, semantic
-promotion, conflict and stale-state detection, cold-tier movement, and rebuild.
-Jobs update local regions incrementally and are conservative by default.
+Consolidation 通过可恢复、有 Checkpoint、受资源限制的后台任务执行 Replay、Deduplication、Edge 调整、Surface Discovery/Merge/Split、Semantic Promotion、Conflict Detection、Stale State Detection、Cold Tier Movement 和 Rebuild。任务默认采用保守策略并进行增量局部维护。
 
-Neural interfaces cover fragment encoding, event classification, importance,
-edge prediction, query routing, reranking, surface assignment, and contradiction
-detection. Each implementation declares manifest, version, checksum, input and
-output schema, device policy, batching, timeout, and circuit-breaker behavior.
+神经接口覆盖 FragmentEncoder、EventClassifier、ImportancePredictor、EdgePredictor、QueryRouter、Reranker、SurfaceAssigner 和 ContradictionDetector。每个实现必须声明 Manifest、版本、校验和、输入输出 Schema、设备策略、批处理、超时和熔断行为。
 
-The repository includes a deterministic Rust fallback and a small reproducible
-ONNX fixture. Python training and export code must validate ONNX output parity;
-it must not ship fabricated large-model weights.
+仓库提供确定性 Rust Fallback 和小型可重复 ONNX Fixture。Python 训练与导出代码必须验证导出前后的输出一致性，不提交虚构的大模型权重。
 
-## 12. Runtime And Capabilities
+## 12. Runtime 与能力系统
 
-The agent runtime is an explicit recoverable state machine:
+Agent Runtime 使用显式、可恢复的状态机：
 
 ```text
 Observing -> Recalling -> Reasoning -> AwaitingApproval -> Executing
           -> Committing -> Completed
 ```
 
-Additional states cover WaitingUser, Paused, Failed, Cancelled, retries, and
-timeouts. Each step records a transition, referenced inputs and outputs, retry
-count, timeout, and trace. Recovery resumes after the latest committed step and
-does not repeat a non-idempotent tool action without an explicit recovery
-decision.
+附加状态覆盖 WaitingUser、Paused、Failed、Cancelled、Retry 和 Timeout。每一步都记录 Transition、输入输出引用、重试次数、超时和 Trace。恢复时从最近已提交步骤继续；没有幂等保证的工具行动不得在没有显式恢复决策时重复执行。
 
-Model output is parsed into Hypothesis, Prediction, Plan, DecisionCandidate,
-ToolRequest, or FinalResponse. Policy and approval are applied before tool
-execution. Only verified outcomes can create factual memory.
+模型输出解析为 Hypothesis、Prediction、Plan、DecisionCandidate、ToolRequest 或 FinalResponse。工具执行前必须经过 Policy 和 Approval。只有已验证 Outcome 可以形成事实记忆。
 
-Prompt, Skill, Tool, MCPTool, Workflow, and Policy implement one versioned
-Capability contract. Execution statistics form procedural memory and influence
-ranking, while remaining statistical evidence rather than fact.
+Prompt、Skill、Tool、MCPTool、Workflow 和 Policy 实现统一的版本化 Capability 契约。执行统计形成程序记忆并影响后续排序，但仍然是统计证据，不能冒充事实。
 
-## 13. Security And Governance
+## 13. 安全与治理
 
-Every core operation requires an `AccessContext` containing namespace, tenant,
-user, agent, project, principal, and grants. The storage query layer applies
-authorization before retrieval; packet construction checks it again before
-return. Services cannot bypass the core filter.
+所有核心操作都必须携带 `AccessContext`，其中包含 Namespace、Tenant、User、Agent、Project、Principal 和 Grant。存储查询层在检索前执行权限过滤，Memory Packet 构造完成后再次校验。上层服务不得绕过核心过滤。
 
-Unverified model output, untrusted imports, suspicious tool output, prompt
-injection, and poisoning indicators may be quarantined. Quarantined content is
-excluded from normal recall and semantic promotion unless an authorized review
-changes its status.
+未验证模型输出、不可信导入、可疑工具结果、Prompt Injection 内容和 Memory Poisoning 指标可以进入 Quarantine。Quarantine 内容默认不参与正常 Recall 和 Semantic Promotion，只有授权审查可以改变其状态。
 
-Security labels, pluggable key providers, optional AES-GCM blob encryption,
-retention policies, export, hard deletion, derivative cleanup, and
-reconsolidation are first-class operations. Audit records avoid copying
-sensitive bodies.
+Security Label、可插拔 Key Provider、可选 AES-GCM Blob 加密、Retention Policy、Export、Hard Delete、派生数据清理和重新巩固都是一等能力。审计记录不得复制敏感正文。
 
-## 14. Services And Protocols
+## 14. 服务与协议
 
-- Embedded Rust is the semantic reference implementation.
-- Sidecar reuses the core. Unix-like systems use Unix domain sockets. Windows
-  initially uses token-protected loopback behind a transport abstraction; Named
-  Pipe support is an explicit compatible extension and is not claimed until
-  built and tested.
-- Server uses Axum for REST, Tonic for gRPC, generated OpenAPI, API keys,
-  multi-tenancy, request/trace IDs, rate limits, metrics, structured logs, TLS
-  configuration, and graceful shutdown.
-- MCP implements standard protocol framing and exposes observe, recall, commit,
-  correct, explain, forget, and stats with complete schemas and structured
-  Memory Packet results.
+- Embedded Rust 是所有调用模式的语义基准；
+- Sidecar 复用同一核心。Unix 类系统使用 Unix Domain Socket；Windows 首版通过传输抽象使用受本地 Token 保护的 Loopback。Named Pipe 是兼容扩展，在完成实现和测试前不得宣称支持；
+- Server 使用 Axum 提供 REST，使用 Tonic 提供 gRPC，并提供生成的 OpenAPI、API Key、多租户、Request ID、Trace ID、限流、Metrics、结构化日志、TLS 配置和优雅关闭；
+- MCP 实现标准协议封装，暴露 Observe、Recall、Commit、Correct、Explain、Forget 和 Stats，并返回结构化 Memory Packet。
 
-Protocol errors have stable codes and structured details. REST, gRPC, MCP, and
-embedded calls execute common core commands so their semantics cannot drift.
+协议错误使用稳定错误码和结构化详情。REST、gRPC、MCP 与 Embedded 调用执行同一套核心 Command，避免语义漂移。
 
-## 15. SDKs And Adapters
+## 15. SDK 与适配器
 
-Shared Protobuf/OpenAPI contracts and versioned fixtures define SDK behavior.
-Node and Python provide embedded and remote modes; Go provides remote and C ABI
-integration; Kotlin, Swift, and Java provide native binding and/or remote modes
-as specified. SDK APIs expose typed async cancellation and errors appropriate to
-their language.
+共享 Protobuf/OpenAPI 契约和版本化 Fixture 定义 SDK 行为。Node 和 Python 提供嵌入式与远程模式；Go 提供远程和 C ABI 集成；Kotlin、Swift 和 Java 按需求提供原生绑定和/或远程模式。各 SDK 暴露符合语言习惯的类型化异步、取消和错误接口。
 
-Hermes, OpenClaw, Mem0, Graphiti, and Dify adapters map source records into
-fragments while preserving provenance, original confidence, temporal validity,
-and scope. Fixture and contract tests validate external integrations when the
-real platform is unavailable. Documentation names the external versions tested
-and never presents fixture compatibility as live verification.
+Hermes、OpenClaw、Mem0、Graphiti 和 Dify Adapter 将来源记录映射为 Fragment，并保留 Provenance、原始置信度、时间有效性和 Scope。无法访问真实外部平台时，使用 Fixture 和契约测试，并在文档中记录被测试的外部版本；不得把 Fixture 兼容性描述为实机验证。
 
-## 16. Testing And Benchmarks
+## 16. 测试与 Benchmark
 
-Testing is risk-layered:
+测试按风险分层：
 
-- crate unit, property, concurrency, and error-path tests;
-- transaction rollback, migration, corruption, crash recovery, and rebuild;
-- all seven product acceptance scenarios as deterministic integration tests;
-- scope matrix, cross-tenant leakage, injection, poisoning, and deletion;
-- semantic parity across embedded, REST, gRPC, and MCP;
-- shared SDK contract fixtures;
-- deterministic fallback and ONNX export/runtime parity;
-- benchmark smoke tests in normal CI and explicit million-fragment long runs.
+- crate 单元测试、属性测试、并发测试和错误路径测试；
+- 事务回滚、Migration、损坏、崩溃恢复和 Rebuild 测试；
+- 七个产品验收场景的确定性集成测试；
+- Scope 权限矩阵、跨 Tenant 泄漏、注入、污染和删除测试；
+- Embedded、REST、gRPC 和 MCP 的语义一致性测试；
+- SDK 共享契约 Fixture；
+- 确定性 Fallback 和 ONNX 导出/运行一致性测试；
+- 普通 CI 中的 Benchmark Smoke Test，以及显式触发的百万 Fragment 长任务。
 
-The benchmark harness covers LongMemEval, LoCoMo, Cross-Year, Model Swap,
-Memory Poisoning, and Million Fragments and reports the metrics required by the
-product specification. External datasets are downloaded only through explicit,
-checksum-verified setup steps; generated fixtures are deterministic.
+Benchmark Harness 覆盖 LongMemEval、LoCoMo、Cross-Year、Model Swap、Memory Poisoning 和 Million Fragments，并输出产品需求中的全部指标。外部数据集只能通过显式、带校验和的安装步骤下载；生成式 Fixture 必须完全确定。
 
-Each milestone runs focused tests and all applicable workspace gates. Final
-Rust gates are:
+每个里程碑运行聚焦测试及当时适用的全仓门禁。最终 Rust 门禁为：
 
 ```bash
 cargo fmt --check
@@ -342,60 +230,44 @@ cargo test --workspace --all-features
 cargo doc --workspace --no-deps
 ```
 
-SDK tests, dependency audit, license policy, Protobuf compatibility, benchmark
-smoke tests, and `git diff --check` are additional gates.
+额外门禁包括各 SDK 测试、依赖审计、许可证策略检查、Protobuf 兼容检查、Benchmark Smoke Test 和 `git diff --check`。
 
-## 17. CI And Private Release
+## 17. CI 与私有发布
 
-CI defines Linux, macOS, and Windows coverage for Rust and supported SDKs.
-Release workflows build the requested desktop/server binaries and language
-packages through manual private runs. Mobile signing and store publication are
-outside the first release; build scripts and separate workflows remain
-required.
+CI 配置 Linux、macOS 和 Windows 的 Rust 及对应 SDK 检查。Release 工作流通过手动私有任务构建所需桌面端、Server 和语言包产物。移动端签名和应用商店发布不属于首个版本，但必须提供完整构建脚本和独立工作流。
 
-Final reports distinguish:
+最终报告必须明确区分：
 
-- commands run successfully on the current host;
-- checks represented only by CI configuration;
-- static or fixture-based compatibility;
-- platform, signing, hardware, dataset, or external-service validation still
-  required.
+- 当前主机已经真实运行成功的命令；
+- 仅存在 CI 配置但尚未实际执行的检查；
+- 静态或 Fixture 契约兼容性；
+- 仍需对应平台、签名环境、硬件、数据集或外部服务验证的能力。
 
-## 18. Documentation And Decisions
+## 18. 文档与架构决策
 
-English and Chinese READMEs provide a five-minute local start. Architecture,
-concept, protocol, SDK, deployment, security, benchmark, migration, recovery,
-upgrade, threat-model, and tuning documentation is versioned with the code.
+中文和英文 README 提供五分钟本地快速开始。架构、概念、协议、SDK、部署、安全、Benchmark、数据迁移、故障恢复、版本升级、威胁模型和性能调优文档必须与代码一同版本化。
 
-ADRs record at least the choices of Rust, SQLite, model-independent memory,
-immutable original events, prediction/fact separation, fast/slow memory,
-bounded local propagation, and rebuildable derivatives.
+ADR 至少记录选择 Rust、选择 SQLite、LLM 独立于记忆主体、原始事件不可变、预测与事实隔离、快慢双记忆、局部有界传播和派生索引可重建等决策。
 
-## 19. Acceptance
+## 19. 验收标准
 
-The implementation is complete only when it demonstrates:
+只有完成以下验证，才能宣称实现完成：
 
-1. cross-year evidence recall through bounded reconstruction;
-2. current and historical answers across a state replacement;
-3. a failed actual result disproving, rather than confirming, a prediction;
-4. evidence-linked procedural learning from repeated outcomes;
-5. memory consistency across model provider swaps;
-6. zero cross-tenant recall in the isolation test suite;
-7. consistent restart after injected failures around database, blob, index, and
-   consolidation operations.
+1. 通过有界模式补全召回跨年原始证据；
+2. 状态替换后正确回答当前状态、历史状态、变更时间和变更原因；
+3. 实际失败结果否定预测，而不是把预测保存为成功事实；
+4. 从多次 Outcome 中形成带证据的程序经验；
+5. 更换模型 Provider 后记忆与证据保持一致；
+6. 跨 Tenant 隔离测试中不存在任何召回泄漏；
+7. 在数据库、Blob、索引和 Consolidation 周围注入故障后能够一致恢复。
 
-The final delivery inventory must state implemented modules, commands, schema,
-protocols, SDK examples, tests and benchmarks actually run, platforms actually
-built, external validation gaps, known risks, unresolved security or
-consistency issues, and whether any placeholder remains.
+最终交付清单必须说明已实现模块、运行命令、Schema、协议、SDK 示例、实际运行的测试和 Benchmark、实际构建的平台、外部验证缺口、已知风险、未解决的安全或一致性问题，以及是否仍存在占位实现。
 
-## 20. Non-Goals And Guardrails
+## 20. 非目标与硬性约束
 
-- The first version does not implement its own B-tree, WAL, or foundation LLM.
-- It does not require cloud infrastructure or Python at runtime.
-- It does not treat summaries, embeddings, predicted edges, or LLM text as
-  authoritative evidence.
-- It does not claim live compatibility with unavailable external platforms.
-- It does not create unconnected files merely to mirror a desired tree.
-- It does not use `unsafe` in core logic. Binding-related `unsafe`, if required,
-  is isolated, documents invariants, and has boundary tests.
+- 首个版本不自行实现 B-Tree、WAL 或基础大语言模型；
+- 运行时不强制依赖云基础设施或 Python；
+- 摘要、Embedding、预测 Edge 和 LLM 文本不得成为权威证据；
+- 无法访问的外部平台不得宣称已完成实机兼容验证；
+- 不为复刻目录树而创建没有调用链的文件；
+- 核心逻辑不使用 `unsafe`。绑定层确需使用时，必须隔离代码、说明不变量并增加边界测试。
