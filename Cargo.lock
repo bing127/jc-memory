@@ -794,6 +794,13 @@ dependencies = [
 [[package]]
 name = "jc-memory-episodic"
 version = "0.1.0"
+dependencies = [
+ "chrono",
+ "jc-memory-graph",
+ "jc-memory-protocol",
+ "serde_json",
+ "sha2",
+]
 
 [[package]]
 name = "jc-memory-events"
@@ -811,6 +818,13 @@ dependencies = [
 [[package]]
 name = "jc-memory-graph"
 version = "0.1.0"
+dependencies = [
+ "chrono",
+ "jc-memory-protocol",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
 
 [[package]]
 name = "jc-memory-protocol"
