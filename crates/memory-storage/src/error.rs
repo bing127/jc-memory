@@ -65,4 +65,31 @@ pub enum StorageError {
         /// Diagnostic rows returned by `SQLite`.
         details: String,
     },
+    /// A deterministic test failpoint interrupted a storage transaction.
+    #[error("storage failpoint injected at {point}")]
+    InjectedFailure {
+        /// Stable failpoint identifier.
+        point: &'static str,
+    },
+}
+
+impl StorageError {
+    /// Returns whether the failure is `SQLite` Busy or Locked, including extended result codes.
+    #[must_use]
+    pub fn is_busy_or_locked(&self) -> bool {
+        matches!(sqlite_primary_code(self), Some(5 | 6))
+    }
+
+    /// Returns whether the failure is an `SQLite` constraint violation.
+    #[must_use]
+    pub fn is_constraint(&self) -> bool {
+        matches!(sqlite_primary_code(self), Some(19))
+    }
+}
+
+fn sqlite_primary_code(error: &StorageError) -> Option<i32> {
+    let StorageError::Database(sqlx::Error::Database(error)) = error else {
+        return None;
+    };
+    error.code()?.parse::<i32>().ok().map(|code| code & 0xff)
 }

@@ -1,4 +1,9 @@
-use std::{fmt::Display, str::FromStr as _};
+use std::{
+    fmt::{self, Display},
+    str::FromStr as _,
+    sync::Arc,
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -16,8 +21,16 @@ use sqlx::{Decode, Row, Sqlite, SqlitePool, Transaction, Type, sqlite::SqliteRow
 use crate::{SqliteStore, StorageError};
 
 const MAX_SEARCH_LIMIT: u32 = 100;
+const MAX_BUSY_ATTEMPTS: u32 = 3;
 const TEXT_MEDIA_TYPE: &str = "text/plain; charset=utf-8";
 const JSON_MEDIA_TYPE: &str = "application/json";
+
+fn busy_retry_delay(event_id: EventId, attempt: u32) -> Duration {
+    let bytes = event_id.as_uuid().as_bytes();
+    let seed = u64::from(u16::from_le_bytes([bytes[0], bytes[1]]));
+    let jitter_ms = (seed + u64::from(attempt)) % 5;
+    Duration::from_millis(5 * (u64::from(attempt) + 1) + jitter_ms)
+}
 
 /// Result of atomically appending an immutable event draft.
 #[derive(Clone, Debug, PartialEq)]
@@ -62,17 +75,41 @@ pub trait MemoryRepository: Send + Sync {
     ) -> Result<Vec<FragmentSearchHit>, StorageError>;
 }
 
+/// Injectable boundary used to prove transaction rollback before durable commit.
+pub trait RepositoryFailpoint: Send + Sync {
+    /// Runs after all rows are written but before the transaction commits.
+    ///
+    /// # Errors
+    ///
+    /// Returning an error aborts and rolls back the write transaction.
+    fn before_commit(&self) -> Result<(), StorageError>;
+}
+
 /// `SQLite` implementation of [`MemoryRepository`].
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SqliteMemoryRepository {
     pool: SqlitePool,
+    failpoint: Option<Arc<dyn RepositoryFailpoint>>,
+}
+
+impl fmt::Debug for SqliteMemoryRepository {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SqliteMemoryRepository")
+            .field("pool", &self.pool)
+            .field("failpoint_configured", &self.failpoint.is_some())
+            .finish()
+    }
 }
 
 impl SqliteMemoryRepository {
     /// Creates a repository from an existing `SQLx` `SQLite` pool.
     #[must_use]
     pub const fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            failpoint: None,
+        }
     }
 
     /// Creates a repository sharing the pool owned by `store`.
@@ -80,12 +117,15 @@ impl SqliteMemoryRepository {
     pub fn from_store(store: &SqliteStore) -> Self {
         Self::new(store.pool().clone())
     }
-}
 
-#[async_trait]
-impl MemoryRepository for SqliteMemoryRepository {
-    async fn append(&self, draft: &EventDraft) -> Result<AppendReceipt, StorageError> {
-        validate_draft(draft)?;
+    /// Installs a deterministic pre-commit failure hook.
+    #[must_use]
+    pub fn with_failpoint(mut self, failpoint: Arc<dyn RepositoryFailpoint>) -> Self {
+        self.failpoint = Some(failpoint);
+        self
+    }
+
+    async fn append_once(&self, draft: &EventDraft) -> Result<AppendReceipt, StorageError> {
         let scope_key = scope_key(&draft.scope)?;
         let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
 
@@ -136,6 +176,12 @@ impl MemoryRepository for SqliteMemoryRepository {
 
         match insert_draft(&mut transaction, draft, &scope_key).await {
             Ok(sequence) => {
+                if let Some(failpoint) = &self.failpoint
+                    && let Err(error) = failpoint.before_commit()
+                {
+                    transaction.rollback().await?;
+                    return Err(error);
+                }
                 transaction.commit().await?;
                 Ok(AppendReceipt {
                     event: MemoryEvent {
@@ -150,6 +196,22 @@ impl MemoryRepository for SqliteMemoryRepository {
                 Err(error)
             }
         }
+    }
+}
+
+#[async_trait]
+impl MemoryRepository for SqliteMemoryRepository {
+    async fn append(&self, draft: &EventDraft) -> Result<AppendReceipt, StorageError> {
+        validate_draft(draft)?;
+        for attempt in 0..MAX_BUSY_ATTEMPTS {
+            match self.append_once(draft).await {
+                Err(error) if error.is_busy_or_locked() && attempt + 1 < MAX_BUSY_ATTEMPTS => {
+                    tokio::time::sleep(busy_retry_delay(draft.id, attempt)).await;
+                }
+                result => return result,
+            }
+        }
+        unreachable!("bounded append loop always returns on its final attempt")
     }
 
     async fn get_fragment(&self, id: FragmentId) -> Result<CognitiveFragment, StorageError> {

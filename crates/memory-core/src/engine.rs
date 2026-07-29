@@ -4,7 +4,7 @@ use jc_memory_events::factory::{EventFactory, EventFactoryError};
 use jc_memory_protocol::{BlobId, CognitiveFragment, EventId, FragmentId, ValidityStatus};
 use jc_memory_storage::{
     BlobError, BlobOptions, BlobStore, MemoryRepository, RecoveryError, RecoveryManager,
-    SqliteConfig, SqliteMemoryRepository, SqliteStore, StorageError,
+    RepositoryFailpoint, SqliteConfig, SqliteMemoryRepository, SqliteStore, StorageError,
 };
 use sha2::{Digest as _, Sha256};
 use tracing::Instrument as _;
@@ -48,6 +48,35 @@ pub enum MemoryError {
         /// Missing durable identifier.
         id: String,
     },
+    /// `SQLite` remained busy or locked after bounded retries.
+    #[error("memory database remained busy after bounded retries: {source}")]
+    Busy {
+        /// Original storage failure with the `SQLite` diagnostic chain.
+        #[source]
+        source: StorageError,
+    },
+    /// An immutable identifier already belongs to different content.
+    #[error("{entity} {id} already exists with different content")]
+    Conflict {
+        /// Logical entity type whose identifier conflicts.
+        entity: &'static str,
+        /// Conflicting immutable identifier.
+        id: String,
+    },
+    /// `SQLite` rejected a relational or uniqueness constraint.
+    #[error("memory database constraint failed: {source}")]
+    Constraint {
+        /// Original `SQLite` constraint diagnostic.
+        #[source]
+        source: StorageError,
+    },
+    /// Authoritative durable rows could not be decoded safely.
+    #[error("memory contains corrupt authoritative data: {source}")]
+    Corrupt {
+        /// Original structured corrupt-row diagnostic.
+        #[source]
+        source: StorageError,
+    },
     /// The storage layer rejected or could not complete an operation.
     #[error("memory storage operation failed: {0}")]
     Storage(#[source] StorageError),
@@ -58,8 +87,16 @@ pub enum MemoryError {
 
 impl From<StorageError> for MemoryError {
     fn from(error: StorageError) -> Self {
+        if error.is_busy_or_locked() {
+            return Self::Busy { source: error };
+        }
+        if error.is_constraint() {
+            return Self::Constraint { source: error };
+        }
         match error {
             StorageError::NotFound { entity, id } => Self::NotFound { entity, id },
+            StorageError::IdentityConflict { entity, id } => Self::Conflict { entity, id },
+            source @ StorageError::CorruptRow { .. } => Self::Corrupt { source },
             source => Self::Storage(source),
         }
     }
@@ -82,14 +119,40 @@ impl MemoryEngine {
     /// Returns [`MemoryError`] when the data directory, database, migrations, or blob store cannot
     /// be opened.
     pub async fn open(config: MemoryConfig) -> Result<Self, MemoryError> {
+        Self::open_inner(config, None).await
+    }
+
+    /// Opens a local engine with a deterministic repository failure hook.
+    ///
+    /// This constructor exists for crash-recovery acceptance tests and fault-injection harnesses.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same failures as [`Self::open`].
+    pub async fn open_with_repository_failpoint(
+        config: MemoryConfig,
+        failpoint: Arc<dyn RepositoryFailpoint>,
+    ) -> Result<Self, MemoryError> {
+        Self::open_inner(config, Some(failpoint)).await
+    }
+
+    async fn open_inner(
+        config: MemoryConfig,
+        failpoint: Option<Arc<dyn RepositoryFailpoint>>,
+    ) -> Result<Self, MemoryError> {
         tokio::fs::create_dir_all(config.data_dir())
             .await
             .map_err(MemoryError::DataDirectory)?;
-        let store = SqliteStore::open(&SqliteConfig::new(config.database_path())).await?;
+        let sqlite_config =
+            SqliteConfig::new(config.database_path()).with_busy_timeout(config.busy_timeout());
+        let store = SqliteStore::open(&sqlite_config).await?;
         let schema_version = store.schema_version().await?;
         let blobs = BlobStore::open(config.blob_root(), BlobOptions::plain()).await?;
-        let repository: Arc<dyn MemoryRepository> =
-            Arc::new(SqliteMemoryRepository::from_store(&store));
+        let mut repository = SqliteMemoryRepository::from_store(&store);
+        if let Some(failpoint) = failpoint {
+            repository = repository.with_failpoint(failpoint);
+        }
+        let repository: Arc<dyn MemoryRepository> = Arc::new(repository);
         let recovery = Arc::new(RecoveryManager::from_stores(&store, blobs));
         Ok(Self {
             repository,

@@ -5,10 +5,14 @@ use jc_memory_protocol::{
 };
 
 pub fn observation(text: &str) -> CognitiveFragment {
+    observation_in_scope(MemoryScope::new(NamespaceId::new()), text)
+}
+
+pub fn observation_in_scope(scope: MemoryScope, text: &str) -> CognitiveFragment {
     let now = Utc::now();
     CognitiveFragment {
         id: FragmentId::new(),
-        scope: MemoryScope::new(NamespaceId::new()),
+        scope,
         session_id: None,
         trace_id: None,
         kind: FragmentKind::Observation,

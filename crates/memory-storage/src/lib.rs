@@ -14,5 +14,7 @@ pub use recovery::{
     GcPolicy, GcReport, IntegrityReport, RebuildReport, RecoveryError, RecoveryFailpoint,
     RecoveryManager,
 };
-pub use repository::{AppendReceipt, FragmentSearchHit, MemoryRepository, SqliteMemoryRepository};
+pub use repository::{
+    AppendReceipt, FragmentSearchHit, MemoryRepository, RepositoryFailpoint, SqliteMemoryRepository,
+};
 pub use sqlite::SqliteStore;
