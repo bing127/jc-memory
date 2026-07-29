@@ -133,7 +133,11 @@ impl BlobStore {
         self.verify(id).await
     }
 
-    fn path_for(&self, id: &BlobId) -> PathBuf {
+    pub(crate) fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub(crate) fn path_for(&self, id: &BlobId) -> PathBuf {
         let digest = id.as_str();
         self.root
             .join(&digest[0..2])

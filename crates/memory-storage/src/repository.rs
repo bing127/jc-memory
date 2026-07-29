@@ -340,10 +340,32 @@ async fn insert_draft(
     let content = content_record(&draft.payload.content)?;
     let stored_content_id = insert_content(transaction, &content, draft.recorded_at).await?;
     insert_fragment(transaction, draft, scope_key, &stored_content_id).await?;
+    insert_blob_reference(transaction, draft).await?;
     insert_event(transaction, draft, scope_key, sequence).await?;
     insert_evidence(transaction, draft).await?;
     insert_fts(transaction, draft, scope_key).await?;
     Ok(sequence)
+}
+
+async fn insert_blob_reference(
+    transaction: &mut Transaction<'_, Sqlite>,
+    draft: &EventDraft,
+) -> Result<(), StorageError> {
+    let FragmentContent::Blob { blob_id, .. } = &draft.payload.content else {
+        return Ok(());
+    };
+    let recorded_at_us = draft.recorded_at.timestamp_micros();
+    sqlx::query(
+        "INSERT INTO blob_refs (
+            blob_id, owner_type, owner_id, ref_count, created_at_us, updated_at_us
+         ) VALUES (?1, 'fragment', ?2, 1, ?3, ?3)",
+    )
+    .bind(blob_id.as_str())
+    .bind(draft.fragment_id.to_string())
+    .bind(recorded_at_us)
+    .execute(&mut **transaction)
+    .await?;
+    Ok(())
 }
 
 async fn allocate_sequence(
