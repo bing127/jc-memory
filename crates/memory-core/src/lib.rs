@@ -1,0 +1,1 @@
+//! Embedded Jiangcheng Memory facade.

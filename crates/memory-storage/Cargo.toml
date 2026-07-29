@@ -1,0 +1,27 @@
+[package]
+name = "jc-memory-storage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+
+[dependencies]
+aes-gcm.workspace = true
+async-trait.workspace = true
+fs2.workspace = true
+getrandom.workspace = true
+hex.workspace = true
+jc-memory-events = { path = "../memory-events" }
+jc-memory-protocol = { path = "../memory-protocol" }
+serde_json.workspace = true
+sha2.workspace = true
+sqlx.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+zeroize.workspace = true
+zstd.workspace = true
+
+[lints]
+workspace = true

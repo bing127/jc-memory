@@ -1,0 +1,19 @@
+[package]
+name = "jc-memory-events"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+
+[dependencies]
+chrono.workspace = true
+jc-memory-protocol = { path = "../memory-protocol" }
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

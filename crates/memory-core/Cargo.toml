@@ -1,0 +1,23 @@
+[package]
+name = "jc-memory-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+
+[dependencies]
+jc-memory-events = { path = "../memory-events" }
+jc-memory-protocol = { path = "../memory-protocol" }
+jc-memory-storage = { path = "../memory-storage" }
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+futures.workspace = true
+sha2.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true
