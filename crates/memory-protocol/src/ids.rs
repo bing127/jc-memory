@@ -77,6 +77,18 @@ uuid_id!(/// Identifies a distributed trace.
     TraceId);
 uuid_id!(/// Identifies an evidence reference.
     EvidenceId);
+uuid_id!(/// Identifies a cognitive graph point.
+    PointId);
+uuid_id!(/// Identifies a directed cognitive graph edge.
+    EdgeId);
+uuid_id!(/// Identifies a cognitive surface across its versions.
+    SurfaceId);
+uuid_id!(/// Identifies a versioned state key.
+    StateId);
+uuid_id!(/// Identifies one immutable state version.
+    StateVersionId);
+uuid_id!(/// Identifies one bounded recall request.
+    RecallId);
 
 /// A lowercase SHA-256 digest identifying plaintext blob content.
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]

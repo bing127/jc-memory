@@ -4,6 +4,11 @@ members = [
   "crates/memory-protocol",
   "crates/memory-events",
   "crates/memory-storage",
+  "crates/memory-episodic",
+  "crates/memory-semantic",
+  "crates/memory-graph",
+  "crates/memory-surface",
+  "crates/memory-activation",
   "crates/memory-core",
 ]
 

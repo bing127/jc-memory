@@ -764,14 +764,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
+name = "jc-memory-activation"
+version = "0.1.0"
+
+[[package]]
 name = "jc-memory-core"
 version = "0.1.0"
 dependencies = [
  "chrono",
  "futures",
+ "jc-memory-activation",
+ "jc-memory-episodic",
  "jc-memory-events",
+ "jc-memory-graph",
  "jc-memory-protocol",
+ "jc-memory-semantic",
  "jc-memory-storage",
+ "jc-memory-surface",
  "serde",
  "serde_json",
  "sha2",
@@ -781,6 +790,10 @@ dependencies = [
  "tokio",
  "tracing",
 ]
+
+[[package]]
+name = "jc-memory-episodic"
+version = "0.1.0"
 
 [[package]]
 name = "jc-memory-events"
@@ -796,6 +809,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "jc-memory-graph"
+version = "0.1.0"
+
+[[package]]
 name = "jc-memory-protocol"
 version = "0.1.0"
 dependencies = [
@@ -805,6 +822,10 @@ dependencies = [
  "thiserror",
  "uuid",
 ]
+
+[[package]]
+name = "jc-memory-semantic"
+version = "0.1.0"
 
 [[package]]
 name = "jc-memory-storage"
@@ -828,6 +849,10 @@ dependencies = [
  "zeroize",
  "zstd",
 ]
+
+[[package]]
+name = "jc-memory-surface"
+version = "0.1.0"
 
 [[package]]
 name = "jobserver"

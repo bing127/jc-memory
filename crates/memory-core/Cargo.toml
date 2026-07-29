@@ -6,9 +6,14 @@ rust-version.workspace = true
 license-file.workspace = true
 
 [dependencies]
+jc-memory-activation = { path = "../memory-activation" }
+jc-memory-episodic = { path = "../memory-episodic" }
 jc-memory-events = { path = "../memory-events" }
+jc-memory-graph = { path = "../memory-graph" }
 jc-memory-protocol = { path = "../memory-protocol" }
+jc-memory-semantic = { path = "../memory-semantic" }
 jc-memory-storage = { path = "../memory-storage" }
+jc-memory-surface = { path = "../memory-surface" }
 serde.workspace = true
 sha2.workspace = true
 thiserror.workspace = true

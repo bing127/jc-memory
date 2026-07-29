@@ -4,18 +4,27 @@
 pub mod event;
 /// Cognitive fragment domain types.
 pub mod fragment;
+/// Cognitive graph protocol types.
+pub mod graph;
 /// Strongly typed identifiers used across protocol boundaries.
 pub mod ids;
+/// Recall request protocol types.
+pub mod recall;
 /// Hierarchical memory ownership scope.
 pub mod scope;
+/// Cognitive surface protocol types.
+pub mod surface;
 
 pub use event::{CognitiveStage, EventDraft, MemoryEvent};
 pub use fragment::{
     CognitiveFragment, EvidenceRef, FragmentContent, FragmentKind, FragmentSource, Metadata,
     Perspective, SecurityLabel, SourceType, ValidityStatus, VerificationMethod,
 };
+pub use graph::EdgeKind;
 pub use ids::{
-    AgentId, BlobId, EventId, EvidenceId, FragmentId, IdParseError, NamespaceId, ProjectId,
-    SessionId, TenantId, TraceId, UserId,
+    AgentId, BlobId, EdgeId, EventId, EvidenceId, FragmentId, IdParseError, NamespaceId, PointId,
+    ProjectId, RecallId, SessionId, StateId, StateVersionId, SurfaceId, TenantId, TraceId, UserId,
 };
+pub use recall::RecallMode;
 pub use scope::MemoryScope;
+pub use surface::{SurfaceKind, SurfaceStatus};
