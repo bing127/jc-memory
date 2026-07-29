@@ -1,1 +1,1 @@
-//! SQLite and content-addressed storage for Jiangcheng Memory.
+//! `SQLite` and content-addressed storage for Jiangcheng Memory.
