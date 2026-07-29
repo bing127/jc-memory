@@ -54,6 +54,20 @@ impl SqliteStore {
         &self.pool
     }
 
+    /// Returns the highest successfully applied schema migration version.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError`] when migration metadata cannot be queried.
+    pub async fn schema_version(&self) -> Result<i64, StorageError> {
+        let version = sqlx::query_scalar(
+            "SELECT COALESCE(MAX(version), 0) FROM _sqlx_migrations WHERE success = 1",
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(version)
+    }
+
     /// Runs `SQLite`'s fast and exhaustive database consistency checks.
     ///
     /// # Errors

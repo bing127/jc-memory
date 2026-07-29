@@ -109,6 +109,31 @@ impl MemoryRepository for SqliteMemoryRepository {
             });
         }
 
+        let existing_fragment_event = sqlx::query(
+            "SELECT id, content_hash FROM events
+             WHERE fragment_id = ?1 ORDER BY sequence LIMIT 1",
+        )
+        .bind(draft.fragment_id.to_string())
+        .fetch_optional(&mut *transaction)
+        .await?;
+        if let Some(row) = existing_fragment_event {
+            let event_id_raw: String = row.try_get("id")?;
+            let existing_hash: String = row.try_get("content_hash")?;
+            if existing_hash != draft.content_hash.as_str() {
+                transaction.rollback().await?;
+                return Err(StorageError::IdentityConflict {
+                    entity: "fragment",
+                    id: draft.fragment_id.to_string(),
+                });
+            }
+            let event_id = parse_id::<EventId>(&event_id_raw, "events", &event_id_raw, "id")?;
+            transaction.commit().await?;
+            return Ok(AppendReceipt {
+                event: self.get_event(event_id).await?,
+                created: false,
+            });
+        }
+
         match insert_draft(&mut transaction, draft, &scope_key).await {
             Ok(sequence) => {
                 transaction.commit().await?;
