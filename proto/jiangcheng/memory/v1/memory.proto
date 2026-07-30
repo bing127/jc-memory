@@ -1,0 +1,222 @@
+syntax = "proto3";
+
+package jiangcheng.memory.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// AccessScope 是客户端声明的资源边界，不携带服务端 Grant。
+message AccessScope {
+  string namespace_id = 1 [json_name = "namespaceId"];
+  optional string tenant_id = 2 [json_name = "tenantId"];
+  optional string user_id = 3 [json_name = "userId"];
+  optional string agent_id = 4 [json_name = "agentId"];
+  optional string project_id = 5 [json_name = "projectId"];
+}
+
+// JsonValue 无损区分 JSON 的有符号整数、无符号整数和浮点数。
+message JsonValue {
+  oneof kind {
+    bool null_value = 1 [json_name = "nullValue"];
+    bool bool_value = 2 [json_name = "boolValue"];
+    sint64 int64_value = 3 [json_name = "int64Value"];
+    uint64 uint64_value = 4 [json_name = "uint64Value"];
+    double double_value = 5 [json_name = "doubleValue"];
+    string string_value = 6 [json_name = "stringValue"];
+    JsonArray array_value = 7 [json_name = "arrayValue"];
+    JsonObject object_value = 8 [json_name = "objectValue"];
+  }
+}
+
+// JsonArray 保留 JSON 数组顺序。
+message JsonArray {
+  repeated JsonValue values = 1 [json_name = "values"];
+}
+
+// JsonObject 以显式条目保存对象字段。
+message JsonObject {
+  repeated JsonObjectEntry entries = 1 [json_name = "entries"];
+}
+
+// JsonObjectEntry 保存一个 JSON 对象字段。
+message JsonObjectEntry {
+  string key = 1 [json_name = "key"];
+  JsonValue value = 2 [json_name = "value"];
+}
+
+// BlobContent 保存内容寻址 Blob 的无损引用。
+message BlobContent {
+  string blob_id = 1 [json_name = "blobId"];
+  string media_type = 2 [json_name = "mediaType"];
+  uint64 byte_len = 3 [json_name = "byteLen"];
+}
+
+// FragmentContent 是权威 Fragment 的互斥内容载荷。
+message FragmentContent {
+  oneof value {
+    string text = 1 [json_name = "text"];
+    JsonValue json = 2 [json_name = "json"];
+    BlobContent blob = 3 [json_name = "blob"];
+  }
+}
+
+enum FragmentKind {
+  FRAGMENT_KIND_UNSPECIFIED = 0;
+  FRAGMENT_KIND_OBSERVATION = 1;
+  FRAGMENT_KIND_CLAIM = 2;
+  FRAGMENT_KIND_INFERENCE = 3;
+  FRAGMENT_KIND_PREDICTION = 4;
+  FRAGMENT_KIND_DECISION = 5;
+  FRAGMENT_KIND_ACTION = 6;
+  FRAGMENT_KIND_TOOL_CALL = 7;
+  FRAGMENT_KIND_TOOL_RESULT = 8;
+  FRAGMENT_KIND_OUTCOME = 9;
+  FRAGMENT_KIND_CORRECTION = 10;
+  FRAGMENT_KIND_CONSTRAINT = 11;
+  FRAGMENT_KIND_PREFERENCE = 12;
+  FRAGMENT_KIND_FACT = 13;
+  FRAGMENT_KIND_FAILURE = 14;
+  FRAGMENT_KIND_SUCCESS = 15;
+  FRAGMENT_KIND_PLAN = 16;
+  FRAGMENT_KIND_APPROVAL = 17;
+  FRAGMENT_KIND_REJECTION = 18;
+  FRAGMENT_KIND_STATE_TRANSITION = 19;
+}
+
+enum SourceType {
+  SOURCE_TYPE_UNSPECIFIED = 0;
+  SOURCE_TYPE_USER = 1;
+  SOURCE_TYPE_AGENT = 2;
+  SOURCE_TYPE_MODEL = 3;
+  SOURCE_TYPE_TOOL = 4;
+  SOURCE_TYPE_IMPORT = 5;
+  SOURCE_TYPE_SYSTEM = 6;
+}
+
+// FragmentSource 保存完整来源和观察者信息。
+message FragmentSource {
+  SourceType source_type = 1 [json_name = "sourceType"];
+  string source_id = 2 [json_name = "sourceId"];
+  optional string actor_id = 3 [json_name = "actorId"];
+  optional string observer_id = 4 [json_name = "observerId"];
+  optional string tool_id = 5 [json_name = "toolId"];
+  optional string uri = 6 [json_name = "uri"];
+}
+
+enum Perspective {
+  PERSPECTIVE_UNSPECIFIED = 0;
+  PERSPECTIVE_FIRST_PERSON = 1;
+  PERSPECTIVE_SECOND_PERSON = 2;
+  PERSPECTIVE_THIRD_PERSON = 3;
+  PERSPECTIVE_SYSTEM = 4;
+  PERSPECTIVE_TOOL = 5;
+}
+
+enum ValidityStatus {
+  VALIDITY_STATUS_UNSPECIFIED = 0;
+  VALIDITY_STATUS_UNVERIFIED = 1;
+  VALIDITY_STATUS_VERIFIED = 2;
+  VALIDITY_STATUS_DISPUTED = 3;
+  VALIDITY_STATUS_SUPERSEDED = 4;
+  VALIDITY_STATUS_INVALIDATED = 5;
+  VALIDITY_STATUS_QUARANTINED = 6;
+}
+
+enum SecurityLabel {
+  SECURITY_LABEL_UNSPECIFIED = 0;
+  SECURITY_LABEL_PUBLIC = 1;
+  SECURITY_LABEL_INTERNAL = 2;
+  SECURITY_LABEL_CONFIDENTIAL = 3;
+  SECURITY_LABEL_RESTRICTED = 4;
+}
+
+enum VerificationMethod {
+  VERIFICATION_METHOD_UNSPECIFIED = 0;
+  VERIFICATION_METHOD_MANUAL = 1;
+  VERIFICATION_METHOD_TOOL = 2;
+  VERIFICATION_METHOD_EXTERNAL_SOURCE = 3;
+  VERIFICATION_METHOD_CROSS_EVIDENCE = 4;
+}
+
+// EvidenceRef 无损保留可验证的 Fragment/Event 引用。
+message EvidenceRef {
+  string id = 1 [json_name = "id"];
+  optional string fragment_id = 2 [json_name = "fragmentId"];
+  optional string event_id = 3 [json_name = "eventId"];
+  VerificationMethod method = 4 [json_name = "method"];
+  optional string note = 5 [json_name = "note"];
+}
+
+// CognitiveFragment 是可直接转换为领域命令的完整权威输入。
+message CognitiveFragment {
+  string id = 1 [json_name = "id"];
+  AccessScope scope = 2 [json_name = "scope"];
+  optional string session_id = 3 [json_name = "sessionId"];
+  optional string trace_id = 4 [json_name = "traceId"];
+  FragmentKind kind = 5 [json_name = "kind"];
+  FragmentContent content = 6 [json_name = "content"];
+  FragmentSource source = 7 [json_name = "source"];
+  Perspective perspective = 8 [json_name = "perspective"];
+  google.protobuf.Timestamp occurred_at = 9 [json_name = "occurredAt"];
+  google.protobuf.Timestamp observed_at = 10 [json_name = "observedAt"];
+  float confidence = 11 [json_name = "confidence"];
+  float importance = 12 [json_name = "importance"];
+  ValidityStatus validity = 13 [json_name = "validity"];
+  SecurityLabel security_label = 14 [json_name = "securityLabel"];
+  repeated EvidenceRef evidence = 15 [json_name = "evidence"];
+  JsonObject metadata = 16 [json_name = "metadata"];
+}
+
+// ObserveCommand 直接携带完整强类型 Fragment。
+message ObserveCommand {
+  CognitiveFragment fragment = 1 [json_name = "fragment"];
+}
+
+// RequestEnvelope 是所有命令共享的稳定请求外壳。
+message RequestEnvelope {
+  string api_version = 1 [json_name = "apiVersion"];
+  string request_id = 2 [json_name = "requestId"];
+  AccessScope access_scope = 3 [json_name = "accessScope"];
+
+  oneof command {
+    ObserveCommand observe = 10 [json_name = "observe"];
+  }
+}
+
+// ObserveResult 是权威 Observe 的稳定公开结果。
+message ObserveResult {
+  string fragment_id = 1 [json_name = "fragmentId"];
+  string event_id = 2 [json_name = "eventId"];
+  uint64 sequence = 3 [json_name = "sequence"];
+  string content_hash = 4 [json_name = "contentHash"];
+  bool created = 5 [json_name = "created"];
+  bool quarantined = 6 [json_name = "quarantined"];
+}
+
+// ResponseEnvelope 把业务响应关联回原协议版本和请求标识。
+message ResponseEnvelope {
+  string api_version = 1 [json_name = "apiVersion"];
+  string request_id = 2 [json_name = "requestId"];
+
+  oneof response {
+    ObserveResult observe = 10 [json_name = "observe"];
+  }
+}
+
+// ErrorCode 是 Embedded、REST 与 gRPC 共用的稳定错误分类。
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  ERROR_CODE_INVALID_ARGUMENT = 1;
+  ERROR_CODE_PERMISSION_DENIED = 2;
+  ERROR_CODE_NOT_FOUND = 3;
+  ERROR_CODE_CONFLICT = 4;
+  ERROR_CODE_RESOURCE_EXHAUSTED = 5;
+  ERROR_CODE_INTERNAL = 6;
+}
+
+// ErrorEnvelope 不暴露内部敏感错误链，只提供稳定分类和关联字段。
+message ErrorEnvelope {
+  string api_version = 1 [json_name = "apiVersion"];
+  string request_id = 2 [json_name = "requestId"];
+  ErrorCode code = 3 [json_name = "code"];
+  string message = 4 [json_name = "message"];
+}

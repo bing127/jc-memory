@@ -1,5 +1,6 @@
 //! Embedded Jiangcheng Memory facade.
 
+mod command_bus;
 mod commands;
 mod config;
 mod engine;
@@ -10,6 +11,7 @@ mod quarantine;
 mod recall;
 mod security;
 
+pub use command_bus::{CommandBus, CommandError, EmbeddedCommandBus};
 pub use commands::{
     MutationCommand, MutationKind, MutationReceipt, QuarantineReview, QuarantineReviewReceipt,
     ReviewDecision,

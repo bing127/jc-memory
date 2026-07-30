@@ -1,0 +1,68 @@
+{
+  "apiVersion": "v1",
+  "requestId": "req-proto-observe-fixture",
+  "accessScope": {
+    "namespaceId": "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37001",
+    "tenantId": "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37002",
+    "userId": "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37003",
+    "agentId": "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37004",
+    "projectId": "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37005"
+  },
+  "observe": {
+    "fragment": {
+      "id": "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37006",
+      "scope": {
+        "namespaceId": "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37001",
+        "tenantId": "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37002",
+        "userId": "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37003",
+        "agentId": "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37004",
+        "projectId": "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37005"
+      },
+      "sessionId": "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37008",
+      "traceId": "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37009",
+      "kind": "FRAGMENT_KIND_OBSERVATION",
+      "content": {
+        "text": "Proto JSON 往返保留原始观察"
+      },
+      "source": {
+        "sourceType": "SOURCE_TYPE_TOOL",
+        "sourceId": "fixture-tool",
+        "actorId": "actor-1",
+        "observerId": "observer-1",
+        "toolId": "tool-1",
+        "uri": "urn:fixture:complete"
+      },
+      "perspective": "PERSPECTIVE_TOOL",
+      "occurredAt": "2026-07-30T08:00:00.123456789Z",
+      "observedAt": "2026-07-30T08:00:01.987654321Z",
+      "confidence": 0.875,
+      "importance": 0.625,
+      "validity": "VALIDITY_STATUS_UNVERIFIED",
+      "securityLabel": "SECURITY_LABEL_RESTRICTED",
+      "evidence": [
+        {
+          "id": "018f4c8f-5f7b-7d31-9a6c-b7a0f4f3700a",
+          "eventId": "018f4c8f-5f7b-7d31-9a6c-b7a0f4f3700b",
+          "method": "VERIFICATION_METHOD_EXTERNAL_SOURCE",
+          "note": "完整证据引用"
+        }
+      ],
+      "metadata": {
+        "entries": [
+          {
+            "key": "exact_u64",
+            "value": {
+              "uint64Value": "18446744073709551615"
+            }
+          },
+          {
+            "key": "label",
+            "value": {
+              "stringValue": "完整"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -6,6 +6,7 @@ rust-version.workspace = true
 license-file.workspace = true
 
 [dependencies]
+async-trait.workspace = true
 chrono.workspace = true
 jc-memory-activation = { path = "../memory-activation" }
 jc-memory-episodic = { path = "../memory-episodic" }

@@ -24,19 +24,20 @@
 
 **文件：** 创建 Proto、`memory-protocol/src/command.rs`、`memory-core/src/command_bus.rs`、契约测试。
 
-- [ ] **步骤 1：写 Embedded Command 失败测试**，同一 ObserveCommand 经 `MemoryEngine` 和 `CommandBus` 返回相同 canonical JSON。
-- [ ] **步骤 2：运行测试**，预期 CommandBus 缺失。
-- [ ] **步骤 3：实现：**
+- [x] **步骤 1：写 Embedded Command 失败测试**，同一 ObserveCommand 经 `MemoryEngine` 和 `CommandBus` 返回相同 canonical JSON。
+- [x] **步骤 2：运行测试**，预期 CommandBus 缺失。
+- [x] **步骤 3：实现：**
 
 ```rust
-pub enum MemoryCommand { Observe(ObserveCommand), Recall(RecallCommand), Commit(CommitCommand), Correct(CorrectCommand), Forget(ForgetCommand), Explain(ExplainCommand), Snapshot(SnapshotCommand), Restore(RestoreCommand), Rebuild(RebuildCommand), Consolidate(ConsolidateCommand), Health, Stats }
-pub enum MemoryResponse { Observe(ObserveResult), Recall(MemoryPacket), Commit(CommitResult), Mutation(MutationResult), Explain(ExplainTrace), Snapshot(SnapshotResult), Maintenance(JobView), Health(HealthReport), Stats(MemoryStats) }
+pub struct MemoryRequest { pub api_version: String, pub request_id: String, pub access_scope: AccessScope, pub command: MemoryCommand }
+pub enum MemoryCommand { Observe(ObserveCommand) }
+pub enum MemoryResponse { Observe(ObserveResult) }
 #[async_trait]
-pub trait CommandBus: Send + Sync { async fn execute(&self, access: &AccessContext, command: MemoryCommand) -> Result<MemoryResponse, CommandError>; }
+pub trait CommandBus: Send + Sync { async fn execute(&self, access: &AccessContext, request: MemoryRequest) -> Result<ResponseEnvelope, CommandError>; }
 ```
 
-- [ ] **步骤 4：Proto 每个请求包含 AccessScope、request_id 和版本；运行 Buf/Prost 编译与 JSON/Proto 往返测试。**
-- [ ] **步骤 5：提交 `feat(protocol): add unified service command contract`**。
+- [x] **步骤 4：Proto 每个请求包含 AccessScope、request_id 和版本，Observe 使用完整强类型且无损的 CognitiveFragment；运行 Buf/Prost 编译与 JSON/Proto 往返测试。**
+- [x] **步骤 5：提交 `feat(protocol): add unified service command contract`**。
 
 ## Task 2：实现 Runtime 持久化状态机
 
