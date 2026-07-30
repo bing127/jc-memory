@@ -115,7 +115,7 @@ pub trait ContradictionDetector: Send + Sync { async fn detect(&self, batch: &[C
 
 **文件：** `memory-consolidation/src/{job,runner,checkpoint}.rs`、`tests/job_recovery.rs`。
 
-- [ ] **步骤 1：写 Pause/Resume/Retry/Checkpoint 失败测试**
+- [x] **步骤 1：写 Pause/Resume/Retry/Checkpoint 失败测试**
 
 ```rust
 #[tokio::test]
@@ -129,10 +129,10 @@ async fn resume_continues_after_last_committed_cursor() {
 }
 ```
 
-- [ ] **步骤 2：运行测试**，预期 JobRunner 缺失。
-- [ ] **步骤 3：实现 `JobSpec { kind, scope, cursor, limits }`、Pending/Running/Paused/Retrying/Completed/Failed/Cancelled 状态、Lease、attempt 和 JSON Checkpoint；每批事务提交后才推进 cursor。**
-- [ ] **步骤 4：实现 CancellationToken、CPU/IO/批量/时间预算和指数退避；崩溃后的过期 Lease 可被同 Scope Worker 接管。**
-- [ ] **步骤 5：运行测试并提交 `feat(consolidation): add resumable checkpointed jobs`**。
+- [x] **步骤 2：运行测试**，预期 JobRunner 缺失。
+- [x] **步骤 3：实现 `JobSpec { kind, scope, cursor, limits }`、Pending/Running/Paused/Retrying/Completed/Failed/Cancelled 状态、Lease、attempt 和 JSON Checkpoint；每批事务提交后才推进 cursor。**
+- [x] **步骤 4：实现 CancellationToken、CPU/IO/批量/时间预算和指数退避；崩溃后的过期 Lease 可被同 Scope Worker 接管。**
+- [x] **步骤 5：运行测试并提交 `feat(consolidation): add resumable checkpointed jobs`**。
 
 ## Task 6：实现全部巩固 Job
 
