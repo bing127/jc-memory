@@ -87,6 +87,77 @@ async fn retention_requires_a_persisted_plan_before_it_deletes_candidates() {
 }
 
 #[tokio::test]
+async fn retention_execution_requires_delete_grant_before_changing_plan_state() {
+    let data = tempfile::tempdir().expect("创建 Retention 授权目录");
+    let store = SqliteStore::open(&SqliteConfig::new(data.path().join("memory.sqlite3")))
+        .await
+        .expect("打开 Retention 授权数据库");
+    let blobs = BlobStore::open(data.path().join("blobs"), BlobOptions::plain())
+        .await
+        .expect("打开 Blob 仓储");
+    let scope = MemoryScope::new(NamespaceId::new());
+    let mut planner = AccessContext::new("retention-planner", scope.clone());
+    planner
+        .grants
+        .insert(Grant::for_scope(Operation::Delete, &scope));
+    let service = GovernanceService::from_stores(&store, blobs);
+    let plan = service
+        .plan_retention(&planner, RetentionPolicy::before(Utc::now()))
+        .await
+        .expect("生成空 Retention 计划");
+    assert!(plan.candidates.is_empty());
+    let unauthorized = AccessContext::new("unauthorized-executor", scope);
+
+    assert!(matches!(
+        service.execute_retention(&unauthorized, &plan).await,
+        Err(GovernanceError::AccessDenied { .. })
+    ));
+    let status: String = sqlx::query_scalar("SELECT status FROM retention_plans WHERE id = ?1")
+        .bind(plan.id.to_string())
+        .fetch_one(store.pool())
+        .await
+        .expect("读取未授权执行后的计划状态");
+    assert_eq!(status, "planned");
+}
+
+#[tokio::test]
+async fn retention_execution_cannot_read_or_change_another_scope_plan() {
+    let data = tempfile::tempdir().expect("创建 Retention 跨域目录");
+    let store = SqliteStore::open(&SqliteConfig::new(data.path().join("memory.sqlite3")))
+        .await
+        .expect("打开 Retention 跨域数据库");
+    let blobs = BlobStore::open(data.path().join("blobs"), BlobOptions::plain())
+        .await
+        .expect("打开 Blob 仓储");
+    let scope_a = MemoryScope::new(NamespaceId::new());
+    let scope_b = MemoryScope::new(NamespaceId::new());
+    let mut planner = AccessContext::new("scope-a-planner", scope_a.clone());
+    planner
+        .grants
+        .insert(Grant::for_scope(Operation::Delete, &scope_a));
+    let service = GovernanceService::from_stores(&store, blobs);
+    let plan = service
+        .plan_retention(&planner, RetentionPolicy::before(Utc::now()))
+        .await
+        .expect("生成 Scope A 的空计划");
+    let mut foreign_executor = AccessContext::new("scope-b-executor", scope_b.clone());
+    foreign_executor
+        .grants
+        .insert(Grant::for_scope(Operation::Delete, &scope_b));
+
+    assert!(matches!(
+        service.execute_retention(&foreign_executor, &plan).await,
+        Err(GovernanceError::InvalidRetentionPlan)
+    ));
+    let status: String = sqlx::query_scalar("SELECT status FROM retention_plans WHERE id = ?1")
+        .bind(plan.id.to_string())
+        .fetch_one(store.pool())
+        .await
+        .expect("读取跨域执行后的计划状态");
+    assert_eq!(status, "planned");
+}
+
+#[tokio::test]
 async fn retention_rejects_candidates_changed_after_the_plan_was_persisted() {
     let data = tempfile::tempdir().expect("创建 Retention 篡改目录");
     let store = SqliteStore::open(&SqliteConfig::new(data.path().join("memory.sqlite3")))

@@ -103,18 +103,25 @@ impl GovernanceService {
     ///
     /// # Errors
     ///
-    /// 计划不存在、已执行、被篡改或任一删除失败时返回错误。
+    /// 缺少 `Delete` Grant，或计划不存在、已执行、被篡改、任一删除失败时返回错误。
     #[allow(clippy::too_many_lines)]
     pub async fn execute_retention(
         &self,
         context: &AccessContext,
         plan: &RetentionPlan,
     ) -> Result<Vec<HardDeleteReceipt>, GovernanceError> {
+        if let Decision::Deny(reason) =
+            AclEngine.authorize(context, Operation::Delete, &context.scope)
+        {
+            return Err(GovernanceError::AccessDenied { reason });
+        }
+        let authorized_scope_key = scope_key(&context.scope)?;
         let stored: Option<(String, String, String, String)> = sqlx::query_as(
             "SELECT plan_digest, plan_json, progress_json, status
-             FROM retention_plans WHERE id = ?1",
+             FROM retention_plans WHERE id = ?1 AND scope_key = ?2",
         )
         .bind(plan.id.to_string())
+        .bind(authorized_scope_key)
         .fetch_optional(&self.pool)
         .await?;
         let Some((stored_digest, stored_json, progress_json, status)) = stored else {
