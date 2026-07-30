@@ -23,7 +23,7 @@
 
 **文件：** 创建 `memory-protocol/src/security.rs`、`memory-security/src/{access,acl}.rs`，修改 Workspace。
 
-- [ ] **步骤 1：写默认拒绝失败测试**
+- [x] **步骤 1：写默认拒绝失败测试**
 
 ```rust
 #[test]
@@ -33,8 +33,8 @@ fn missing_grant_is_denied() {
 }
 ```
 
-- [ ] **步骤 2：运行测试**，预期 AccessContext 缺失。
-- [ ] **步骤 3：实现：**
+- [x] **步骤 2：运行测试**，预期 AccessContext 缺失。
+- [x] **步骤 3：实现：**
 
 ```rust
 pub struct AccessContext { pub principal_id: String, pub scope: MemoryScope, pub grants: BTreeSet<Grant>, pub request_id: String }
@@ -45,8 +45,8 @@ pub enum Decision { Allow, Deny(DenyReason) }
 
 Grant 只能匹配同 Namespace，并对 Tenant/Project 使用“Grant 为 None 表示未授权该层级”而不是通配；跨 Tenant 必须显式 Admin Grant。
 
-- [ ] **步骤 4：运行 `cargo test -p jc-memory-security`**，覆盖 Scope 矩阵。
-- [ ] **步骤 5：提交 `feat(security): add explicit access contexts and ACL`**。
+- [x] **步骤 4：运行 `cargo test -p jc-memory-security`**，覆盖 Scope 矩阵。
+- [x] **步骤 5：提交 `feat(security): add explicit access contexts and ACL`**。
 
 ## Task 2：把双重权限过滤下沉到 Recall
 

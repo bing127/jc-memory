@@ -1,0 +1,16 @@
+[package]
+name = "jc-memory-security"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+
+[dependencies]
+jc-memory-protocol = { path = "../memory-protocol" }
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

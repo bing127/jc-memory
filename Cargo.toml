@@ -9,6 +9,7 @@ members = [
   "crates/memory-graph",
   "crates/memory-surface",
   "crates/memory-activation",
+  "crates/memory-security",
   "crates/memory-core",
 ]
 

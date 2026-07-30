@@ -14,6 +14,8 @@ pub mod packet;
 pub mod recall;
 /// Hierarchical memory ownership scope.
 pub mod scope;
+/// 访问控制协议类型。
+pub mod security;
 /// Cognitive surface protocol types.
 pub mod surface;
 
@@ -33,4 +35,5 @@ pub use packet::{
 };
 pub use recall::RecallMode;
 pub use scope::MemoryScope;
+pub use security::{AccessContext, Decision, DenyReason, Grant, Operation};
 pub use surface::{SurfaceKind, SurfaceStatus};
