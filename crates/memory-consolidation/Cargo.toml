@@ -21,6 +21,7 @@ tokio-util.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+jc-memory-events = { path = "../memory-events" }
 tempfile.workspace = true
 
 [lints]

@@ -15,6 +15,7 @@ const REQUIRED_TABLES: &[&str] = &[
     "capabilities",
     "capability_runs",
     "consolidation_jobs",
+    "consolidation_artifacts",
     "decisions",
     "edges",
     "entities",
@@ -25,6 +26,7 @@ const REQUIRED_TABLES: &[&str] = &[
     "fragment_fts",
     "fragments",
     "hypotheses",
+    "cold_tier_entries",
     "memory_models",
     "model_versions",
     "outcomes",
@@ -46,6 +48,8 @@ const REQUIRED_INDEXES: &[&str] = &[
     "idx_blob_refs_blob",
     "idx_blob_refs_owner",
     "idx_capabilities_scope_kind_version",
+    "idx_cold_tier_entries_scope_tier",
+    "idx_consolidation_artifacts_scope_cursor",
     "idx_edges_source_kind_validity",
     "idx_edges_target_kind_validity",
     "idx_events_scope_sequence",
@@ -166,7 +170,33 @@ async fn reopening_the_same_database_is_migration_idempotent() {
             .fetch_one(second.pool())
             .await
             .expect("count applied migrations");
-    assert_eq!(applied_migrations, 1);
+    assert_eq!(applied_migrations, 2);
+}
+
+#[tokio::test]
+async fn surface_schema_preserves_multiple_versions() {
+    let database = TestDatabase::new().await;
+    let scope_key = "a".repeat(64);
+    for version in [1_i64, 2] {
+        sqlx::query(
+            "INSERT INTO surfaces (
+                id, scope_key, kind, status, semantic_center_json,
+                activation_threshold, confidence, version, valid_from_us,
+                source_evidence_json, created_at_us
+             ) VALUES ('surface-1', ?1, 'dynamic', 'active', '[]', 0.5, 0.8, ?2, ?2, '[]', ?2)",
+        )
+        .bind(&scope_key)
+        .bind(version)
+        .execute(database.store.pool())
+        .await
+        .expect("insert immutable surface version");
+    }
+
+    let versions: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM surfaces WHERE id = 'surface-1'")
+        .fetch_one(database.store.pool())
+        .await
+        .expect("count surface versions");
+    assert_eq!(versions, 2);
 }
 
 #[tokio::test]

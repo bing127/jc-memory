@@ -307,6 +307,9 @@ pub enum JobError {
     /// Handler 请求的派生变更不属于当前 Checkpoint Scope。
     #[error("consolidation mutation scope does not match checkpoint scope")]
     MutationScopeMismatch,
+    /// Typed write 引用了其他精确 Scope 的记录。
+    #[error("consolidation reference does not belong to checkpoint scope: {0}")]
+    ReferenceScopeMismatch(&'static str),
     /// 具体 Handler 处理失败。
     #[error("consolidation task failed: {0}")]
     Task(String),

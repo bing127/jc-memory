@@ -138,11 +138,11 @@ async fn resume_continues_after_last_committed_cursor() {
 
 **文件：** `memory-consolidation/src/{replay,dedup,edges,surfaces,semantic,stale,cold,rebuild}.rs`、`tests/conservative_learning.rs`。
 
-- [ ] **步骤 1：写“多次小改成功、大改失败”经验学习测试**，断言输出带样本数、置信区间和 Evidence，且文案不是绝对规则。
-- [ ] **步骤 2：运行测试**，预期 Job Handler 缺失。
-- [ ] **步骤 3：逐个实现 Replay、Deduplication、EdgeReinforcement、EdgeWeakening、SurfaceDiscovery、SurfaceMerge、SurfaceSplit、SemanticPromotion、ConflictDetection、StaleStateDetection、ColdTierMovement、Rebuild；每个 Handler 实现 `ConsolidationTask::process_batch`。**
-- [ ] **步骤 4：Dedup 只创建 SameEntity/CoActivated；SemanticPromotion 至少需要独立来源阈值；Surface 变更创建新版本；Rebuild 只写派生表。**
-- [ ] **步骤 5：运行 Consolidation 全测并提交 `feat(consolidation): add conservative memory learning jobs`**。
+- [x] **步骤 1：写“多次小改成功、大改失败”经验学习测试**，断言输出带样本数、置信区间和 Evidence，且文案不是绝对规则。
+- [x] **步骤 2：运行测试**，预期 Job Handler 缺失。
+- [x] **步骤 3：逐个实现 Replay、Deduplication、EdgeReinforcement、EdgeWeakening、SurfaceDiscovery、SurfaceMerge、SurfaceSplit、SemanticPromotion、ConflictDetection、StaleStateDetection、ColdTierMovement、Rebuild；每个 Handler 实现 `ConsolidationTask::process_batch`。**
+- [x] **步骤 4：Dedup 只创建 SameEntity/CoActivated；SemanticPromotion 至少需要独立来源阈值；Surface 变更创建新版本；Rebuild 只写派生表。**
+- [x] **步骤 5：运行 Consolidation 全测并提交 `feat(consolidation): add conservative memory learning jobs`**。
 
 ## Task 7：实现 Snapshot、Restore 与可重建派生层
 

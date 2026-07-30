@@ -784,6 +784,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "hex",
+ "jc-memory-events",
  "jc-memory-protocol",
  "jc-memory-storage",
  "serde",
