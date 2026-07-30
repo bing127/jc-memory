@@ -168,11 +168,11 @@ async fn resume_continues_after_last_committed_cursor() {
 
 **文件：** 五个 Core 验收测试；`docs/security/{access-control,quarantine,retention,threat-model}.md`、`docs/architecture/consolidation.md`、ADR 0007-0008、README/CHANGELOG。
 
-- [ ] **步骤 1：运行跨 Tenant、Prompt Injection、Memory Poisoning、经验学习和 Snapshot/Restore 验收场景。**
-- [ ] **步骤 2：运行每种 Job 的中断/恢复和资源上限测试。**
-- [ ] **步骤 3：编写安全模型、权限矩阵、威胁模型、巩固和派生重建文档。**
-- [ ] **步骤 4：运行全仓 Rust 门禁和 `git diff --check`。**
-- [ ] **步骤 5：提交 `docs: complete M3 consolidation and security milestone`**。
+- [x] **步骤 1：运行跨 Tenant、Prompt Injection、Memory Poisoning、经验学习和 Snapshot/Restore 验收场景。**
+- [x] **步骤 2：运行每种 Job 的中断/恢复和资源上限测试。**
+- [x] **步骤 3：编写安全模型、权限矩阵、威胁模型、巩固和派生重建文档。**
+- [x] **步骤 4：运行全仓 Rust 门禁和 `git diff --check`。**
+- [x] **步骤 5：提交 `docs: complete M3 consolidation and security milestone`**。
 
 ## M3 完成定义
 

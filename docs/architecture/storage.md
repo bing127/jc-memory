@@ -1,6 +1,6 @@
 # M1 存储架构
 
-本文描述 M1 已实现的本地可信存储。Schema 中为后续里程碑预留的表不代表对应业务能力已经可用；当前嵌入式门面只公开 `observe`、按 ID 读取 Fragment 和 `health`。
+本文以 M1 本地可信存储为基础，并同步记录截至 M3 的 Schema 与恢复边界。Schema 中的表或字段不代表对应上层业务调用链已经接通；当前嵌入式门面已公开 Observe、Fragment、Health、Recall、Explain、Stats、Mutation、Quarantine 审查和 Snapshot/Restore/Rebuild。
 
 ## 1. 权威边界
 
@@ -119,7 +119,8 @@ GC 的默认策略是 dry run。实际删除必须显式使用 `GcPolicy::delete
 
 ## 8. Migration 策略
 
-- Migration 以递增编号嵌入二进制，Engine 打开数据库时自动运行；当前 Schema version 为 1。
+- Migration 以递增编号嵌入二进制，Engine 打开数据库时自动运行；当前 Schema version 为 3。
+- `0001_initial.sql` 建立权威存储、认知/Runtime 预留表、FTS 与基础治理表；`0002_consolidation_derived.sql` 增加可版本化 Surface、巩固产物和冷层索引；`0003_governance.sql` 增加目标摘要、请求结果、治理凭证和可恢复 Retention 计划。
 - `_sqlx_migrations` 是已应用版本的判定来源；重复打开同一路径必须幂等。
 - 已发布 Migration 不原地修改；后续变更添加新版本，并为升级和失败回滚编写测试。
 - 破坏性迁移必须先定义备份、校验和回滚路径，不能依赖 FTS 或其他派生表作为恢复来源。
@@ -132,13 +133,16 @@ GC 的默认策略是 dry run。实际删除必须显式使用 `GcPolicy::delete
 ├── memory.sqlite3
 ├── memory.sqlite3-wal       # 数据库打开且 WAL 活跃时可能存在
 ├── memory.sqlite3-shm       # 数据库打开且 WAL 活跃时可能存在
+├── .governance.lock         # Hard Delete 排他治理时按需创建
+├── .governance-trash/       # Hard Delete Blob 暂存区
+├── .maintenance/            # 阶段化 Rebuild Checkpoint
 └── blobs/
     ├── .gc.lock
     ├── .trash/
     └── ab/cd/<64-hex>.jcb
 ```
 
-`.gc.lock` 和 `.trash/` 按需创建。调用方负责保护整个数据目录的文件系统权限、备份和磁盘容量。
+治理锁、暂存目录、Rebuild Checkpoint、`.gc.lock` 和 `.trash/` 均按需创建。调用方负责保护整个数据目录的文件系统权限、备份和磁盘容量。
 
 ## 10. M1 验证方法与边界
 

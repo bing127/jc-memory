@@ -22,6 +22,31 @@
 - 为 `MemoryEngine` 增加 Recall、Explain、Stats、Correct、Reinforce、Weaken、Supersede、Contradict 和 Forget；所有 Mutation 通过追加 Fragment/Event 表达，不改写原始记录。
 - 增加 Cross-Year、状态历史、共同出现非因果、Prediction 隔离和 Core Recall 预算验收测试。
 - 增加 Point/Edge/Surface、模式补全、Memory Packet 中文文档与 ADR 0004-0006。
+- 增加精确 Scope 默认拒绝 ACL、Recall 查询前与返回前双重授权，以及跨 Tenant 隔离验收。
+- 增加 Prompt Injection、跨 Scope Evidence、重复争议声明、可疑 ToolResult 和敏感数据的确定性 Quarantine；授权 Release/Reject 通过追加记录表达。
+- 增加八个 Neural Trait、版本化 Manifest、三态熔断和完全离线的确定性 Fallback；派生输出保存 `model_version`。
+- 增加 12 种保守巩固 Handler，以及带 Lease、Checkpoint、Pause/Resume/Retry/Cancel 和资源预算的持久化 Job Runner。
+- 增加 Snapshot/Restore、固定阶段派生重建、治理 Export、先计划后执行的 Retention、Key Provider 契约和无正文凭证的 Hard Delete。
+- 增加 M3 访问控制、Quarantine、Retention、威胁模型、巩固/重建架构文档与 ADR 0007-0008。
+
+### M3 已知边界
+
+- M3 验证限定为本地 Rust、SQLite 和文件系统调用链；没有验证远程身份、HTTP/gRPC/MCP、TLS、KMS/HSM、云备份或外部模型。
+- `Operation::Consolidate` 尚未接入 Core Job 提交门面；直接使用 `jc-memory-consolidation` 的调用方必须在外层授权。
+- `MemoryEngine::rebuild_derived` 的 FTS 阶段真实重建索引；Embedding、Edge Candidate、Surface Member 和 Summary/Cache 阶段当前只验证本地表与 Scope 契约。
+- 状态、语义和 Surface 尚未全部汇入 Core 的持久化 Memory Packet；进程内 Mutation 图尚未在 Core 重启时自动恢复。
+- 当前结果不声明 Runtime、服务、SDK、Adapter、训练/ONNX、Benchmark、跨平台实机或公开发布已经完成。
+
+### M3 Verification
+
+- 验证主机：Darwin 25.6.0，Apple Silicon arm64；Rust `rustc 1.97.1`；Workspace 最低声明版本为 1.85。
+- Task 9 聚焦验收覆盖 73 项：跨 Tenant 2 项、注入/污染 6 项、Snapshot/Restore 8 项、保守经验与 Handler 14 项、Job 恢复/预算 20 项、Hard Delete/Retention/Export 13 项、Neural Fallback 10 项；全部通过、0 失败。
+- `cargo fmt --all -- --check` 通过。
+- `CARGO_INCREMENTAL=0 cargo clippy --workspace --all-targets --all-features --offline -- -D warnings` 通过。
+- `CARGO_INCREMENTAL=0 cargo test --workspace --all-features --offline` 共 209 项通过、0 失败，包含 1 项 compile-fail doctest。
+- `RUSTDOCFLAGS='-D warnings' CARGO_INCREMENTAL=0 cargo doc --workspace --all-features --no-deps --offline` 通过。
+- `git diff --check` 通过。
+- 聚焦结果来自版本化本地 Fixture，不是外部平台、跨平台实机、模型质量或性能 Benchmark 结果。
 
 ### M2 已知边界
 
