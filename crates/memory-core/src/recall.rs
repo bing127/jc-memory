@@ -130,7 +130,7 @@ impl MemoryEngine {
             if fragment.validity == ValidityStatus::Quarantined {
                 match self
                     .repository
-                    .quarantine_disposition(&query.scope, fragment.id)
+                    .quarantine_disposition(&query.scope, fragment.id, query.at_time)
                     .await?
                 {
                     Some(QuarantineDisposition::Released) => {

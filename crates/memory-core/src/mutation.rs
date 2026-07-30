@@ -145,11 +145,20 @@ impl MemoryEngine {
             .await?;
         let fragment_id = FragmentId::new();
         let fragment = mutation_fragment(fragment_id, &target, &command, spec);
-        let receipt = self.observe_inner(fragment.clone()).await?;
-        if let Some(relation) = spec.relation {
+        let receipt = self.observe_admitted(fragment).await?;
+        let admitted = self
+            .repository
+            .get_fragment_in_scope(&context.scope, receipt.fragment_id)
+            .await?;
+        let relation = if admitted.validity == ValidityStatus::Quarantined {
+            None
+        } else {
+            spec.relation
+        };
+        if let Some(relation) = relation {
             self.record_relation(
                 &target,
-                &fragment,
+                &admitted,
                 receipt.event_id,
                 relation,
                 command.verification_method,
@@ -162,7 +171,7 @@ impl MemoryEngine {
             fragment_id: receipt.fragment_id,
             event_id: receipt.event_id,
             sequence: receipt.sequence,
-            relation: spec.relation,
+            relation,
         })
     }
 

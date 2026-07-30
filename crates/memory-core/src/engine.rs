@@ -213,21 +213,9 @@ impl MemoryEngine {
     pub async fn observe(
         &self,
         context: &AccessContext,
-        mut fragment: CognitiveFragment,
+        fragment: CognitiveFragment,
     ) -> Result<ObserveReceipt, MemoryError> {
         crate::security::authorize(context, Operation::Observe, &fragment.scope)?;
-        jc_memory_events::validation::validate_fragment(&fragment)
-            .map_err(EventFactoryError::from)?;
-        let risk_context = self.risk_context(&fragment).await?;
-        let risk_assessment =
-            jc_memory_security::QuarantinePipeline.assess(&fragment, risk_context);
-        let admission =
-            jc_memory_security::QuarantinePipeline.admission(&fragment, &risk_assessment);
-        match admission {
-            Admission::Accept => {}
-            Admission::AcceptUnverified => fragment.validity = ValidityStatus::Unverified,
-            Admission::Quarantine { .. } => fragment.validity = ValidityStatus::Quarantined,
-        }
         let fragment_id = fragment.id;
         let namespace_hash = short_hash(&fragment.scope.namespace_id.to_string());
         let tenant_hash = fragment.scope.tenant_id.map_or_else(
@@ -244,23 +232,10 @@ impl MemoryEngine {
             result = tracing::field::Empty,
         );
         let started = Instant::now();
-        let governance_fragment = fragment.clone();
         let result = self
-            .observe_inner(fragment)
+            .observe_admitted(fragment)
             .instrument(span.clone())
-            .await
-            .map(|mut receipt| {
-                receipt.risk_assessment.clone_from(&risk_assessment);
-                receipt
-            });
-        let result = match result {
-            Ok(receipt) if receipt.created && matches!(admission, Admission::Quarantine { .. }) => {
-                self.append_automatic_quarantine(&governance_fragment, &risk_assessment, admission)
-                    .await?;
-                Ok(receipt)
-            }
-            result => result,
-        };
+            .await;
         span.record("elapsed_ms", elapsed_millis(started));
         match &result {
             Ok(receipt) => {
@@ -272,6 +247,32 @@ impl MemoryEngine {
             }
         }
         result
+    }
+
+    pub(crate) async fn observe_admitted(
+        &self,
+        mut fragment: CognitiveFragment,
+    ) -> Result<ObserveReceipt, MemoryError> {
+        jc_memory_events::validation::validate_fragment(&fragment)
+            .map_err(EventFactoryError::from)?;
+        let risk_context = self.risk_context(&fragment).await?;
+        let risk_assessment =
+            jc_memory_security::QuarantinePipeline.assess(&fragment, risk_context);
+        let admission =
+            jc_memory_security::QuarantinePipeline.admission(&fragment, &risk_assessment);
+        match admission {
+            Admission::Accept => {}
+            Admission::AcceptUnverified => fragment.validity = ValidityStatus::Unverified,
+            Admission::Quarantine { .. } => fragment.validity = ValidityStatus::Quarantined,
+        }
+        let governance_fragment = fragment.clone();
+        let mut receipt = self.observe_inner(fragment).await?;
+        receipt.risk_assessment.clone_from(&risk_assessment);
+        if receipt.created && matches!(admission, Admission::Quarantine { .. }) {
+            self.append_automatic_quarantine(&governance_fragment, &risk_assessment, admission)
+                .await?;
+        }
+        Ok(receipt)
     }
 
     /// Reads one authoritative fragment by identifier.

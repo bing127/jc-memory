@@ -7,6 +7,7 @@ use jc_memory_protocol::{
     VerificationMethod,
 };
 use jc_memory_security::{Admission, RiskAssessment, RiskContext};
+use jc_memory_storage::QuarantineDisposition;
 
 use crate::{MemoryEngine, MemoryError, QuarantineReview, QuarantineReviewReceipt, ReviewDecision};
 
@@ -17,7 +18,7 @@ impl MemoryEngine {
     ) -> Result<RiskContext, MemoryError> {
         Ok(RiskContext {
             repeated_disputed_claims: self.repeated_disputed_claims(fragment).await?,
-            cross_scope_reference: self.has_cross_scope_reference(fragment).await,
+            cross_scope_reference: self.has_cross_scope_reference(fragment).await?,
         })
     }
 
@@ -54,22 +55,29 @@ impl MemoryEngine {
         Ok(count)
     }
 
-    async fn has_cross_scope_reference(&self, fragment: &CognitiveFragment) -> bool {
+    async fn has_cross_scope_reference(
+        &self,
+        fragment: &CognitiveFragment,
+    ) -> Result<bool, MemoryError> {
         for evidence in &fragment.evidence {
             if let Some(fragment_id) = evidence.fragment_id
-                && let Ok(referenced) = self.repository.get_fragment(fragment_id).await
-                && referenced.scope != fragment.scope
+                && !self
+                    .repository
+                    .contains_fragment_in_scope(&fragment.scope, fragment_id)
+                    .await?
             {
-                return true;
+                return Ok(true);
             }
             if let Some(event_id) = evidence.event_id
-                && let Ok(referenced) = self.repository.get_event(event_id).await
-                && referenced.draft.scope != fragment.scope
+                && !self
+                    .repository
+                    .contains_event_in_scope(&fragment.scope, event_id)
+                    .await?
             {
-                return true;
+                return Ok(true);
             }
         }
-        false
+        Ok(false)
     }
 
     pub(crate) async fn append_automatic_quarantine(
@@ -94,6 +102,7 @@ impl MemoryEngine {
             "risk_assessment".to_owned(),
             serde_json::to_value(assessment)?,
         );
+        let created_at = Utc::now();
         let fragment = governance_fragment(
             target,
             FragmentKind::StateTransition,
@@ -108,6 +117,14 @@ impl MemoryEngine {
             None,
         );
         self.observe_inner(fragment).await?;
+        self.repository
+            .record_quarantine(
+                &target.scope,
+                target.id,
+                risk_label_code(reason.label),
+                created_at,
+            )
+            .await?;
         Ok(())
     }
 
@@ -139,12 +156,36 @@ impl MemoryEngine {
         let audit_receipt = self.observe_inner(audit).await?;
         let state = review_state_fragment(&target, context, &review, audit_receipt.event_id);
         let state_receipt = self.observe_inner(state).await?;
+        let disposition = match review.decision {
+            ReviewDecision::Release => QuarantineDisposition::Released,
+            ReviewDecision::Reject => QuarantineDisposition::Rejected,
+        };
+        self.repository
+            .record_quarantine_review(
+                &target.scope,
+                state_receipt.fragment_id,
+                target.id,
+                disposition,
+                &context.principal_id,
+                Utc::now(),
+            )
+            .await?;
         Ok(QuarantineReviewReceipt {
             target_fragment_id: target.id,
             audit_event_id: audit_receipt.event_id,
             state_event_id: state_receipt.event_id,
             decision: review.decision,
         })
+    }
+}
+
+const fn risk_label_code(label: jc_memory_security::RiskLabel) -> &'static str {
+    match label {
+        jc_memory_security::RiskLabel::PromptInjection => "prompt_injection",
+        jc_memory_security::RiskLabel::CrossScopeReference => "cross_scope_reference",
+        jc_memory_security::RiskLabel::RepeatedDisputedClaim => "repeated_disputed_claim",
+        jc_memory_security::RiskLabel::SuspiciousToolResult => "suspicious_tool_result",
+        jc_memory_security::RiskLabel::SensitiveData => "sensitive_data",
     }
 }
 

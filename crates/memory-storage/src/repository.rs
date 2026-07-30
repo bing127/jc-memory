@@ -90,8 +90,22 @@ pub trait MemoryRepository: Send + Sync {
         id: FragmentId,
     ) -> Result<CognitiveFragment, StorageError>;
 
+    /// 只判断 `FragmentId` 是否属于精确 Scope，不解码正文。
+    async fn contains_fragment_in_scope(
+        &self,
+        scope: &MemoryScope,
+        id: FragmentId,
+    ) -> Result<bool, StorageError>;
+
     /// Reconstructs a persisted event and its normalized fragment payload.
     async fn get_event(&self, id: EventId) -> Result<MemoryEvent, StorageError>;
+
+    /// 只判断 `EventId` 是否属于精确 Scope，不解码其 Fragment。
+    async fn contains_event_in_scope(
+        &self,
+        scope: &MemoryScope,
+        id: EventId,
+    ) -> Result<bool, StorageError>;
 
     /// Searches literal text within one exact memory scope.
     async fn search_fts(
@@ -109,11 +123,32 @@ pub trait MemoryRepository: Send + Sync {
         limit: u32,
     ) -> Result<Vec<FragmentSearchHit>, StorageError>;
 
-    /// 读取一个精确 Scope 内目标 Fragment 的最新追加式审查结果。
+    /// 记录一个只能由受信 Core 路径创建的自动 Quarantine 状态。
+    async fn record_quarantine(
+        &self,
+        scope: &MemoryScope,
+        target_fragment_id: FragmentId,
+        reason_code: &str,
+        created_at: DateTime<Utc>,
+    ) -> Result<(), StorageError>;
+
+    /// 追加一个只能由授权 Review 路径创建的 Quarantine 处置版本。
+    async fn record_quarantine_review(
+        &self,
+        scope: &MemoryScope,
+        record_id: FragmentId,
+        target_fragment_id: FragmentId,
+        disposition: QuarantineDisposition,
+        reviewed_by: &str,
+        reviewed_at: DateTime<Utc>,
+    ) -> Result<(), StorageError>;
+
+    /// 读取一个精确 Scope 和可选历史截止时间内的最新授权处置。
     async fn quarantine_disposition(
         &self,
         scope: &MemoryScope,
         target_fragment_id: FragmentId,
+        effective_at: Option<DateTime<Utc>>,
     ) -> Result<Option<QuarantineDisposition>, StorageError>;
 
     /// 统计一个精确 Scope 内的权威 Fragment 和 Event。
@@ -315,6 +350,21 @@ impl MemoryRepository for SqliteMemoryRepository {
         decode_fragment(&self.pool, &row, &id_string).await
     }
 
+    async fn contains_fragment_in_scope(
+        &self,
+        scope: &MemoryScope,
+        id: FragmentId,
+    ) -> Result<bool, StorageError> {
+        let scope_key = scope_key(scope)?;
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM fragments WHERE id = ?1 AND scope_key = ?2")
+                .bind(id.to_string())
+                .bind(scope_key)
+                .fetch_one(&self.pool)
+                .await?;
+        Ok(count == 1)
+    }
+
     async fn get_event(&self, id: EventId) -> Result<MemoryEvent, StorageError> {
         let id_string = id.to_string();
         let row = sqlx::query(
@@ -338,6 +388,21 @@ impl MemoryRepository for SqliteMemoryRepository {
         )?;
         let fragment = self.get_fragment(fragment_id).await?;
         decode_event(&row, id, fragment_id, fragment, &id_string)
+    }
+
+    async fn contains_event_in_scope(
+        &self,
+        scope: &MemoryScope,
+        id: EventId,
+    ) -> Result<bool, StorageError> {
+        let scope_key = scope_key(scope)?;
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE id = ?1 AND scope_key = ?2")
+                .bind(id.to_string())
+                .bind(scope_key)
+                .fetch_one(&self.pool)
+                .await?;
+        Ok(count == 1)
     }
 
     async fn search_fts(
@@ -466,23 +531,82 @@ impl MemoryRepository for SqliteMemoryRepository {
             .collect()
     }
 
+    async fn record_quarantine(
+        &self,
+        scope: &MemoryScope,
+        target_fragment_id: FragmentId,
+        reason_code: &str,
+        created_at: DateTime<Utc>,
+    ) -> Result<(), StorageError> {
+        let scope_key = scope_key(scope)?;
+        sqlx::query(
+            "INSERT INTO quarantine (
+                id, scope_key, fragment_id, reason_code, status, reviewed_by,
+                created_at_us, reviewed_at_us
+             ) VALUES (?1, ?2, ?3, ?4, 'pending', NULL, ?5, NULL)
+             ON CONFLICT(id) DO NOTHING",
+        )
+        .bind(target_fragment_id.to_string())
+        .bind(scope_key)
+        .bind(target_fragment_id.to_string())
+        .bind(reason_code)
+        .bind(created_at.timestamp_micros())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn record_quarantine_review(
+        &self,
+        scope: &MemoryScope,
+        record_id: FragmentId,
+        target_fragment_id: FragmentId,
+        disposition: QuarantineDisposition,
+        reviewed_by: &str,
+        reviewed_at: DateTime<Utc>,
+    ) -> Result<(), StorageError> {
+        let scope_key = scope_key(scope)?;
+        let status = match disposition {
+            QuarantineDisposition::Released => "released",
+            QuarantineDisposition::Rejected => "rejected",
+        };
+        sqlx::query(
+            "INSERT INTO quarantine (
+                id, scope_key, fragment_id, reason_code, status, reviewed_by,
+                created_at_us, reviewed_at_us
+             ) VALUES (?1, ?2, ?3, 'authorized_review', ?4, ?5, ?6, ?6)",
+        )
+        .bind(record_id.to_string())
+        .bind(scope_key)
+        .bind(target_fragment_id.to_string())
+        .bind(status)
+        .bind(reviewed_by)
+        .bind(reviewed_at.timestamp_micros())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     async fn quarantine_disposition(
         &self,
         scope: &MemoryScope,
         target_fragment_id: FragmentId,
+        effective_at: Option<DateTime<Utc>>,
     ) -> Result<Option<QuarantineDisposition>, StorageError> {
         let scope_key = scope_key(scope)?;
+        let effective_at_us = effective_at.map_or(i64::MAX, |value| value.timestamp_micros());
         let action: Option<String> = sqlx::query_scalar(
-            "SELECT json_extract(metadata_json, '$.quarantine_action')
-             FROM fragments
-             WHERE scope_key = ?1 AND kind = 'state_transition'
-                   AND json_extract(metadata_json, '$.target_fragment_id') = ?2
-                   AND json_extract(metadata_json, '$.quarantine_action') IN ('released', 'rejected')
-             ORDER BY created_at_us DESC, id DESC
+            "SELECT status
+             FROM quarantine
+             WHERE scope_key = ?1 AND fragment_id = ?2
+                   AND status IN ('released', 'rejected')
+                   AND reviewed_at_us <= ?3
+             ORDER BY reviewed_at_us DESC, id DESC
              LIMIT 1",
         )
         .bind(scope_key)
         .bind(target_fragment_id.to_string())
+        .bind(effective_at_us)
         .fetch_optional(&self.pool)
         .await?
         .flatten();

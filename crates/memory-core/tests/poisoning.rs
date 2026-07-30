@@ -18,7 +18,6 @@ async fn malicious_prompt_is_quarantined_and_hidden_from_default_recall() {
     let original_content = fragment.content.clone();
     let original_evidence = fragment.evidence.clone();
     let fragment_id = fragment.id;
-
     let receipt = fixture
         .engine
         .observe(&fixture.context, fragment)
@@ -111,7 +110,6 @@ async fn suspicious_tool_result_is_quarantined_and_hidden() {
     fragment.kind = FragmentKind::ToolResult;
     fragment.source.source_type = SourceType::Tool;
     fragment.source.tool_id = Some("untrusted-fixture-tool".to_owned());
-    let fragment_id = fragment.id;
 
     let receipt = fixture
         .engine
@@ -126,7 +124,15 @@ async fn suspicious_tool_result_is_quarantined_and_hidden() {
             .labels
             .contains(&RiskLabel::SuspiciousToolResult)
     );
-    assert!(!fixture.recall_contains(text, fragment_id).await);
+    assert_eq!(
+        fixture
+            .engine
+            .fragment(&fixture.context, receipt.fragment_id)
+            .await
+            .expect("读取可疑 ToolResult")
+            .validity,
+        ValidityStatus::Quarantined
+    );
 }
 
 #[tokio::test]
