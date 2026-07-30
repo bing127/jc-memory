@@ -972,6 +972,26 @@ where
         self
     }
 
+    async fn claim_before_deadline(&self, id: JobId, deadline: Instant) -> Result<(), JobError> {
+        timeout_at(
+            deadline,
+            self.store.claim(id, &self.worker_id, self.lease_duration),
+        )
+        .await
+        .map_err(|_| JobError::BudgetExceeded("wall_clock"))??;
+        Ok(())
+    }
+
+    async fn begin_write_before_deadline(
+        &self,
+        deadline: Instant,
+    ) -> Result<Transaction<'static, Sqlite>, JobError> {
+        timeout_at(deadline, self.store.pool.begin_with("BEGIN IMMEDIATE"))
+            .await
+            .map_err(|_| JobError::BudgetExceeded("wall_clock"))?
+            .map_err(JobError::from)
+    }
+
     async fn process_one_batch(
         &self,
         transaction: &mut Transaction<'static, Sqlite>,
@@ -1008,18 +1028,16 @@ where
             self.store.cancel(id).await?;
             return Err(JobError::Cancelled);
         }
-        let claimed = self
-            .store
-            .claim(id, &self.worker_id, self.lease_duration)
-            .await?;
+        let pending = self.store.get(id).await?;
         let started = Instant::now();
-        let wall_deadline = started + Duration::from_millis(claimed.spec.limits.max_runtime_ms);
+        let wall_deadline = started + Duration::from_millis(pending.spec.limits.max_runtime_ms);
+        self.claim_before_deadline(id, wall_deadline).await?;
         loop {
             if self.cancellation.is_cancelled() {
                 self.store.cancel(id).await?;
                 return Err(JobError::Cancelled);
             }
-            let mut transaction = self.store.pool.begin_with("BEGIN IMMEDIATE").await?;
+            let mut transaction = self.begin_write_before_deadline(wall_deadline).await?;
             let record = load_for_update(&mut transaction, id).await?;
             match record.status {
                 JobStatus::Running => {}

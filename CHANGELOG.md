@@ -40,10 +40,10 @@
 ### M3 Verification
 
 - 验证主机：Darwin 25.6.0，Apple Silicon arm64；Rust `rustc 1.97.1`；Workspace 最低声明版本为 1.85。
-- Task 9 聚焦验收覆盖 73 项：跨 Tenant 2 项、注入/污染 6 项、Snapshot/Restore 8 项、保守经验与 Handler 14 项、Job 恢复/预算 20 项、Hard Delete/Retention/Export 13 项、Neural Fallback 10 项；全部通过、0 失败。
+- Task 9 聚焦验收覆盖 74 项：跨 Tenant 2 项、注入/污染 6 项、Snapshot/Restore 8 项、保守经验与 Handler 14 项、Job 恢复/预算 21 项、Hard Delete/Retention/Export 13 项、Neural Fallback 10 项；全部通过、0 失败。
 - `cargo fmt --all -- --check` 通过。
 - `CARGO_INCREMENTAL=0 cargo clippy --workspace --all-targets --all-features --offline -- -D warnings` 通过。
-- `CARGO_INCREMENTAL=0 cargo test --workspace --all-features --offline` 共 209 项通过、0 失败，包含 1 项 compile-fail doctest。
+- `CARGO_INCREMENTAL=0 cargo test --workspace --all-features --offline` 共 210 项通过、0 失败，包含 1 项 compile-fail doctest。
 - `RUSTDOCFLAGS='-D warnings' CARGO_INCREMENTAL=0 cargo doc --workspace --all-features --no-deps --offline` 通过。
 - `git diff --check` 通过。
 - 聚焦结果来自版本化本地 Fixture，不是外部平台、跨平台实机、模型质量或性能 Benchmark 结果。

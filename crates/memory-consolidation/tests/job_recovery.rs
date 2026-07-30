@@ -439,9 +439,9 @@ async fn concurrent_claim_allows_exactly_one_worker() {
 async fn wall_clock_budget_failure_keeps_last_committed_cursor() {
     let harness = Harness::new().await;
     let mut spec = Harness::spec(2);
-    spec.limits.max_runtime_ms = 1;
+    spec.limits.max_runtime_ms = 100;
     let job = harness.jobs.submit(spec).await.unwrap();
-    let task = Arc::new(SequenceTask::slow(4, Duration::from_millis(5)));
+    let task = Arc::new(SequenceTask::slow(4, Duration::from_millis(200)));
     let runner = JobRunner::new(
         harness.jobs.clone(),
         task,
@@ -457,6 +457,35 @@ async fn wall_clock_budget_failure_keeps_last_committed_cursor() {
     let failed = harness.jobs.get(job.id).await.unwrap();
     assert_eq!(failed.checkpoint.cursor, 0);
     assert_eq!(failed.status, JobStatus::Retrying);
+}
+
+#[tokio::test]
+async fn wall_clock_budget_bounds_waiting_for_the_job_write_lock() {
+    let harness = Harness::new().await;
+    let mut spec = Harness::spec(1);
+    spec.limits.max_runtime_ms = 20;
+    let job = harness.jobs.submit(spec).await.unwrap();
+    let blocking_transaction = harness
+        .store
+        .pool()
+        .begin_with("BEGIN IMMEDIATE")
+        .await
+        .unwrap();
+    let runner = JobRunner::new(
+        harness.jobs.clone(),
+        Arc::new(SequenceTask::new(1)),
+        "worker-a",
+        Duration::from_secs(1),
+        Duration::ZERO,
+    );
+
+    let bounded = tokio::time::timeout(Duration::from_millis(200), runner.run(job.id)).await;
+    blocking_transaction.rollback().await.unwrap();
+    let result = bounded.expect("Runner 等待写锁时也必须受墙钟预算限制");
+    assert_eq!(result.unwrap_err(), JobError::BudgetExceeded("wall_clock"));
+    let pending = harness.jobs.get(job.id).await.unwrap();
+    assert_eq!(pending.status, JobStatus::Pending);
+    assert_eq!(pending.attempts, 0);
 }
 
 #[tokio::test]

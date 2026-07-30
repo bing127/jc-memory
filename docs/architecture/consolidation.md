@@ -17,8 +17,10 @@ Worker 通过限时 Lease 独占 Job。Lease 过期后，另一个 Worker 可以
 | `max_batch_size` | `BatchContext::consume_items` 与 Checkpoint 提交 | 回滚批次，记录失败 |
 | `max_cpu_ms` | Runner 以批次 elapsed 毫秒作为保守代理并累计 | 超时或累计超限时回滚 |
 | `max_io_ops` | 每个受限读写在 `BatchContext` 内计数 | 超限前拒绝下一次 IO 并回滚 |
-| `max_runtime_ms` | 单次 `JobRunner::run` 的墙钟 deadline | 中止未完成批次并进入重试/失败 |
+| `max_runtime_ms` | 加载持久化限制后的 claim、写锁等待与批次处理 | 超时返回 `BudgetExceeded("wall_clock")` |
 | `max_attempts` | 持久化失败计数 | 达到上限后进入终态 Failed |
+
+写锁等待在 claim 前超限时，Job 保持 Pending 且不增加失败次数；claim 后获取下一批写事务超限时，Job 保持 Running，直到 Lease 过期后由原 Worker 或其他 Worker 重新 claim。Runner 不会在无法取得写锁时伪造已持久化失败。
 
 这些限制是嵌入式 Runner 的合作式预算，不是操作系统级 CPU、内存、磁盘或进程配额。M3 没有全局调度器和跨 Job 公平性策略。
 
