@@ -923,6 +923,7 @@ dependencies = [
  "hex",
  "jc-memory-events",
  "jc-memory-protocol",
+ "serde",
  "serde_json",
  "sha2",
  "sqlx",

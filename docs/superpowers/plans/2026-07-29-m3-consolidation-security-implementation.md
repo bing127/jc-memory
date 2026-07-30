@@ -148,11 +148,11 @@ async fn resume_continues_after_last_committed_cursor() {
 
 **文件：** `memory-storage/src/{snapshot,export,recovery}.rs`、`memory-core/src/maintenance.rs`、`tests/snapshot_restore.rs`。
 
-- [ ] **步骤 1：写 Snapshot/Restore 权威哈希一致和派生索引删除重建测试。**
-- [ ] **步骤 2：运行测试**，预期 Snapshot API 缺失。
-- [ ] **步骤 3：Snapshot Manifest 记录 schema_version、SQLite checksum、Blob 列表与 checksum、Scope、创建时间；使用 SQLite online backup/一致读事务和临时目录原子完成。**
-- [ ] **步骤 4：Restore 先在隔离目录完整校验，再原子切换数据目录；Rebuild 顺序为 FTS -> Embedding -> Edge Candidate -> Surface Member -> Summary/Cache，并保存 Job Checkpoint。**
-- [ ] **步骤 5：运行测试并提交 `feat(storage): add verified snapshots restore and rebuild`**。
+- [x] **步骤 1：写 Snapshot/Restore 权威哈希一致和派生索引删除重建测试。**
+- [x] **步骤 2：运行测试**，预期 Snapshot API 缺失。
+- [x] **步骤 3：Snapshot Manifest 记录 schema_version、SQLite checksum、Blob 列表与 checksum、Scope、创建时间；使用 SQLite online backup/一致读事务和临时目录原子完成。**
+- [x] **步骤 4：Restore 先在隔离目录完整校验，再原子切换数据目录；Rebuild 顺序为 FTS -> Embedding -> Edge Candidate -> Surface Member -> Summary/Cache，并保存 Job Checkpoint。**
+- [x] **步骤 5：运行测试并提交 `feat(storage): add verified snapshots restore and rebuild`**。
 
 ## Task 8：实现 Key Provider、审计、Retention、Export 与 Hard Delete
 

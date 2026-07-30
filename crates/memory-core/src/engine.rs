@@ -147,7 +147,7 @@ impl From<StorageError> for MemoryError {
 pub struct MemoryEngine {
     pub(crate) repository: Arc<dyn MemoryRepository>,
     pub(crate) derived_graph: Arc<RwLock<DerivedGraph>>,
-    recovery: Arc<RecoveryManager>,
+    pub(crate) recovery: Arc<RecoveryManager>,
     event_factory: EventFactory,
     schema_version: i64,
 }

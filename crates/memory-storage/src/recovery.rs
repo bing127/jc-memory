@@ -9,9 +9,13 @@ use std::{
 
 use fs2::FileExt;
 use jc_memory_protocol::BlobId;
+use jc_memory_protocol::MemoryScope;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use sha2::{Digest as _, Sha256};
 use sqlx::{Row as _, SqlitePool};
 
-use crate::{BlobError, BlobStore, SqliteStore};
+use crate::{BlobError, BlobStore, SnapshotError, SnapshotManager, SnapshotReceipt, SqliteStore};
 
 const FTS_REBUILD_TABLE: &str = "fragment_fts_rebuild";
 
@@ -79,6 +83,49 @@ pub struct RebuildReport {
     pub replaced_rows: u64,
 }
 
+/// 可重建派生层的固定执行阶段。
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RebuildStage {
+    /// 从权威 Fragment 内容重建 FTS。
+    Fts,
+    /// 执行版本化 Embedding 派生阶段契约。
+    Embedding,
+    /// 执行 Edge Candidate 派生阶段契约。
+    EdgeCandidate,
+    /// 执行 Surface Member 派生阶段契约。
+    SurfaceMember,
+    /// 执行 Summary/Cache 派生阶段契约。
+    SummaryCache,
+}
+
+impl RebuildStage {
+    /// M3 固定重建顺序。
+    pub const ORDER: [Self; 5] = [
+        Self::Fts,
+        Self::Embedding,
+        Self::EdgeCandidate,
+        Self::SurfaceMember,
+        Self::SummaryCache,
+    ];
+}
+
+/// 一次可恢复派生层重建的结果。
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DerivedRebuildReport {
+    /// 本次最终完成的固定阶段顺序。
+    pub completed_stages: Vec<RebuildStage>,
+    /// 本次启动前最近持久化完成的阶段。
+    pub resumed_after: Option<RebuildStage>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+struct RebuildJobCheckpoint {
+    version: u32,
+    scope: MemoryScope,
+    completed_stages: Vec<RebuildStage>,
+}
+
 /// Injectable recovery boundary used to prove transaction rollback behavior.
 pub trait RecoveryFailpoint: Send + Sync {
     /// Runs after the replacement index is complete but before the authoritative FTS swap.
@@ -87,6 +134,15 @@ pub trait RecoveryFailpoint: Send + Sync {
     ///
     /// Returning an error aborts and rolls back the rebuild transaction.
     fn before_fts_swap(&self) -> Result<(), RecoveryError>;
+
+    /// 在阶段 Checkpoint 已持久化后运行，用于验证续跑边界。
+    ///
+    /// # Errors
+    ///
+    /// 返回错误会中断本次运行，但已提交阶段不会重复执行。
+    fn after_rebuild_stage(&self, _stage: RebuildStage) -> Result<(), RecoveryError> {
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -107,6 +163,9 @@ pub enum RecoveryError {
     /// A blob operation failed.
     #[error("blob recovery operation failed: {0}")]
     Blob(#[from] BlobError),
+    /// Snapshot 创建、校验或 Restore 失败。
+    #[error("snapshot recovery operation failed: {0}")]
+    Snapshot(#[from] SnapshotError),
     /// A filesystem operation failed.
     #[error("recovery filesystem operation failed: {0}")]
     Io(#[from] std::io::Error),
@@ -132,6 +191,12 @@ pub enum RecoveryError {
     InjectedFailure {
         /// Stable failpoint identifier.
         point: &'static str,
+    },
+    /// 重建 Job Checkpoint 无法解析或不属于当前 Scope。
+    #[error("invalid rebuild checkpoint: {reason}")]
+    InvalidRebuildCheckpoint {
+        /// 被拒绝的原因。
+        reason: String,
     },
 }
 
@@ -159,6 +224,22 @@ impl RecoveryManager {
     pub fn with_failpoint(mut self, failpoint: Arc<dyn RecoveryFailpoint>) -> Self {
         self.failpoint = failpoint;
         self
+    }
+
+    /// 创建经过校验并原子发布的 Snapshot。
+    ///
+    /// # Errors
+    ///
+    /// `SQLite` 一致镜像、Blob 复制校验或目录发布失败时返回错误。
+    pub async fn create_snapshot(
+        &self,
+        snapshot_root: impl AsRef<Path>,
+        name: &str,
+        scope: MemoryScope,
+    ) -> Result<SnapshotReceipt, RecoveryError> {
+        Ok(SnapshotManager::new(self.pool.clone(), self.blobs.root())
+            .create(snapshot_root, name, scope)
+            .await?)
     }
 
     /// Audits database consistency, blob references, checksums, and FTS derivation.
@@ -328,6 +409,204 @@ impl RecoveryManager {
                 Err(error)
             }
         }
+    }
+
+    /// 按固定顺序运行可重建派生阶段，并在每个成功阶段后原子保存 Job Checkpoint。
+    ///
+    /// M3 尚未接入外部 Embedding 与 Summary backend；对应阶段只执行版本化本地契约检查，
+    /// 不生成或宣称外部模型结果。
+    ///
+    /// # Errors
+    ///
+    /// FTS 重建、阶段契约、Checkpoint 持久化或 failpoint 失败时返回错误。
+    pub async fn rebuild_derived(
+        &self,
+        scope: &MemoryScope,
+    ) -> Result<DerivedRebuildReport, RecoveryError> {
+        let checkpoint_path = self.rebuild_checkpoint_path(scope)?;
+        let mut checkpoint = load_rebuild_checkpoint(&checkpoint_path, scope).await?;
+        let resumed_after = checkpoint.completed_stages.last().copied();
+        for stage in RebuildStage::ORDER {
+            if checkpoint.completed_stages.contains(&stage) {
+                continue;
+            }
+            self.execute_rebuild_stage(stage, scope).await?;
+            checkpoint.completed_stages.push(stage);
+            save_rebuild_checkpoint(&checkpoint_path, &checkpoint).await?;
+            self.failpoint.after_rebuild_stage(stage)?;
+        }
+        match tokio::fs::remove_file(&checkpoint_path).await {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+        Ok(DerivedRebuildReport {
+            completed_stages: checkpoint.completed_stages,
+            resumed_after,
+        })
+    }
+
+    async fn execute_rebuild_stage(
+        &self,
+        stage: RebuildStage,
+        scope: &MemoryScope,
+    ) -> Result<(), RecoveryError> {
+        match stage {
+            RebuildStage::Fts => {
+                self.rebuild_fts().await?;
+            }
+            RebuildStage::Embedding => {
+                validate_stage_tables(&self.pool, &["model_versions", "memory_models"]).await?;
+            }
+            RebuildStage::EdgeCandidate => {
+                validate_scope_derived_table(&self.pool, "edges", scope).await?;
+            }
+            RebuildStage::SurfaceMember => {
+                validate_stage_tables(&self.pool, &["surfaces", "surface_members"]).await?;
+            }
+            RebuildStage::SummaryCache => {
+                validate_stage_tables(&self.pool, &["recall_sessions", "recall_activations"])
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    fn rebuild_checkpoint_path(&self, scope: &MemoryScope) -> Result<PathBuf, RecoveryError> {
+        let data_dir =
+            self.blobs
+                .root()
+                .parent()
+                .ok_or_else(|| RecoveryError::InvalidRebuildCheckpoint {
+                    reason: "blob root has no data directory".to_owned(),
+                })?;
+        let scope_key = canonical_scope_key(scope)?;
+        Ok(data_dir
+            .join(".maintenance")
+            .join(format!("rebuild-{scope_key}.json")))
+    }
+}
+
+async fn load_rebuild_checkpoint(
+    path: &Path,
+    scope: &MemoryScope,
+) -> Result<RebuildJobCheckpoint, RecoveryError> {
+    let bytes = match tokio::fs::read(path).await {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(RebuildJobCheckpoint {
+                version: 1,
+                scope: scope.clone(),
+                completed_stages: Vec::new(),
+            });
+        }
+        Err(error) => return Err(error.into()),
+    };
+    let checkpoint: RebuildJobCheckpoint = serde_json::from_slice(&bytes).map_err(|error| {
+        RecoveryError::InvalidRebuildCheckpoint {
+            reason: error.to_string(),
+        }
+    })?;
+    if checkpoint.version != 1 || checkpoint.scope != *scope {
+        return Err(RecoveryError::InvalidRebuildCheckpoint {
+            reason: "version or scope mismatch".to_owned(),
+        });
+    }
+    if checkpoint.completed_stages.len() > RebuildStage::ORDER.len() {
+        return Err(RecoveryError::InvalidRebuildCheckpoint {
+            reason: "completed stages exceed the contract".to_owned(),
+        });
+    }
+    let expected_prefix = &RebuildStage::ORDER[..checkpoint.completed_stages.len()];
+    if checkpoint.completed_stages != expected_prefix {
+        return Err(RecoveryError::InvalidRebuildCheckpoint {
+            reason: "completed stages are not an ordered prefix".to_owned(),
+        });
+    }
+    Ok(checkpoint)
+}
+
+async fn save_rebuild_checkpoint(
+    path: &Path,
+    checkpoint: &RebuildJobCheckpoint,
+) -> Result<(), RecoveryError> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| RecoveryError::InvalidRebuildCheckpoint {
+            reason: "checkpoint path has no parent".to_owned(),
+        })?;
+    tokio::fs::create_dir_all(parent).await?;
+    let temporary = path.with_extension("json.tmp");
+    let bytes = serde_json::to_vec_pretty(checkpoint).map_err(|error| {
+        RecoveryError::InvalidRebuildCheckpoint {
+            reason: error.to_string(),
+        }
+    })?;
+    tokio::fs::write(&temporary, bytes).await?;
+    tokio::fs::File::open(&temporary).await?.sync_all().await?;
+    tokio::fs::rename(&temporary, path).await?;
+    Ok(())
+}
+
+async fn validate_stage_tables(pool: &SqlitePool, tables: &[&str]) -> Result<(), RecoveryError> {
+    for table in tables {
+        let exists: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        )
+        .bind(table)
+        .fetch_one(pool)
+        .await?;
+        if exists != 1 {
+            return Err(RecoveryError::InvalidRebuildCheckpoint {
+                reason: format!("{table} stage requires table {table}"),
+            });
+        }
+    }
+    Ok(())
+}
+
+async fn validate_scope_derived_table(
+    pool: &SqlitePool,
+    table: &str,
+    scope: &MemoryScope,
+) -> Result<(), RecoveryError> {
+    validate_stage_tables(pool, &[table]).await?;
+    let scope_key = canonical_scope_key(scope)?;
+    let statement = format!("SELECT COUNT(*) FROM {table} WHERE scope_key = ?1");
+    let _: i64 = sqlx::query_scalar(&statement)
+        .bind(scope_key)
+        .fetch_one(pool)
+        .await?;
+    Ok(())
+}
+
+fn canonical_scope_key(scope: &MemoryScope) -> Result<String, RecoveryError> {
+    let value =
+        serde_json::to_value(scope).map_err(|error| RecoveryError::InvalidRebuildCheckpoint {
+            reason: error.to_string(),
+        })?;
+    let bytes = serde_json::to_vec(&canonicalize(value)).map_err(|error| {
+        RecoveryError::InvalidRebuildCheckpoint {
+            reason: error.to_string(),
+        }
+    })?;
+    Ok(hex::encode(Sha256::digest(bytes)))
+}
+
+fn canonicalize(value: Value) -> Value {
+    match value {
+        Value::Array(values) => Value::Array(values.into_iter().map(canonicalize).collect()),
+        Value::Object(values) => {
+            let mut entries: Vec<_> = values.into_iter().collect();
+            entries.sort_by(|left, right| left.0.cmp(&right.0));
+            Value::Object(
+                entries
+                    .into_iter()
+                    .map(|(key, value)| (key, canonicalize(value)))
+                    .collect(),
+            )
+        }
+        primitive => primitive,
     }
 }
 
