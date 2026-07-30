@@ -19,23 +19,30 @@ async fn semantic_recall_finds_the_2018_authoritative_fragment_in_2026() {
     historical.observed_at = historical.occurred_at;
     let fragment_id = historical.id;
     let scope = historical.scope.clone();
-    engine.observe(historical).await.expect("写入 2018 年事实");
+    let context = common::access_context(&scope);
+    engine
+        .observe(&context, historical)
+        .await
+        .expect("写入 2018 年事实");
 
     let packet = engine
-        .recall(RecallQuery {
-            scope,
-            mode: RecallMode::Semantic,
-            text: "database deploy pool failure".to_owned(),
-            entities: Vec::new(),
-            at_time: Some(Utc.with_ymd_and_hms(2026, 7, 30, 12, 0, 0).unwrap()),
-            limits: RecallLimits {
-                max_seeds: 4,
-                max_neighbors: 4,
-                max_hops: 2,
-                max_nodes: 8,
-                timeout_ms: 100,
+        .recall(
+            &context,
+            RecallQuery {
+                scope: scope.clone(),
+                mode: RecallMode::Semantic,
+                text: "database deploy pool failure".to_owned(),
+                entities: Vec::new(),
+                at_time: Some(Utc.with_ymd_and_hms(2026, 7, 30, 12, 0, 0).unwrap()),
+                limits: RecallLimits {
+                    max_seeds: 4,
+                    max_neighbors: 4,
+                    max_hops: 2,
+                    max_nodes: 8,
+                    timeout_ms: 100,
+                },
             },
-        })
+        )
         .await
         .expect("执行跨年份召回");
 

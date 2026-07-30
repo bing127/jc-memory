@@ -13,6 +13,7 @@ jc-memory-events = { path = "../memory-events" }
 jc-memory-graph = { path = "../memory-graph" }
 jc-memory-protocol = { path = "../memory-protocol" }
 jc-memory-semantic = { path = "../memory-semantic" }
+jc-memory-security = { path = "../memory-security" }
 jc-memory-storage = { path = "../memory-storage" }
 jc-memory-surface = { path = "../memory-surface" }
 serde.workspace = true

@@ -74,6 +74,13 @@ pub trait MemoryRepository: Send + Sync {
     /// Reconstructs a fragment from normalized authoritative rows.
     async fn get_fragment(&self, id: FragmentId) -> Result<CognitiveFragment, StorageError>;
 
+    /// 仅在 `FragmentId` 与精确 Scope 同时匹配时重建权威 Fragment。
+    async fn get_fragment_in_scope(
+        &self,
+        scope: &MemoryScope,
+        id: FragmentId,
+    ) -> Result<CognitiveFragment, StorageError>;
+
     /// Reconstructs a persisted event and its normalized fragment payload.
     async fn get_event(&self, id: EventId) -> Result<MemoryEvent, StorageError>;
 
@@ -251,6 +258,37 @@ impl MemoryRepository for SqliteMemoryRepository {
              WHERE f.id = ?1",
         )
         .bind(&id_string)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| StorageError::NotFound {
+            entity: "fragment",
+            id: id_string.clone(),
+        })?;
+
+        decode_fragment(&self.pool, &row, &id_string).await
+    }
+
+    async fn get_fragment_in_scope(
+        &self,
+        scope: &MemoryScope,
+        id: FragmentId,
+    ) -> Result<CognitiveFragment, StorageError> {
+        let id_string = id.to_string();
+        let scope_key = scope_key(scope)?;
+        let row = sqlx::query(
+            "SELECT
+                f.id, f.scope_key, f.namespace_id, f.tenant_id, f.user_id, f.agent_id,
+                f.project_id, f.session_id, f.trace_id, f.kind, f.content_id,
+                f.source_json, f.perspective, f.occurred_at_us, f.observed_at_us,
+                f.confidence, f.importance, f.validity, f.security_label, f.metadata_json,
+                c.id AS stored_content_id, c.storage_kind, c.inline_value, c.blob_id,
+                c.media_type, c.byte_len AS content_byte_len, c.sha256 AS content_sha256
+             FROM fragments AS f
+             LEFT JOIN fragment_contents AS c ON c.id = f.content_id
+             WHERE f.id = ?1 AND f.scope_key = ?2",
+        )
+        .bind(&id_string)
+        .bind(scope_key)
         .fetch_optional(&self.pool)
         .await?
         .ok_or_else(|| StorageError::NotFound {

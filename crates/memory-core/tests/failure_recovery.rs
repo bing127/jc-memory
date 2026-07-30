@@ -12,10 +12,10 @@ use std::{
 };
 
 use futures::future::try_join_all;
-use jc_memory_core::{MemoryConfig, MemoryEngine, MemoryError};
+use jc_memory_core::{MemoryConfig, MemoryEngine, MemoryError, ObserveReceipt};
 use jc_memory_protocol::{
-    EvidenceId, EvidenceRef, FragmentContent, FragmentId, MemoryScope, NamespaceId, TenantId,
-    VerificationMethod,
+    CognitiveFragment, EvidenceId, EvidenceRef, FragmentContent, FragmentId, MemoryScope,
+    NamespaceId, TenantId, VerificationMethod,
 };
 use jc_memory_storage::{
     BlobOptions, BlobStore, MemoryRepository, RecoveryManager, RepositoryFailpoint, SqliteConfig,
@@ -32,7 +32,7 @@ async fn concurrent_observe_assigns_unique_monotonic_exact_scope_sequences() {
     let receipts = try_join_all((0..64).map(|index| {
         let engine = engine.clone();
         let fragment = common::observation_in_scope(scope.clone(), &format!("event {index}"));
-        async move { engine.observe(fragment).await }
+        async move { authorized_observe(&engine, fragment).await }
     }))
     .await
     .expect("observe concurrent fragments");
@@ -55,7 +55,7 @@ async fn concurrent_same_fragment_is_idempotent() {
     let receipts = try_join_all((0..32).map(|_| {
         let engine = engine.clone();
         let fragment = fragment.clone();
-        async move { engine.observe(fragment).await }
+        async move { authorized_observe(&engine, fragment).await }
     }))
     .await
     .expect("observe identical fragment concurrently");
@@ -88,13 +88,13 @@ async fn tenants_under_one_namespace_have_independent_sequences() {
         let engine = engine.clone();
         let fragment =
             common::observation_in_scope(first_scope.clone(), &format!("first tenant {index}"));
-        async move { engine.observe(fragment).await }
+        async move { authorized_observe(&engine, fragment).await }
     }));
     let second = try_join_all((0..16).map(|index| {
         let engine = engine.clone();
         let fragment =
             common::observation_in_scope(second_scope.clone(), &format!("second tenant {index}"));
-        async move { engine.observe(fragment).await }
+        async move { authorized_observe(&engine, fragment).await }
     }));
     let (first, second) = tokio::try_join!(first, second).expect("observe both tenants");
 
@@ -120,7 +120,7 @@ async fn failed_commit_never_exposes_fragment_event_or_fts_row() {
     let fragment = common::observation("must roll back before commit");
 
     assert!(matches!(
-        engine.observe(fragment.clone()).await,
+        authorized_observe(&engine, fragment.clone()).await,
         Err(MemoryError::Storage(StorageError::InjectedFailure {
             point: "before_commit"
         }))
@@ -131,7 +131,7 @@ async fn failed_commit_never_exposes_fragment_event_or_fts_row() {
         .await
         .expect("reopen memory engine");
     assert!(matches!(
-        reopened.fragment(fragment.id).await,
+        authorized_fragment(&reopened, &fragment.scope, fragment.id).await,
         Err(MemoryError::NotFound { .. })
     ));
     drop(reopened);
@@ -172,7 +172,7 @@ async fn blob_published_before_failed_commit_is_reported_as_an_orphan() {
     };
 
     assert!(matches!(
-        engine.observe(fragment.clone()).await,
+        authorized_observe(&engine, fragment.clone()).await,
         Err(MemoryError::Storage(StorageError::InjectedFailure {
             point: "before_commit"
         }))
@@ -219,15 +219,14 @@ async fn busy_timeout_is_bounded_and_diagnosable() {
 
     let result = tokio::time::timeout(
         Duration::from_secs(1),
-        engine.observe(common::observation("blocked observation")),
+        authorized_observe(&engine, common::observation("blocked observation")),
     )
     .await
     .expect("busy retries must be bounded");
     assert!(matches!(result, Err(MemoryError::Busy { .. })));
 
     lock.rollback().await.expect("release database write lock");
-    let receipt = engine
-        .observe(common::observation("write after lock release"))
+    let receipt = authorized_observe(&engine, common::observation("write after lock release"))
         .await
         .expect("observe after releasing lock");
     assert_eq!(receipt.sequence, 0);
@@ -240,8 +239,7 @@ async fn identity_conflict_has_a_distinct_error_category() {
         .await
         .expect("open memory engine");
     let fragment = common::observation("original immutable content");
-    engine
-        .observe(fragment.clone())
+    authorized_observe(&engine, fragment.clone())
         .await
         .expect("observe original fragment");
     let mut conflicting = fragment;
@@ -250,7 +248,7 @@ async fn identity_conflict_has_a_distinct_error_category() {
     };
 
     assert!(matches!(
-        engine.observe(conflicting).await,
+        authorized_observe(&engine, conflicting).await,
         Err(MemoryError::Conflict {
             entity: "fragment",
             ..
@@ -274,13 +272,15 @@ async fn sqlite_constraint_has_a_distinct_error_category_and_rolls_back() {
     });
 
     assert!(matches!(
-        engine.observe(fragment).await,
+        authorized_observe(&engine, fragment).await,
         Err(MemoryError::Constraint { .. })
     ));
-    let receipt = engine
-        .observe(common::observation("write after constraint rollback"))
-        .await
-        .expect("observe after constraint rollback");
+    let receipt = authorized_observe(
+        &engine,
+        common::observation("write after constraint rollback"),
+    )
+    .await
+    .expect("observe after constraint rollback");
     assert_eq!(receipt.sequence, 0);
 }
 
@@ -291,8 +291,7 @@ async fn corrupt_authoritative_row_has_a_distinct_error_category() {
         .await
         .expect("open memory engine");
     let fragment = common::observation("row to corrupt");
-    engine
-        .observe(fragment.clone())
+    authorized_observe(&engine, fragment.clone())
         .await
         .expect("observe fragment");
     let store = SqliteStore::open(&SqliteConfig::new(data_dir.path().join("memory.sqlite3")))
@@ -305,7 +304,7 @@ async fn corrupt_authoritative_row_has_a_distinct_error_category() {
         .expect("corrupt fragment validity");
 
     assert!(matches!(
-        engine.fragment(fragment.id).await,
+        authorized_fragment(&engine, &fragment.scope, fragment.id).await,
         Err(MemoryError::Corrupt { .. })
     ));
 }
@@ -336,8 +335,7 @@ async fn non_busy_failpoint_is_not_retried() {
     .expect("open failpoint engine");
 
     assert!(
-        engine
-            .observe(common::observation("single failpoint attempt"))
+        authorized_observe(&engine, common::observation("single failpoint attempt"))
             .await
             .is_err()
     );
@@ -354,4 +352,21 @@ impl RepositoryFailpoint for CountingFailpoint {
             point: "before_commit",
         })
     }
+}
+
+async fn authorized_observe(
+    engine: &MemoryEngine,
+    fragment: CognitiveFragment,
+) -> Result<ObserveReceipt, MemoryError> {
+    let context = common::access_context(&fragment.scope);
+    engine.observe(&context, fragment).await
+}
+
+async fn authorized_fragment(
+    engine: &MemoryEngine,
+    scope: &MemoryScope,
+    fragment_id: FragmentId,
+) -> Result<CognitiveFragment, MemoryError> {
+    let context = common::access_context(scope);
+    engine.fragment(&context, fragment_id).await
 }

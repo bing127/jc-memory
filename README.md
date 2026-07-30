@@ -4,7 +4,7 @@
 
 当前代码已完成 M1 基础可信存储与 M2 认知图/有界召回：不可变 Fragment/Event/EvidenceRef、SQLite WAL/FTS5、内容寻址 Blob、Point/Edge/Surface、状态版本、证据约束的语义记忆、十种 Recall、Explain、Memory Packet，以及追加式 Correct/Reinforce/Weaken/Supersede/Contradict/Forget。
 
-Core 当前实际接通 Observe、Fragment lookup、Health、Recall、Explain、Stats 和上述 Mutation。SQLite FTS5 是实际执行路径；跨措辞候选使用确定性词项和稀疏字符特征，不是外部 Embedding。状态、语义与 Surface 模块已有独立领域实现，但尚未全部汇入 Core 的持久化 Packet；Mutation 派生图目前保存在进程内，重启后的自动重建仍未接通。
+Core 当前实际接通 Observe、Fragment lookup、Health、Recall、Explain、Stats 和上述 Mutation，且这些操作显式接收 `AccessContext` 并采用默认拒绝 ACL。SQLite FTS5 是实际执行路径；跨措辞候选使用确定性词项和稀疏字符特征，不是外部 Embedding。状态、语义与 Surface 模块已有独立领域实现，但尚未全部汇入 Core 的持久化 Packet；Mutation 派生图目前保存在进程内，重启后的自动重建仍未接通。
 
 中文文档入口：
 

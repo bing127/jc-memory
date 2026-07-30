@@ -14,7 +14,8 @@
 - `jc-memory-graph`：带权威来源的 Point/Edge、有界局部图和在线权重更新；
 - `jc-memory-surface`：多成员 Surface、版本历史和 Add/Remove/Merge/Split/Freeze/Deactivate 生命周期；
 - `jc-memory-activation`：十种 Recall 的确定性种子、局部传播、Surface 激活、证据补全、Explain 和硬预算；
-- `jc-memory-core`：本地嵌入式 `MemoryEngine`，公开 Observe、Fragment、Health、Recall、Explain、Stats、Correct、Reinforce、Weaken、Supersede、Contradict 和 Forget。
+- `jc-memory-security`：默认拒绝、精确 Scope、`None` 非通配和跨 Tenant 显式 Admin 的 ACL，以及 Memory Packet 返回前来源复核；
+- `jc-memory-core`：本地嵌入式 `MemoryEngine`，公开 Observe、Fragment、Health、Recall、Explain、Stats、Correct、Reinforce、Weaken、Supersede、Contradict 和 Forget，所有操作显式接收 `AccessContext`。
 
 原始 Fragment、Event 和 EvidenceRef 是权威记录。摘要、Embedding、图关系、Surface 和全文索引不得覆盖它们。Prediction 不允许设置 `ValidityStatus::Verified`；Inference 和 Plan 始终保持 FutureHypothesis 阶段，三者都不会被自动改写成 Fact。
 
@@ -39,8 +40,9 @@ CARGO_INCREMENTAL=0 cargo test -p jc-memory-core
 use chrono::Utc;
 use jc_memory_core::{HealthStatus, MemoryConfig, MemoryEngine};
 use jc_memory_protocol::{
-    CognitiveFragment, FragmentContent, FragmentId, FragmentKind, FragmentSource, MemoryScope,
-    NamespaceId, Perspective, SecurityLabel, SourceType, ValidityStatus,
+    AccessContext, CognitiveFragment, FragmentContent, FragmentId, FragmentKind, FragmentSource,
+    Grant, MemoryScope, NamespaceId, Operation, Perspective, SecurityLabel, SourceType,
+    ValidityStatus,
 };
 
 #[tokio::main]
@@ -76,15 +78,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         evidence: Vec::new(),
         metadata: serde_json::Map::new(),
     };
+    let mut access = AccessContext::new("local-example", fragment.scope.clone());
+    access.grants.extend(
+        [Operation::Observe, Operation::Recall, Operation::Admin]
+            .into_iter()
+            .map(|operation| Grant::for_scope(operation, &fragment.scope)),
+    );
 
-    let receipt = engine.observe(fragment.clone()).await?;
+    let receipt = engine.observe(&access, fragment.clone()).await?;
     drop(engine);
 
     let reopened = MemoryEngine::open(config).await?;
-    let stored = reopened.fragment(receipt.fragment_id).await?;
+    let stored = reopened.fragment(&access, receipt.fragment_id).await?;
     assert_eq!(stored, fragment);
 
-    let health = reopened.health().await?;
+    let health = reopened.health(&access).await?;
     assert_eq!(health.status, HealthStatus::Healthy);
     assert_eq!(health.schema_version, 1);
     Ok(())

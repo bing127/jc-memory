@@ -8,8 +8,9 @@ use std::{
 use jc_memory_activation::{ExplainTrace, IndexedPoint, RecallEngine, RecallQuery, RecallResult};
 use jc_memory_graph::CognitivePoint;
 use jc_memory_protocol::{
-    EpisodeView, EvidenceView, MemoryPacket, MemoryScope, MissingEvidence, PointId, PointView,
-    RecallId, RecallMode, RecallPath, ValidityStatus,
+    AccessContext, EpisodeView, EvidenceView, FragmentId, MemoryPacket, MemoryScope,
+    MissingEvidence, Operation, PointId, PointView, RecallId, RecallMode, RecallPath,
+    ValidityStatus,
 };
 
 use crate::{MemoryEngine, MemoryError};
@@ -36,8 +37,15 @@ impl MemoryEngine {
     /// # Errors
     ///
     /// 当 FTS 查询、权威记录解码、激活流水线或 Packet 渲染失败时返回错误。
-    pub async fn recall(&self, query: RecallQuery) -> Result<MemoryPacket, MemoryError> {
-        Ok(self.execute_recall(query).await?.packet)
+    pub async fn recall(
+        &self,
+        context: &AccessContext,
+        query: RecallQuery,
+    ) -> Result<MemoryPacket, MemoryError> {
+        Ok(self
+            .execute_recall(context, Operation::Recall, query)
+            .await?
+            .packet)
     }
 
     /// 返回与一次有界 Recall 对应的可追溯解释。
@@ -45,8 +53,15 @@ impl MemoryEngine {
     /// # Errors
     ///
     /// 返回与 [`Self::recall`] 相同的存储、激活或序列化错误。
-    pub async fn explain(&self, query: RecallQuery) -> Result<ExplainTrace, MemoryError> {
-        Ok(self.execute_recall(query).await?.explain)
+    pub async fn explain(
+        &self,
+        context: &AccessContext,
+        query: RecallQuery,
+    ) -> Result<ExplainTrace, MemoryError> {
+        Ok(self
+            .execute_recall(context, Operation::Explain, query)
+            .await?
+            .explain)
     }
 
     /// 读取一个精确 Scope 的持久化权威记录统计。
@@ -54,7 +69,12 @@ impl MemoryEngine {
     /// # Errors
     ///
     /// 当 `SQLite` 统计查询失败时返回错误。
-    pub async fn stats(&self, scope: &MemoryScope) -> Result<MemoryStats, MemoryError> {
+    pub async fn stats(
+        &self,
+        context: &AccessContext,
+        scope: &MemoryScope,
+    ) -> Result<MemoryStats, MemoryError> {
+        crate::security::authorize(context, Operation::Recall, scope)?;
         let stats = self.repository.stats(scope).await?;
         Ok(MemoryStats {
             scope: scope.clone(),
@@ -63,7 +83,13 @@ impl MemoryEngine {
         })
     }
 
-    async fn execute_recall(&self, query: RecallQuery) -> Result<CoreRecall, MemoryError> {
+    async fn execute_recall(
+        &self,
+        context: &AccessContext,
+        operation: Operation,
+        query: RecallQuery,
+    ) -> Result<CoreRecall, MemoryError> {
+        crate::security::authorize(context, operation, &query.scope)?;
         let search_limit = u32::try_from(query.limits.max_nodes).unwrap_or(u32::MAX);
         let mut hits_by_fragment: BTreeMap<_, _> = self
             .repository
@@ -82,6 +108,12 @@ impl MemoryEngine {
             }
         }
         let (derived_points, derived_edges) = self.derived_graph.read().await.snapshot();
+        let mut fragment_scopes = BTreeMap::<FragmentId, MemoryScope>::new();
+        for indexed in &derived_points {
+            for fragment_id in &indexed.point.source_fragments {
+                fragment_scopes.insert(*fragment_id, indexed.point.scope.clone());
+            }
+        }
         let mut point_candidates: BTreeMap<_, _> = derived_points
             .into_iter()
             .map(|indexed| (indexed.point.id, indexed))
@@ -89,7 +121,11 @@ impl MemoryEngine {
         let mut episodes = Vec::new();
         let mut evidence = Vec::new();
         for hit in hits_by_fragment.into_values() {
-            let fragment = self.repository.get_fragment(hit.fragment_id).await?;
+            let fragment = self
+                .repository
+                .get_fragment_in_scope(&query.scope, hit.fragment_id)
+                .await?;
+            fragment_scopes.insert(fragment.id, fragment.scope.clone());
             if matches!(
                 fragment.validity,
                 ValidityStatus::Invalidated | ValidityStatus::Quarantined
@@ -129,6 +165,13 @@ impl MemoryEngine {
         let result = engine.recall(query.clone()).await?;
         let explain = engine.explain(&result, query.limits);
         let packet = build_packet(&query, &result, &points_by_id, episodes, evidence)?;
+        crate::security::validate_packet(
+            context,
+            operation,
+            &query.scope,
+            &packet,
+            &fragment_scopes,
+        )?;
         Ok(CoreRecall { packet, explain })
     }
 }

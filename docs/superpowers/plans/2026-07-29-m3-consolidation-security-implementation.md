@@ -52,7 +52,7 @@ Grant 只能匹配同 Namespace，并对 Tenant/Project 使用“Grant 为 None 
 
 **文件：** `memory-security/src/guard.rs`、`memory-storage/src/repository.rs`、`memory-activation/src/query.rs`、`memory-core/src/security.rs`、`tests/tenant_isolation.rs`。
 
-- [ ] **步骤 1：写跨 Tenant 种子与结果泄漏失败测试**
+- [x] **步骤 1：写跨 Tenant 种子与结果泄漏失败测试**
 
 ```rust
 #[tokio::test]
@@ -64,10 +64,10 @@ async fn recall_never_loads_or_returns_other_tenant() {
 }
 ```
 
-- [ ] **步骤 2：运行测试**，预期 Recall 仍未要求 AccessContext 或 Spy 观察到跨域候选。
-- [ ] **步骤 3：所有 Core API 改为显式接收 `&AccessContext`；Repository Query 必须从授权后的 ScopeKeySet 构造 SQL，禁止先取全局候选再过滤。**
-- [ ] **步骤 4：PacketBuilder 在序列化前调用 `OutputGuard::filter_and_assert`，发现越权引用时返回 SecurityInvariantViolation 并写审计，不返回部分 Packet。**
-- [ ] **步骤 5：运行隔离测试并提交 `feat(security): enforce pre-query and pre-return filtering`**。
+- [x] **步骤 2：运行测试**，预期 Recall 仍未要求 AccessContext 或 Spy 观察到跨域候选。
+- [x] **步骤 3：所有 Core API 改为显式接收 `&AccessContext`；Repository Query 必须从授权后的 ScopeKeySet 构造 SQL，禁止先取全局候选再过滤。**
+- [x] **步骤 4：PacketBuilder 在序列化前调用 `OutputGuard::filter_and_assert`，发现越权引用时返回 SecurityInvariantViolation 并写审计，不返回部分 Packet。**
+- [x] **步骤 5：运行隔离测试并提交 `feat(security): enforce pre-query and pre-return filtering`**。
 
 ## Task 3：实现 Quarantine、注入和污染检测
 

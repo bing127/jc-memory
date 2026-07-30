@@ -20,8 +20,12 @@ async fn recall_explain_and_stats_use_authoritative_storage() {
     let mut fragment = common::observation("PostgreSQL migration evidence");
     fragment.kind = FragmentKind::Fact;
     let scope = fragment.scope.clone();
+    let context = common::access_context(&scope);
     let fragment_id = fragment.id;
-    engine.observe(fragment).await.expect("写入权威事实");
+    engine
+        .observe(&context, fragment)
+        .await
+        .expect("写入权威事实");
     let query = RecallQuery {
         scope: scope.clone(),
         mode: RecallMode::Exact,
@@ -37,9 +41,12 @@ async fn recall_explain_and_stats_use_authoritative_storage() {
         },
     };
 
-    let packet = engine.recall(query.clone()).await.expect("召回记忆");
-    let explain = engine.explain(query).await.expect("解释召回");
-    let stats = engine.stats(&scope).await.expect("读取统计");
+    let packet = engine
+        .recall(&context, query.clone())
+        .await
+        .expect("召回记忆");
+    let explain = engine.explain(&context, query).await.expect("解释召回");
+    let stats = engine.stats(&context, &scope).await.expect("读取统计");
 
     assert_eq!(packet.points.len(), 1);
     assert_eq!(packet.points[0].source_fragments, vec![fragment_id]);
@@ -59,34 +66,35 @@ async fn mutations_append_events_and_forget_never_rewrites_the_original() {
     let mut original = common::observation("需要保留的原始事实");
     original.kind = FragmentKind::Fact;
     let scope = original.scope.clone();
+    let context = common::access_context(&scope);
     let original_id = original.id;
     engine
-        .observe(original.clone())
+        .observe(&context, original.clone())
         .await
         .expect("写入原始事实");
 
     let correct = engine
-        .correct(mutation(original_id, "纠正后的事实"))
+        .correct(&context, mutation(original_id, "纠正后的事实"))
         .await
         .expect("纠正事实");
     let reinforce = engine
-        .reinforce(mutation(original_id, "补强证据"))
+        .reinforce(&context, mutation(original_id, "补强证据"))
         .await
         .expect("补强事实");
     let weaken = engine
-        .weaken(mutation(original_id, "降低可信度"))
+        .weaken(&context, mutation(original_id, "降低可信度"))
         .await
         .expect("弱化事实");
     let supersede = engine
-        .supersede(mutation(original_id, "替代事实"))
+        .supersede(&context, mutation(original_id, "替代事实"))
         .await
         .expect("替代事实");
     let contradict = engine
-        .contradict(mutation(original_id, "冲突证据"))
+        .contradict(&context, mutation(original_id, "冲突证据"))
         .await
         .expect("记录冲突");
     let forget = engine
-        .forget(mutation(original_id, "请求遗忘"))
+        .forget(&context, mutation(original_id, "请求遗忘"))
         .await
         .expect("追加遗忘事件");
 
@@ -97,7 +105,7 @@ async fn mutations_append_events_and_forget_never_rewrites_the_original() {
     assert_eq!(contradict.kind, MutationKind::Contradict);
     assert_eq!(forget.kind, MutationKind::Forget);
     let forgotten = engine
-        .fragment(forget.fragment_id)
+        .fragment(&context, forget.fragment_id)
         .await
         .expect("读取遗忘记录");
     assert_eq!(forgotten.kind, FragmentKind::Correction);
@@ -105,30 +113,36 @@ async fn mutations_append_events_and_forget_never_rewrites_the_original() {
     assert_eq!(forgotten.evidence[0].fragment_id, Some(original_id));
     assert_eq!(
         engine
-            .fragment(original_id)
+            .fragment(&context, original_id)
             .await
             .expect("重新读取原始事实"),
         original
     );
-    let stats = engine.stats(&scope).await.expect("读取变更后统计");
+    let stats = engine
+        .stats(&context, &scope)
+        .await
+        .expect("读取变更后统计");
     assert_eq!(stats.fragment_count, 7);
     assert_eq!(stats.event_count, 7);
 
     let explain = engine
-        .explain(RecallQuery {
-            scope,
-            mode: RecallMode::Semantic,
-            text: "补强证据".to_owned(),
-            entities: Vec::new(),
-            at_time: None,
-            limits: RecallLimits {
-                max_seeds: 1,
-                max_neighbors: 4,
-                max_hops: 1,
-                max_nodes: 4,
-                timeout_ms: 100,
+        .explain(
+            &context,
+            RecallQuery {
+                scope,
+                mode: RecallMode::Semantic,
+                text: "补强证据".to_owned(),
+                entities: Vec::new(),
+                at_time: None,
+                limits: RecallLimits {
+                    max_seeds: 1,
+                    max_neighbors: 4,
+                    max_hops: 1,
+                    max_nodes: 4,
+                    timeout_ms: 100,
+                },
             },
-        })
+        )
         .await
         .expect("解释补强关系");
     assert_eq!(explain.traversals.len(), 1);

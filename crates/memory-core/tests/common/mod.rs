@@ -1,8 +1,28 @@
 use chrono::Utc;
 use jc_memory_protocol::{
-    CognitiveFragment, FragmentContent, FragmentId, FragmentKind, FragmentSource, MemoryScope,
-    NamespaceId, Perspective, SecurityLabel, SourceType, ValidityStatus,
+    AccessContext, CognitiveFragment, FragmentContent, FragmentId, FragmentKind, FragmentSource,
+    Grant, MemoryScope, NamespaceId, Operation, Perspective, SecurityLabel, SourceType,
+    ValidityStatus,
 };
+
+pub fn access_context(scope: &MemoryScope) -> AccessContext {
+    let mut context = AccessContext::new("core-test", scope.clone());
+    context.grants.extend(
+        [
+            Operation::Observe,
+            Operation::Recall,
+            Operation::Explain,
+            Operation::Mutate,
+            Operation::Consolidate,
+            Operation::Export,
+            Operation::Delete,
+            Operation::Admin,
+        ]
+        .into_iter()
+        .map(|operation| Grant::for_scope(operation, scope)),
+    );
+    context
+}
 
 pub fn observation(text: &str) -> CognitiveFragment {
     observation_in_scope(MemoryScope::new(NamespaceId::new()), text)

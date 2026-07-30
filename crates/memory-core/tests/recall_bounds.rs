@@ -12,17 +12,25 @@ async fn core_recall_never_returns_more_than_the_node_budget() {
         .await
         .expect("打开记忆引擎");
     let scope = MemoryScope::new(NamespaceId::new());
+    let context = common::access_context(&scope);
     for index in 0..12 {
         let mut fragment = common::observation_in_scope(
             scope.clone(),
             &format!("deployment pool failure candidate {index}"),
         );
         fragment.kind = FragmentKind::Fact;
-        engine.observe(fragment).await.expect("写入候选事实");
+        engine
+            .observe(&context, fragment)
+            .await
+            .expect("写入候选事实");
     }
     let mut foreign = common::observation("deployment pool failure foreign scope");
     foreign.kind = FragmentKind::Fact;
-    engine.observe(foreign).await.expect("写入其他 Scope 事实");
+    let foreign_context = common::access_context(&foreign.scope);
+    engine
+        .observe(&foreign_context, foreign)
+        .await
+        .expect("写入其他 Scope 事实");
 
     let limits = RecallLimits {
         max_seeds: 3,
@@ -32,14 +40,17 @@ async fn core_recall_never_returns_more_than_the_node_budget() {
         timeout_ms: 100,
     };
     let packet = engine
-        .recall(RecallQuery {
-            scope: scope.clone(),
-            mode: RecallMode::Semantic,
-            text: "deployment pool failure".to_owned(),
-            entities: Vec::new(),
-            at_time: None,
-            limits,
-        })
+        .recall(
+            &context,
+            RecallQuery {
+                scope: scope.clone(),
+                mode: RecallMode::Semantic,
+                text: "deployment pool failure".to_owned(),
+                entities: Vec::new(),
+                at_time: None,
+                limits,
+            },
+        )
         .await
         .expect("执行有界召回");
 

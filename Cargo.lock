@@ -788,6 +788,7 @@ dependencies = [
  "jc-memory-events",
  "jc-memory-graph",
  "jc-memory-protocol",
+ "jc-memory-security",
  "jc-memory-semantic",
  "jc-memory-storage",
  "jc-memory-surface",
@@ -857,6 +858,8 @@ dependencies = [
  "jc-memory-protocol",
  "serde",
  "serde_json",
+ "thiserror",
+ "tracing",
 ]
 
 [[package]]

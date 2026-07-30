@@ -8,6 +8,8 @@ license-file.workspace = true
 [dependencies]
 jc-memory-protocol = { path = "../memory-protocol" }
 serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

@@ -6,8 +6,8 @@ use chrono::Utc;
 use jc_memory_activation::IndexedPoint;
 use jc_memory_graph::{CognitiveEdge, CognitivePoint, EvidenceLink};
 use jc_memory_protocol::{
-    CognitiveFragment, EdgeId, EdgeKind, EvidenceId, EvidenceRef, FragmentContent, FragmentId,
-    FragmentKind, Metadata, PointId, ValidityStatus, VerificationMethod,
+    AccessContext, CognitiveFragment, EdgeId, EdgeKind, EvidenceId, EvidenceRef, FragmentContent,
+    FragmentId, FragmentKind, Metadata, Operation, PointId, ValidityStatus, VerificationMethod,
 };
 
 use crate::{MemoryEngine, MemoryError, MutationCommand, MutationKind, MutationReceipt};
@@ -53,8 +53,12 @@ impl MemoryEngine {
     /// # Errors
     ///
     /// 目标不存在、命令无效或事务性追加失败时返回错误。
-    pub async fn correct(&self, command: MutationCommand) -> Result<MutationReceipt, MemoryError> {
-        self.apply_mutation(command, spec(MutationKind::Correct))
+    pub async fn correct(
+        &self,
+        context: &AccessContext,
+        command: MutationCommand,
+    ) -> Result<MutationReceipt, MemoryError> {
+        self.apply_mutation(context, command, spec(MutationKind::Correct))
             .await
     }
 
@@ -65,9 +69,10 @@ impl MemoryEngine {
     /// 目标不存在、命令无效或事务性追加失败时返回错误。
     pub async fn reinforce(
         &self,
+        context: &AccessContext,
         command: MutationCommand,
     ) -> Result<MutationReceipt, MemoryError> {
-        self.apply_mutation(command, spec(MutationKind::Reinforce))
+        self.apply_mutation(context, command, spec(MutationKind::Reinforce))
             .await
     }
 
@@ -76,8 +81,12 @@ impl MemoryEngine {
     /// # Errors
     ///
     /// 目标不存在、命令无效或事务性追加失败时返回错误。
-    pub async fn weaken(&self, command: MutationCommand) -> Result<MutationReceipt, MemoryError> {
-        self.apply_mutation(command, spec(MutationKind::Weaken))
+    pub async fn weaken(
+        &self,
+        context: &AccessContext,
+        command: MutationCommand,
+    ) -> Result<MutationReceipt, MemoryError> {
+        self.apply_mutation(context, command, spec(MutationKind::Weaken))
             .await
     }
 
@@ -88,9 +97,10 @@ impl MemoryEngine {
     /// 目标不存在、命令无效或事务性追加失败时返回错误。
     pub async fn supersede(
         &self,
+        context: &AccessContext,
         command: MutationCommand,
     ) -> Result<MutationReceipt, MemoryError> {
-        self.apply_mutation(command, spec(MutationKind::Supersede))
+        self.apply_mutation(context, command, spec(MutationKind::Supersede))
             .await
     }
 
@@ -101,9 +111,10 @@ impl MemoryEngine {
     /// 目标不存在、命令无效或事务性追加失败时返回错误。
     pub async fn contradict(
         &self,
+        context: &AccessContext,
         command: MutationCommand,
     ) -> Result<MutationReceipt, MemoryError> {
-        self.apply_mutation(command, spec(MutationKind::Contradict))
+        self.apply_mutation(context, command, spec(MutationKind::Contradict))
             .await
     }
 
@@ -112,20 +123,29 @@ impl MemoryEngine {
     /// # Errors
     ///
     /// 目标不存在、命令无效或事务性追加失败时返回错误。
-    pub async fn forget(&self, command: MutationCommand) -> Result<MutationReceipt, MemoryError> {
-        self.apply_mutation(command, spec(MutationKind::Forget))
+    pub async fn forget(
+        &self,
+        context: &AccessContext,
+        command: MutationCommand,
+    ) -> Result<MutationReceipt, MemoryError> {
+        self.apply_mutation(context, command, spec(MutationKind::Forget))
             .await
     }
 
     async fn apply_mutation(
         &self,
+        context: &AccessContext,
         command: MutationCommand,
         spec: MutationSpec,
     ) -> Result<MutationReceipt, MemoryError> {
-        let target = self.fragment(command.target_fragment_id).await?;
+        crate::security::authorize(context, Operation::Mutate, &context.scope)?;
+        let target = self
+            .repository
+            .get_fragment_in_scope(&context.scope, command.target_fragment_id)
+            .await?;
         let fragment_id = FragmentId::new();
         let fragment = mutation_fragment(fragment_id, &target, &command, spec);
-        let receipt = self.observe(fragment.clone()).await?;
+        let receipt = self.observe_inner(fragment.clone()).await?;
         if let Some(relation) = spec.relation {
             self.record_relation(
                 &target,

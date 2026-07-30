@@ -125,6 +125,38 @@ async fn duplicate_event_is_idempotent_but_conflicting_payload_is_rejected() {
 }
 
 #[tokio::test]
+async fn fragment_lookup_requires_the_exact_scope_before_decoding() {
+    let harness = Harness::new().await;
+    let scope = full_scope();
+    let foreign_scope = MemoryScope::new(NamespaceId::new());
+    let draft = Harness::text_event(scope.clone(), "scope-qualified fragment", Vec::new());
+    harness
+        .repository
+        .append(&draft)
+        .await
+        .expect("append scoped fragment");
+
+    assert_eq!(
+        harness
+            .repository
+            .get_fragment_in_scope(&scope, draft.fragment_id)
+            .await
+            .expect("read exact scoped fragment"),
+        draft.payload
+    );
+    assert!(matches!(
+        harness
+            .repository
+            .get_fragment_in_scope(&foreign_scope, draft.fragment_id)
+            .await,
+        Err(StorageError::NotFound {
+            entity: "fragment",
+            ..
+        })
+    ));
+}
+
+#[tokio::test]
 async fn append_rejects_a_stage_that_disagrees_with_the_fragment() {
     let harness = Harness::new().await;
     let mut draft = Harness::text_event(full_scope(), "stage invariant", Vec::new());

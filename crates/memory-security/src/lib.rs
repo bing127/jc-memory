@@ -2,6 +2,8 @@
 
 mod access;
 mod acl;
+mod guard;
 
 pub use acl::AclEngine;
+pub use guard::{OutputGuard, SecurityInvariantViolation};
 pub use jc_memory_protocol::{AccessContext, Decision, DenyReason, Grant, Operation};

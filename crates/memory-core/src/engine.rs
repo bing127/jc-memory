@@ -2,7 +2,11 @@ use std::{sync::Arc, time::Instant};
 
 use jc_memory_activation::RecallEngineError;
 use jc_memory_events::factory::{EventFactory, EventFactoryError};
-use jc_memory_protocol::{BlobId, CognitiveFragment, EventId, FragmentId, ValidityStatus};
+use jc_memory_protocol::{
+    AccessContext, BlobId, CognitiveFragment, DenyReason, EventId, FragmentId, Operation,
+    ValidityStatus,
+};
+use jc_memory_security::SecurityInvariantViolation;
 use jc_memory_storage::{
     BlobError, BlobOptions, BlobStore, MemoryRepository, RecoveryError, RecoveryManager,
     RepositoryFailpoint, SqliteConfig, SqliteMemoryRepository, SqliteStore, StorageError,
@@ -97,6 +101,17 @@ pub enum MemoryError {
     /// 派生关系的 Point 端点违反图不变量。
     #[error("memory edge creation failed: {0}")]
     Edge(#[from] jc_memory_graph::EdgeCreationError),
+    /// 调用者缺少目标操作和 Scope 的显式 Grant。
+    #[error("memory access denied for {operation:?}: {reason:?}")]
+    AccessDenied {
+        /// 被拒绝的核心操作。
+        operation: Operation,
+        /// 稳定的默认拒绝原因。
+        reason: DenyReason,
+    },
+    /// 返回数据违反了独立的 Scope 或来源不变量。
+    #[error("memory output security invariant failed: {0}")]
+    SecurityInvariantViolation(#[source] SecurityInvariantViolation),
 }
 
 impl From<StorageError> for MemoryError {
@@ -186,8 +201,10 @@ impl MemoryEngine {
     /// persistence fails.
     pub async fn observe(
         &self,
+        context: &AccessContext,
         fragment: CognitiveFragment,
     ) -> Result<ObserveReceipt, MemoryError> {
+        crate::security::authorize(context, Operation::Observe, &fragment.scope)?;
         let fragment_id = fragment.id;
         let namespace_hash = short_hash(&fragment.scope.namespace_id.to_string());
         let tenant_hash = fragment.scope.tenant_id.map_or_else(
@@ -224,8 +241,16 @@ impl MemoryEngine {
     ///
     /// Returns [`MemoryError::NotFound`] when the fragment does not exist, or another storage
     /// error when its durable rows cannot be decoded.
-    pub async fn fragment(&self, id: FragmentId) -> Result<CognitiveFragment, MemoryError> {
-        Ok(self.repository.get_fragment(id).await?)
+    pub async fn fragment(
+        &self,
+        context: &AccessContext,
+        id: FragmentId,
+    ) -> Result<CognitiveFragment, MemoryError> {
+        crate::security::authorize(context, Operation::Recall, &context.scope)?;
+        Ok(self
+            .repository
+            .get_fragment_in_scope(&context.scope, id)
+            .await?)
     }
 
     /// Audits current authoritative storage and derived-index health.
@@ -233,7 +258,8 @@ impl MemoryEngine {
     /// # Errors
     ///
     /// Returns [`MemoryError`] when the integrity audit cannot complete.
-    pub async fn health(&self) -> Result<HealthReport, MemoryError> {
+    pub async fn health(&self, context: &AccessContext) -> Result<HealthReport, MemoryError> {
+        crate::security::authorize(context, Operation::Admin, &context.scope)?;
         let report = self.recovery.audit().await?;
         let blob_store_ok = report.missing_blobs.is_empty() && report.corrupt_blobs.is_empty();
         let status = if !report.database_ok || !blob_store_ok {
@@ -251,7 +277,7 @@ impl MemoryEngine {
         })
     }
 
-    async fn observe_inner(
+    pub(crate) async fn observe_inner(
         &self,
         fragment: CognitiveFragment,
     ) -> Result<ObserveReceipt, MemoryError> {
@@ -269,7 +295,7 @@ impl MemoryEngine {
     }
 }
 
-fn short_hash(value: &str) -> String {
+pub(crate) fn short_hash(value: &str) -> String {
     let digest = format!("{:x}", Sha256::digest(value.as_bytes()));
     digest[..12].to_owned()
 }

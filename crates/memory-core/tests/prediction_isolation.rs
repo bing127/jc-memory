@@ -41,19 +41,26 @@ async fn prediction_cannot_be_verified_or_returned_as_fact_point() {
     prediction.validity = ValidityStatus::Verified;
     let scope = prediction.scope.clone();
     let fragment_id = prediction.id;
-    assert!(engine.observe(prediction.clone()).await.is_err());
+    let context = common::access_context(&scope);
+    assert!(engine.observe(&context, prediction.clone()).await.is_err());
     prediction.validity = ValidityStatus::Unverified;
-    engine.observe(prediction).await.expect("写入未验证预测");
+    engine
+        .observe(&context, prediction)
+        .await
+        .expect("写入未验证预测");
 
     let packet = engine
-        .recall(RecallQuery {
-            scope: scope.clone(),
-            mode: RecallMode::Exact,
-            text: "下次部署将成功".to_owned(),
-            entities: Vec::new(),
-            at_time: None,
-            limits: limits(4),
-        })
+        .recall(
+            &context,
+            RecallQuery {
+                scope: scope.clone(),
+                mode: RecallMode::Exact,
+                text: "下次部署将成功".to_owned(),
+                entities: Vec::new(),
+                at_time: None,
+                limits: limits(4),
+            },
+        )
         .await
         .expect("召回预测记录");
 
@@ -61,7 +68,7 @@ async fn prediction_cannot_be_verified_or_returned_as_fact_point() {
     assert!(packet.evidence.is_empty());
     assert_eq!(
         engine
-            .fragment(fragment_id)
+            .fragment(&context, fragment_id)
             .await
             .expect("读取权威预测")
             .kind,
@@ -69,7 +76,7 @@ async fn prediction_cannot_be_verified_or_returned_as_fact_point() {
     );
     assert_eq!(
         engine
-            .stats(&scope)
+            .stats(&context, &scope)
             .await
             .expect("读取权威统计")
             .fragment_count,
