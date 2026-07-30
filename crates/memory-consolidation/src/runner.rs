@@ -14,7 +14,7 @@ use crate::{
     BatchOutcome, ConsolidationJobStore, JobCheckpoint, JobError, JobId, JobRecord, JobStatus,
     ResourceLimits,
     checkpoint::BatchUsage,
-    job::{load_for_update, now_us, scope_key, stage_committed_batch, verify_worker},
+    job::{load_for_update, scope_key, stage_committed_batch, verify_worker_in_write_transaction},
 };
 
 enum BatchAttempt {
@@ -1032,7 +1032,7 @@ where
                     });
                 }
             }
-            verify_worker(&record, &self.worker_id, now_us())?;
+            verify_worker_in_write_transaction(&record, &self.worker_id)?;
 
             let remaining_cpu_ms = record
                 .spec

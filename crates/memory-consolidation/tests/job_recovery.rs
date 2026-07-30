@@ -460,6 +460,25 @@ async fn wall_clock_budget_failure_keeps_last_committed_cursor() {
 }
 
 #[tokio::test]
+async fn batch_longer_than_lease_commits_while_worker_holds_write_transaction() {
+    let harness = Harness::new().await;
+    let mut spec = Harness::spec(1);
+    spec.limits.max_runtime_ms = 100;
+    let job = harness.jobs.submit(spec).await.unwrap();
+    let runner = JobRunner::new(
+        harness.jobs.clone(),
+        Arc::new(SequenceTask::slow(1, Duration::from_millis(10))),
+        "worker-a",
+        Duration::from_millis(1),
+        Duration::ZERO,
+    );
+
+    let completed = runner.run(job.id).await.unwrap();
+    assert_eq!(completed.status, JobStatus::Completed);
+    assert_eq!(completed.checkpoint.cursor, 1);
+}
+
+#[tokio::test]
 async fn wall_clock_deadline_aborts_a_permanently_pending_batch() {
     let harness = Harness::new().await;
     let mut spec = Harness::spec(1);

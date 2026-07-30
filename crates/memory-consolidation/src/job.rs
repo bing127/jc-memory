@@ -533,7 +533,7 @@ impl ConsolidationJobStore {
     ) -> Result<JobRecord, JobError> {
         let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         let mut record = load_for_update(&mut transaction, id).await?;
-        verify_worker_ownership(&record, worker_id)?;
+        verify_worker_in_write_transaction(&record, worker_id)?;
         record.attempts = record.attempts.saturating_add(1);
         record.updated_at_us = now_us();
         record.checkpoint.lease = None;
@@ -647,24 +647,14 @@ fn decode_row(row: &sqlx::sqlite::SqliteRow) -> Result<JobRecord, JobError> {
     })
 }
 
-pub(crate) fn verify_worker(
+/// 调用方持有独占写事务时，只需确认 Lease 尚未被其他 Worker 接管。
+///
+/// Lease 过期仅赋予其他 Worker 在 `claim` 时竞争接管的资格；当前 Worker
+/// 一旦先取得写事务，其他写方会被 `SQLite` 串行化，不能在批次中途替换所有权。
+pub(crate) fn verify_worker_in_write_transaction(
     record: &JobRecord,
     worker_id: &str,
-    at_us: i64,
 ) -> Result<(), JobError> {
-    verify_worker_ownership(record, worker_id)?;
-    if record
-        .checkpoint
-        .lease
-        .as_ref()
-        .is_some_and(|lease| lease.expires_at_us <= at_us)
-    {
-        return Err(JobError::LeaseUnavailable);
-    }
-    Ok(())
-}
-
-fn verify_worker_ownership(record: &JobRecord, worker_id: &str) -> Result<(), JobError> {
     if record.status != JobStatus::Running {
         return match record.status {
             JobStatus::Paused => Err(JobError::Paused),
@@ -718,7 +708,7 @@ pub(crate) async fn stage_committed_batch(
     lease_duration: Duration,
 ) -> Result<JobRecord, JobError> {
     let now = now_us();
-    verify_worker(&record, worker_id, now)?;
+    verify_worker_in_write_transaction(&record, worker_id)?;
     record.checkpoint = record
         .checkpoint
         .advanced(outcome, usage, &record.spec.limits)?;
