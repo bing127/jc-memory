@@ -1,21 +1,24 @@
-# Jiangcheng Memory
+# 疆诚记忆（Jiangcheng Memory）
 
-Jiangcheng Memory is a model-independent, memory-native agent kernel and neurocognitive memory database.
+疆诚记忆是独立于具体大语言模型的 Memory-Native Agent Kernel 与神经认知记忆数据库。项目当前为私有专有源码，暂不计划开源发布。
 
-The current code implements the M1 trusted-storage foundation: typed cognitive fragments, immutable events, transactional SQLite WAL/FTS5 persistence, content-addressed blobs, integrity audit, and recovery primitives.
+当前代码已完成 M1 基础可信存储与 M2 认知图/有界召回：不可变 Fragment/Event/EvidenceRef、SQLite WAL/FTS5、内容寻址 Blob、Point/Edge/Surface、状态版本、证据约束的语义记忆、十种 Recall、Explain、Memory Packet，以及追加式 Correct/Reinforce/Weaken/Supersede/Contradict/Forget。
 
-The embedded API currently supports Observe, fragment lookup by ID, and Health. Cognitive recall, graph and consolidation behavior, runtime services, SDKs, adapters, models, benchmarks, and release artifacts remain scoped to M2-M6 and are not claimed as available. Reserved schema tables do not imply implemented product behavior.
+Core 当前实际接通 Observe、Fragment lookup、Health、Recall、Explain、Stats 和上述 Mutation。SQLite FTS5 是实际执行路径；跨措辞候选使用确定性词项和稀疏字符特征，不是外部 Embedding。状态、语义与 Surface 模块已有独立领域实现，但尚未全部汇入 Core 的持久化 Packet；Mutation 派生图目前保存在进程内，重启后的自动重建仍未接通。
 
-Chinese is the primary documentation language:
+中文文档入口：
 
-- [中文 README 与五分钟开始](README.zh-CN.md)
-- [M1 storage architecture (Chinese)](docs/architecture/storage.md)
-- [Architecture decisions (Chinese)](docs/adr/)
+- [详细 README 与五分钟开始](README.zh-CN.md)
+- [Point、Edge 与 Surface](docs/concepts/point-edge-surface.md)
+- [模式分离与有界模式补全](docs/concepts/pattern-completion.md)
+- [Memory Packet 协议](docs/protocol/memory-packet.md)
+- [架构决策](docs/adr/)
+- [产品原始需求](docs/product/original-requirements.zh-CN.md)
 
-Run the executable M1 embedded-storage example through its integration test:
+运行 M2 Core 验收：
 
 ```bash
-cargo test -p jc-memory-core --test observe_persistence
+CARGO_INCREMENTAL=0 cargo test -p jc-memory-core
 ```
 
-This project is proprietary source and is not currently planned for open-source publication. All rights reserved.
+保留所有权利。当前仓库不声明外部服务、跨平台实机、SDK、模型训练、Benchmark 或公开发布能力已经完成。

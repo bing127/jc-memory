@@ -85,6 +85,14 @@ pub trait MemoryRepository: Send + Sync {
         limit: u32,
     ) -> Result<Vec<FragmentSearchHit>, StorageError>;
 
+    /// 在一个精确 Scope 和可选历史截止时间内读取最近的有界文本候选。
+    async fn recent_fragments(
+        &self,
+        scope: &MemoryScope,
+        effective_at: Option<DateTime<Utc>>,
+        limit: u32,
+    ) -> Result<Vec<FragmentSearchHit>, StorageError>;
+
     /// 统计一个精确 Scope 内的权威 Fragment 和 Event。
     async fn stats(&self, scope: &MemoryScope) -> Result<RepositoryStats, StorageError>;
 }
@@ -341,6 +349,64 @@ impl MemoryRepository for SqliteMemoryRepository {
                     scope: scope.clone(),
                     body,
                     rank,
+                })
+            })
+            .collect()
+    }
+
+    async fn recent_fragments(
+        &self,
+        scope: &MemoryScope,
+        effective_at: Option<DateTime<Utc>>,
+        limit: u32,
+    ) -> Result<Vec<FragmentSearchHit>, StorageError> {
+        let limit = limit.min(MAX_SEARCH_LIMIT);
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+
+        let scope_key = scope_key(scope)?;
+        let effective_at_us = effective_at.map_or(i64::MAX, |value| value.timestamp_micros());
+        let rows = sqlx::query(
+            "SELECT fragments.id AS fragment_id, events.id AS event_id, fragment_fts.body
+             FROM fragments INDEXED BY idx_fragments_scope_occurred
+             JOIN fragment_fts ON fragment_fts.fragment_id = fragments.id
+             JOIN events ON events.fragment_id = fragments.id
+             WHERE fragments.scope_key = ?1 AND fragment_fts.scope_key = ?1
+                   AND fragments.occurred_at_us <= ?2
+             ORDER BY fragments.occurred_at_us DESC, fragments.id
+             LIMIT ?3",
+        )
+        .bind(scope_key)
+        .bind(effective_at_us)
+        .bind(i64::from(limit))
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                let raw_id: String = row.try_get("fragment_id").map_err(|error| {
+                    corrupt(
+                        "fragment_fts",
+                        "unknown",
+                        format!("invalid fragment_id: {error}"),
+                    )
+                })?;
+                let fragment_id =
+                    parse_id::<FragmentId>(&raw_id, "fragment_fts", &raw_id, "fragment_id")?;
+                let raw_event_id: String = row.try_get("event_id").map_err(|error| {
+                    corrupt("events", &raw_id, format!("invalid event_id: {error}"))
+                })?;
+                let event_id = parse_id::<EventId>(&raw_event_id, "events", &raw_event_id, "id")?;
+                let body: String = row.try_get("body").map_err(|error| {
+                    corrupt("fragment_fts", &raw_id, format!("invalid body: {error}"))
+                })?;
+                Ok(FragmentSearchHit {
+                    event_id,
+                    fragment_id,
+                    scope: scope.clone(),
+                    body,
+                    rank: 0.0,
                 })
             })
             .collect()

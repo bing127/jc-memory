@@ -1,12 +1,15 @@
 //! 权威存储与有界 Recall 流水线之间的核心门面。
 
-use std::{collections::BTreeMap, str::FromStr as _};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    str::FromStr as _,
+};
 
 use jc_memory_activation::{ExplainTrace, IndexedPoint, RecallEngine, RecallQuery, RecallResult};
 use jc_memory_graph::CognitivePoint;
 use jc_memory_protocol::{
     EpisodeView, EvidenceView, MemoryPacket, MemoryScope, MissingEvidence, PointId, PointView,
-    RecallId, RecallPath, ValidityStatus,
+    RecallId, RecallMode, RecallPath, ValidityStatus,
 };
 
 use crate::{MemoryEngine, MemoryError};
@@ -62,10 +65,22 @@ impl MemoryEngine {
 
     async fn execute_recall(&self, query: RecallQuery) -> Result<CoreRecall, MemoryError> {
         let search_limit = u32::try_from(query.limits.max_nodes).unwrap_or(u32::MAX);
-        let hits = self
+        let mut hits_by_fragment: BTreeMap<_, _> = self
             .repository
             .search_fts(&query.scope, &query.text, search_limit)
-            .await?;
+            .await?
+            .into_iter()
+            .map(|hit| (hit.fragment_id, hit))
+            .collect();
+        if query.mode != RecallMode::Exact {
+            for hit in self
+                .repository
+                .recent_fragments(&query.scope, query.at_time, search_limit)
+                .await?
+            {
+                hits_by_fragment.entry(hit.fragment_id).or_insert(hit);
+            }
+        }
         let (derived_points, derived_edges) = self.derived_graph.read().await.snapshot();
         let mut point_candidates: BTreeMap<_, _> = derived_points
             .into_iter()
@@ -73,7 +88,7 @@ impl MemoryEngine {
             .collect();
         let mut episodes = Vec::new();
         let mut evidence = Vec::new();
-        for hit in hits {
+        for hit in hits_by_fragment.into_values() {
             let fragment = self.repository.get_fragment(hit.fragment_id).await?;
             if matches!(
                 fragment.validity,
@@ -126,8 +141,20 @@ fn build_packet(
     evidence: Vec<EvidenceView>,
 ) -> Result<MemoryPacket, serde_json::Error> {
     let mut packet = MemoryPacket::empty(RecallId::new(), query.mode);
-    packet.episodes = episodes;
-    packet.evidence = evidence;
+    let activated_fragment_ids: BTreeSet<_> = result
+        .points
+        .iter()
+        .filter_map(|activated| points_by_id.get(&activated.point_id))
+        .flat_map(|indexed| indexed.point.source_fragments.iter().copied())
+        .collect();
+    packet.episodes = episodes
+        .into_iter()
+        .filter(|episode| activated_fragment_ids.contains(&episode.fragment_id))
+        .collect();
+    packet.evidence = evidence
+        .into_iter()
+        .filter(|item| activated_fragment_ids.contains(&item.fragment_id))
+        .collect();
     packet.points = result
         .points
         .iter()

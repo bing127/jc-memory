@@ -302,6 +302,64 @@ async fn fts_search_is_scope_bound_escaped_and_hard_limited() {
 }
 
 #[tokio::test]
+async fn recent_candidates_respect_scope_cutoff_order_and_limit() {
+    let harness = Harness::new().await;
+    let scope = full_scope();
+    let other_scope = MemoryScope::new(NamespaceId::new());
+    let older = Harness::text_event_at(
+        scope.clone(),
+        "older bounded candidate",
+        fixed_time() - Duration::days(2),
+    );
+    let newer = Harness::text_event_at(
+        scope.clone(),
+        "newer bounded candidate",
+        fixed_time() + Duration::days(2),
+    );
+    let other = Harness::text_event_at(
+        other_scope,
+        "other scope candidate",
+        fixed_time() - Duration::days(1),
+    );
+    for draft in [&older, &newer, &other] {
+        harness
+            .repository
+            .append(draft)
+            .await
+            .expect("append bounded candidate");
+    }
+
+    let historical = harness
+        .repository
+        .recent_fragments(&scope, Some(fixed_time()), 10)
+        .await
+        .expect("load historical candidates");
+    assert_eq!(
+        historical
+            .iter()
+            .map(|hit| hit.fragment_id)
+            .collect::<Vec<_>>(),
+        vec![older.fragment_id]
+    );
+
+    let current = harness
+        .repository
+        .recent_fragments(&scope, None, 1)
+        .await
+        .expect("load current candidates");
+    assert_eq!(current.len(), 1);
+    assert_eq!(current[0].fragment_id, newer.fragment_id);
+    assert!(
+        harness
+            .repository
+            .recent_fragments(&scope, None, 0)
+            .await
+            .expect("honor zero candidate limit")
+            .is_empty()
+    );
+}
+
+#[tokio::test]
 async fn all_fragment_content_kinds_and_microsecond_times_round_trip() {
     let harness = Harness::new().await;
     let scope = full_scope();
@@ -550,6 +608,42 @@ impl Harness {
             },
             evidence,
         )
+    }
+
+    fn text_event_at(scope: MemoryScope, text: &str, occurred_at: DateTime<Utc>) -> EventDraft {
+        let observed_at = occurred_at + Duration::microseconds(123);
+        let fragment = CognitiveFragment {
+            id: FragmentId::new(),
+            scope,
+            session_id: Some(SessionId::new()),
+            trace_id: Some(TraceId::new()),
+            kind: FragmentKind::Observation,
+            content: FragmentContent::Text {
+                text: text.to_owned(),
+            },
+            source: FragmentSource {
+                source_type: SourceType::Tool,
+                source_id: "repository-fixture".to_owned(),
+                actor_id: Some("fixture-actor".to_owned()),
+                observer_id: Some("fixture-observer".to_owned()),
+                tool_id: Some("fixture-tool".to_owned()),
+                uri: Some("memory://fixture".to_owned()),
+            },
+            perspective: Perspective::Tool,
+            occurred_at,
+            observed_at,
+            confidence: 0.875,
+            importance: 0.625,
+            validity: ValidityStatus::Unverified,
+            security_label: SecurityLabel::Internal,
+            evidence: Vec::new(),
+            metadata: serde_json::Map::new(),
+        };
+        let mut draft = EventFactory::new()
+            .from_fragment(fragment)
+            .expect("create event draft");
+        draft.recorded_at = observed_at + Duration::microseconds(456);
+        draft
     }
 
     fn event(

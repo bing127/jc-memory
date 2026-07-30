@@ -2,27 +2,35 @@
 
 疆诚记忆是独立于具体大语言模型的 Memory-Native Agent Kernel 与神经认知记忆数据库。
 
-当前代码实现 M1 基础可信存储：认知片段协议、不可变事件、SQLite WAL/FTS5、内容寻址 BlobStore、事务写入、完整性审计和恢复基础设施。项目目前为私有源码，不计划公开发布。
+当前代码实现 M1 基础可信存储与 M2 认知图/有界召回。项目目前为私有专有源码，不计划公开发布。
 
 ## 当前可用范围
 
 - `jc-memory-protocol`：类型化 ID、MemoryScope、CognitiveFragment、Event 和 EvidenceRef；
 - `jc-memory-events`：Fragment 校验、认知阶段映射和稳定内容哈希；
 - `jc-memory-storage`：SQLite Migration、事务仓储、FTS5、`JCB1` Blob、审计、GC 和 FTS rebuild；
-- `jc-memory-core`：本地嵌入式 `MemoryEngine`，公开 Observe、按 ID 读取 Fragment 和 Health。
+- `jc-memory-episodic`：模式分离与带有效时间的状态版本链；
+- `jc-memory-semantic`：至少两个独立 Event 支撑的语义提升，以及保留样本数和证据的程序经验；
+- `jc-memory-graph`：带权威来源的 Point/Edge、有界局部图和在线权重更新；
+- `jc-memory-surface`：多成员 Surface、版本历史和 Add/Remove/Merge/Split/Freeze/Deactivate 生命周期；
+- `jc-memory-activation`：十种 Recall 的确定性种子、局部传播、Surface 激活、证据补全、Explain 和硬预算；
+- `jc-memory-core`：本地嵌入式 `MemoryEngine`，公开 Observe、Fragment、Health、Recall、Explain、Stats、Correct、Reinforce、Weaken、Supersede、Contradict 和 Forget。
 
 原始 Fragment、Event 和 EvidenceRef 是权威记录。摘要、Embedding、图关系、Surface 和全文索引不得覆盖它们。Prediction 不允许设置 `ValidityStatus::Verified`；Inference 和 Plan 始终保持 FutureHypothesis 阶段，三者都不会被自动改写成 Fact。
 
-以下能力属于 M2-M6，当前尚不可用：认知图与召回、巩固与遗忘、Runtime 与工具执行、HTTP/gRPC/MCP 服务、多语言 SDK、外部 Adapter、训练/ONNX、Benchmark 和发布流水线。初始 Schema 为部分后续能力预留了表，但表存在不代表业务调用链已经实现。
+当前 Core 的 SQLite FTS5 已接入真实 Recall 路径。非 Exact Recall 还会读取精确 Scope 内的近期有界候选，并使用确定性词项覆盖率、字符稀疏特征和实体匹配评分；这不是外部 Embedding 或通用语义模型。Mutation 先追加权威 Fragment/Event，再更新进程内派生图，且在权威元数据中保留关系和目标标识。
+
+当前实现仍有明确边界：状态、语义和 Surface 模块尚未全部汇入 Core 的持久化 Memory Packet；Core 重启后尚未自动重建进程内派生图；没有外部 Embedding、向量数据库或远程服务。M3-M6 的巩固与治理、Runtime 与工具执行、HTTP/gRPC/MCP 服务、多语言 SDK、外部 Adapter、训练/ONNX、Benchmark 和发布流水线仍未实现。初始 Schema 的预留表不代表业务调用链已经接通。
 
 ## 五分钟开始
 
 需要 Rust 1.85 或更高版本。仓库当前使用 Rust 2024 Edition，不依赖外部 LLM、Python、数据库服务或网络 API。
 
-先运行真实的嵌入式持久化测试：
+先运行真实的嵌入式持久化与 M2 Core 验收：
 
 ```bash
 cargo test -p jc-memory-core --test observe_persistence
+CARGO_INCREMENTAL=0 cargo test -p jc-memory-core
 ```
 
 下面是同一调用链的完整 Rust 示例。`tempfile::TempDir` 在变量离开作用域时清理数据；正式应用应把 `MemoryConfig::local` 指向持久目录。
@@ -97,6 +105,12 @@ Blob 以明文 SHA-256 寻址，支持原子发布、两级目录分片、Zstd �
 - [ADR 0001：使用 Rust 构建可移植内核](docs/adr/0001-rust.md)
 - [ADR 0002：以 SQLite 作为本地权威存储](docs/adr/0002-sqlite-first.md)
 - [ADR 0003：原始事件不可变，派生数据可重建](docs/adr/0003-immutable-events.md)
+- [Point、Edge 与 Surface](docs/concepts/point-edge-surface.md)
+- [模式分离与有界模式补全](docs/concepts/pattern-completion.md)
+- [Memory Packet 协议](docs/protocol/memory-packet.md)
+- [ADR 0004：认知图是带证据的可重建派生结构](docs/adr/0004-derived-cognitive-graph.md)
+- [ADR 0005：所有 Recall 必须有硬预算](docs/adr/0005-bounded-recall.md)
+- [ADR 0006：Memory Packet 保持模型无关](docs/adr/0006-model-independent-memory-packet.md)
 - [产品原始需求](docs/product/original-requirements.zh-CN.md)
 - [分阶段实施路线图](docs/superpowers/plans/2026-07-29-jiangcheng-memory-roadmap.md)
 

@@ -16,6 +16,31 @@
 - 提供嵌入式 `MemoryEngine` 的 Observe、Fragment lookup 和 Health API。
 - 增加并发 sequence、同 ID 幂等、跨 Tenant 隔离、事务回滚、Busy Timeout、损坏、Blob 孤儿和恢复测试。
 - 增加中文 M1 存储架构文档与 Rust、SQLite、不可变事件 ADR。
+- 增加 `memory-episodic`、`memory-semantic`、`memory-graph`、`memory-surface` 和 `memory-activation`，实现模式分离、状态版本、证据约束的语义提升、Point/Edge/Surface 与有界局部传播。
+- 定义十种 `RecallMode`、固定 18 字段的模型无关 Memory Packet、确定性 `recommended_context` 和可追溯 Explain。
+- 将 SQLite FTS5 与近期有界候选接入 Core Recall；候选按精确 Scope、历史截止时间、稳定顺序和硬 `LIMIT` 读取，再使用确定性词项、稀疏字符特征和实体匹配评分。
+- 为 `MemoryEngine` 增加 Recall、Explain、Stats、Correct、Reinforce、Weaken、Supersede、Contradict 和 Forget；所有 Mutation 通过追加 Fragment/Event 表达，不改写原始记录。
+- 增加 Cross-Year、状态历史、共同出现非因果、Prediction 隔离和 Core Recall 预算验收测试。
+- 增加 Point/Edge/Surface、模式补全、Memory Packet 中文文档与 ADR 0004-0006。
+
+### M2 已知边界
+
+- 状态、语义和 Surface 模块已有领域实现与测试，但尚未全部汇入 Core 的持久化 Memory Packet。
+- Mutation 派生图当前为进程内状态；权威元数据保留重建信息，但 Core 重启后的自动重建尚未接通。
+- 当前跨措辞召回使用确定性词项和稀疏字符特征，不包含外部 Embedding、向量数据库或远程模型。
+- 本里程碑不声明 M3-M6 的巩固治理、Runtime、服务、SDK、模型、Benchmark、跨平台实机或发布能力。
+
+### M2 Verification
+
+- 验证主机：Darwin 25.6.0，Apple Silicon，`aarch64-apple-darwin`。
+- Rust：`rustc 1.97.1 (8bab26f4f 2026-07-14)`；Workspace 最低声明版本为 1.85。
+- `cargo fmt --all --check` 通过。
+- `CARGO_INCREMENTAL=0 cargo clippy --workspace --all-targets --all-features -- -D warnings` 通过。
+- `CARGO_INCREMENTAL=0 cargo test --workspace --all-features` 共 121 项通过、0 失败。
+- `CARGO_INCREMENTAL=0 cargo doc --workspace --no-deps` 通过。
+- `git diff --check` 通过。
+- Cross-Year 使用本地 SQLite Fixture 验证 2026 年不同措辞查询可返回 2018 年原始 FragmentId；这不是外部语义模型或大规模 Benchmark 结果。
+- Linux、Windows、macOS x64 和移动平台未在本次 M2 验收中实机验证。
 
 ### M1 Verification
 
