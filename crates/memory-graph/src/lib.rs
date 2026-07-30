@@ -13,6 +13,7 @@ pub use edge::{
     CognitiveEdge, EdgeCandidate, EdgeCreationError, EdgeUpdate, EdgeUpdateError, EdgeUpdater,
     EvidenceLink, LearningOutcome,
 };
+pub use jc_memory_protocol::{PointCreationError, PointKind};
 pub use local_graph::{EdgeFilter, LocalGraph};
-pub use point::{CognitivePoint, PointCreationError, PointKind};
+pub use point::CognitivePoint;
 pub use repository::{GraphRepositoryError, LocalGraphRepository};

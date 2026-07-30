@@ -7,9 +7,10 @@ use std::sync::{
 
 use chrono::{DateTime, Utc};
 use jc_memory_protocol::{MemoryScope, RecallMode};
+use serde::{Deserialize, Serialize};
 
 /// Hard limits applied to every recall request.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct RecallLimits {
     /// Maximum number of initial seed Points.
     pub max_seeds: usize,

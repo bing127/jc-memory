@@ -2,6 +2,8 @@
 
 /// Surface activation and evidence completion.
 pub mod completion;
+/// Evidence provenance and traversal explanations.
+pub mod explain;
 /// Recall query and hard budget types.
 pub mod query;
 /// Deterministic searchable Point index records.
@@ -10,6 +12,7 @@ pub mod seeds;
 pub mod spread;
 
 pub use completion::ActivatedSurface;
+pub use explain::{ExplainTrace, SeedTrace, SurfaceActivationTrace, TraversalTrace};
 pub use query::{RecallCancellation, RecallLimits, RecallQuery};
 pub use seeds::IndexedPoint;
 pub use spread::{

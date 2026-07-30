@@ -10,8 +10,12 @@ chrono.workspace = true
 jc-memory-graph = { path = "../memory-graph" }
 jc-memory-protocol = { path = "../memory-protocol" }
 jc-memory-surface = { path = "../memory-surface" }
+serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
 
 [lints]
 workspace = true

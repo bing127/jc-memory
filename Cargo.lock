@@ -771,6 +771,8 @@ dependencies = [
  "jc-memory-graph",
  "jc-memory-protocol",
  "jc-memory-surface",
+ "serde",
+ "serde_json",
  "thiserror",
  "tokio",
 ]

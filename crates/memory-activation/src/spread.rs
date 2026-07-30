@@ -13,6 +13,7 @@ use jc_memory_surface::CognitiveSurface;
 use thiserror::Error;
 
 use crate::{ActivatedSurface, IndexedPoint, RecallCancellation, RecallQuery, completion, seeds};
+use crate::{ExplainTrace, RecallLimits};
 
 const SEMANTIC_EDGES: &[EdgeKind] = &[
     EdgeKind::Supports,
@@ -269,6 +270,12 @@ impl RecallEngine {
     pub async fn recall(&self, query: RecallQuery) -> Result<RecallResult, RecallEngineError> {
         self.recall_with_cancellation(query, &RecallCancellation::new())
             .await
+    }
+
+    /// Builds deterministic provenance for a completed result from this engine.
+    #[must_use]
+    pub fn explain(&self, result: &RecallResult, limits: RecallLimits) -> ExplainTrace {
+        crate::explain::build(&self.points, result, limits)
     }
 
     /// Executes Recall with cooperative cancellation and wall-clock timeout checks.
