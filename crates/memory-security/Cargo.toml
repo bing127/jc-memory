@@ -6,13 +6,24 @@ rust-version.workspace = true
 license-file.workspace = true
 
 [dependencies]
+chrono.workspace = true
+fs2.workspace = true
+hex.workspace = true
 jc-memory-protocol = { path = "../memory-protocol" }
+jc-memory-storage = { path = "../memory-storage" }
 serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+sqlx.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 tracing.workspace = true
+uuid.workspace = true
+zeroize.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
+jc-memory-events = { path = "../memory-events" }
+tempfile.workspace = true
 
 [lints]
 workspace = true

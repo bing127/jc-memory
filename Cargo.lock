@@ -894,11 +894,22 @@ dependencies = [
 name = "jc-memory-security"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "fs2",
+ "hex",
+ "jc-memory-events",
  "jc-memory-protocol",
+ "jc-memory-storage",
  "serde",
  "serde_json",
+ "sha2",
+ "sqlx",
+ "tempfile",
  "thiserror",
+ "tokio",
  "tracing",
+ "uuid",
+ "zeroize",
 ]
 
 [[package]]

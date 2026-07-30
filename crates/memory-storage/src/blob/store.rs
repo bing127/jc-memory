@@ -133,7 +133,9 @@ impl BlobStore {
         self.verify(id).await
     }
 
-    pub(crate) fn root(&self) -> &Path {
+    /// 返回内容寻址 Blob 文件的根目录。
+    #[must_use]
+    pub fn root(&self) -> &Path {
         &self.root
     }
 

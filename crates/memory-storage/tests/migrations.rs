@@ -25,6 +25,7 @@ const REQUIRED_TABLES: &[&str] = &[
     "fragment_contents",
     "fragment_fts",
     "fragments",
+    "governance_receipts",
     "hypotheses",
     "cold_tier_entries",
     "memory_models",
@@ -34,6 +35,7 @@ const REQUIRED_TABLES: &[&str] = &[
     "quarantine",
     "recall_activations",
     "recall_sessions",
+    "retention_plans",
     "scope_sequences",
     "snapshots",
     "state_versions",
@@ -55,8 +57,10 @@ const REQUIRED_INDEXES: &[&str] = &[
     "idx_events_scope_sequence",
     "idx_fragments_scope_observed",
     "idx_fragments_scope_occurred",
+    "idx_governance_receipts_scope_created",
     "idx_points_scope_validity",
     "idx_recall_sessions_scope_started",
+    "idx_retention_plans_scope_status",
     "idx_state_versions_state_validity",
     "idx_surface_members_point",
     "idx_surfaces_scope_validity",
@@ -170,7 +174,7 @@ async fn reopening_the_same_database_is_migration_idempotent() {
             .fetch_one(second.pool())
             .await
             .expect("count applied migrations");
-    assert_eq!(applied_migrations, 2);
+    assert_eq!(applied_migrations, 3);
 }
 
 #[tokio::test]

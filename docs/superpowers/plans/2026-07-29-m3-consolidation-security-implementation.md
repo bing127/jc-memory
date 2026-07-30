@@ -158,11 +158,11 @@ async fn resume_continues_after_last_committed_cursor() {
 
 **文件：** `memory-security/src/{key,audit,retention,export,delete}.rs`、`tests/hard_delete.rs`。
 
-- [ ] **步骤 1：写无授权删除拒绝、删除后正文/Blob/FTS/图均消失、审计不含正文的失败测试。**
-- [ ] **步骤 2：运行测试**，预期 GovernanceService 缺失。
-- [ ] **步骤 3：实现 `KeyProvider::get_key(key_id)`、轮换元数据和 Zeroizing；审计记录 principal、operation、target digest、request_id、result，不记录正文/密钥。**
-- [ ] **步骤 4：Retention 先生成可审计计划再执行；Export 输出 Manifest + canonical JSONL + Blob；Hard Delete 在独占治理 Job 中清理权威、BlobRef 和派生数据，留下 content-free receipt 并排队重新巩固。**
-- [ ] **步骤 5：运行测试并提交 `feat(security): add governed export retention and deletion`**。
+- [x] **步骤 1：写无授权删除拒绝、删除后正文/Blob/FTS/图均消失、审计不含正文的失败测试。**
+- [x] **步骤 2：运行测试**，预期 GovernanceService 缺失。
+- [x] **步骤 3：实现 `KeyProvider::get_key(key_id)`、轮换元数据和 Zeroizing；审计记录 principal、operation、target digest、request_id、result，不记录正文/密钥。**
+- [x] **步骤 4：Retention 先生成可审计计划再执行；Export 输出 Manifest + canonical JSONL + Blob；Hard Delete 在独占治理 Job 中清理权威、BlobRef 和派生数据，留下 content-free receipt 并排队重新巩固。**
+- [x] **步骤 5：运行测试并提交 `feat(security): add governed export retention and deletion`**。
 
 ## Task 9：M3 验收、文档与门禁
 

@@ -6,7 +6,7 @@ use sqlx::{
 
 use crate::{SqliteConfig, StorageError};
 
-// 编译期嵌入全部版本化 Schema，当前包含巩固派生层 v2。
+// 编译期嵌入全部版本化 Schema，当前包含治理审计扩展 v3。
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 /// SQLite-backed storage connection pool with the Jiangcheng Memory schema.
