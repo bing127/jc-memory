@@ -12,6 +12,7 @@ members = [
   "crates/memory-security",
   "crates/memory-neural",
   "crates/memory-consolidation",
+  "crates/memory-runtime",
   "crates/memory-core",
 ]
 

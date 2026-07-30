@@ -1,0 +1,27 @@
+[package]
+name = "jc-memory-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+
+[dependencies]
+chrono.workspace = true
+hex.workspace = true
+jc-memory-protocol = { path = "../memory-protocol" }
+jc-memory-security = { path = "../memory-security" }
+jc-memory-storage = { path = "../memory-storage" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+jc-memory-events = { path = "../memory-events" }
+tempfile.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

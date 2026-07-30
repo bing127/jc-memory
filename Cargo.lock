@@ -926,6 +926,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "jc-memory-runtime"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "hex",
+ "jc-memory-events",
+ "jc-memory-protocol",
+ "jc-memory-security",
+ "jc-memory-storage",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "jc-memory-security"
 version = "0.1.0"
 dependencies = [

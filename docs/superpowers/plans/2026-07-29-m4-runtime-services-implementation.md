@@ -43,7 +43,7 @@ pub trait CommandBus: Send + Sync { async fn execute(&self, access: &AccessConte
 
 **文件：** `memory-runtime/src/{state,runner,recovery}.rs`、`tests/state_machine.rs`。
 
-- [ ] **步骤 1：写非法跳转和重开恢复失败测试**
+- [x] **步骤 1：写非法跳转和重开恢复失败测试**
 
 ```rust
 #[test]
@@ -52,10 +52,10 @@ fn executing_cannot_skip_commit_to_completed() {
 }
 ```
 
-- [ ] **步骤 2：运行测试**，预期 RuntimeState 缺失。
-- [ ] **步骤 3：实现 Observing、Recalling、Reasoning、AwaitingApproval、Executing、Committing、WaitingUser、Paused、Completed、Failed、Cancelled；转换表使用穷尽 match。**
-- [ ] **步骤 4：每次转换在 `transitions` 表保存 run_id、step、from/to、输入输出引用、attempt、deadline、trace；重开从最后已提交状态恢复。**
-- [ ] **步骤 5：运行测试并提交 `feat(runtime): add recoverable agent state machine`**。
+- [x] **步骤 2：运行测试**，预期 RuntimeState 缺失。
+- [x] **步骤 3：实现 Observing、Recalling、Reasoning、AwaitingApproval、Executing、Committing、WaitingUser、Paused、Completed、Failed、Cancelled；转换表使用穷尽 match。**
+- [x] **步骤 4：每次转换在 `transitions` 表保存 run_id、step、from/to、输入输出引用、attempt、deadline、trace；重开从最后已提交状态恢复。**
+- [x] **步骤 5：运行测试并提交 `feat(runtime): add recoverable agent state machine`**。
 
 ## Task 3：实现 ModelProvider 与输出解析
 
