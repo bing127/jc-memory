@@ -92,24 +92,24 @@ pub enum Admission { Accept, AcceptUnverified, Quarantine { reason: QuarantineRe
 
 **文件：** `memory-neural/src/{traits,manifest,fallback,circuit_breaker}.rs`、`tests/fallback.rs`。
 
-- [ ] **步骤 1：写相同输入稳定输出、批处理顺序、超时降级失败测试**。
-- [ ] **步骤 2：运行测试**，预期 FragmentEncoder 等 Trait 缺失。
-- [ ] **步骤 3：实现八个 Trait：**
+- [x] **步骤 1：写相同输入稳定输出、批处理顺序、超时降级失败测试**。
+- [x] **步骤 2：运行测试**，预期 FragmentEncoder 等 Trait 缺失。
+- [x] **步骤 3：实现八个 Trait：**
 
 ```rust
 #[async_trait]
-pub trait FragmentEncoder: Send + Sync { async fn encode(&self, batch: &[EncoderInput]) -> Result<Vec<Embedding>, NeuralError>; fn manifest(&self) -> &ModelManifest; }
-pub trait EventClassifier: Send + Sync { fn classify(&self, event: &MemoryEvent) -> Classification; }
-pub trait ImportancePredictor: Send + Sync { fn predict(&self, fragment: &CognitiveFragment) -> f32; }
-pub trait EdgePredictor: Send + Sync { fn predict(&self, pair: &PointPair) -> Vec<EdgeCandidate>; }
-pub trait QueryRouter: Send + Sync { fn route(&self, query: &RecallQuery) -> RecallMode; }
-pub trait Reranker: Send + Sync { fn rerank(&self, query: &RecallQuery, candidates: &mut [Candidate]); }
-pub trait SurfaceAssigner: Send + Sync { fn assign(&self, point: &CognitivePoint, surfaces: &[CognitiveSurface]) -> Vec<SurfaceScore>; }
-pub trait ContradictionDetector: Send + Sync { fn detect(&self, left: &EvidenceView, right: &EvidenceView) -> ContradictionScore; }
+pub trait FragmentEncoder: Send + Sync { async fn encode(&self, batch: &[CognitiveFragment]) -> Result<Vec<Embedding>, NeuralError>; fn manifest(&self) -> &ModelManifest; }
+pub trait EventClassifier: Send + Sync { async fn classify(&self, batch: &[CognitiveFragment]) -> Result<Vec<Classification>, NeuralError>; fn manifest(&self) -> &ModelManifest; }
+pub trait ImportancePredictor: Send + Sync { async fn predict_importance(&self, batch: &[CognitiveFragment]) -> Result<Vec<ImportanceScore>, NeuralError>; fn manifest(&self) -> &ModelManifest; }
+pub trait EdgePredictor: Send + Sync { async fn predict_edges(&self, batch: &[EdgeCandidate]) -> Result<Vec<EdgeCandidate>, NeuralError>; fn manifest(&self) -> &ModelManifest; }
+pub trait QueryRouter: Send + Sync { async fn route(&self, query: &RecallQuery) -> Result<RoutingDecision, NeuralError>; fn manifest(&self) -> &ModelManifest; }
+pub trait Reranker: Send + Sync { async fn rerank(&self, query: &RecallQuery, candidates: &[IndexedPoint]) -> Result<Vec<RankedCandidate>, NeuralError>; fn manifest(&self) -> &ModelManifest; }
+pub trait SurfaceAssigner: Send + Sync { async fn assign(&self, points: &[CognitivePoint], surfaces: &[CognitiveSurface]) -> Result<Vec<SurfaceScore>, NeuralError>; fn manifest(&self) -> &ModelManifest; }
+pub trait ContradictionDetector: Send + Sync { async fn detect(&self, batch: &[CognitiveFragment]) -> Result<Vec<ContradictionScore>, NeuralError>; fn manifest(&self) -> &ModelManifest; }
 ```
 
-- [ ] **步骤 4：实现词法哈希 Embedding、规则路由/分类、稳定重排、Manifest SHA-256、超时和三态 CircuitBreaker；派生记录必须保存 model_version。**
-- [ ] **步骤 5：运行 `cargo test -p jc-memory-neural` 并提交 `feat(neural): add deterministic offline neural interfaces`**。
+- [x] **步骤 4：实现词法哈希 Embedding、规则路由/分类、稳定重排、Manifest SHA-256、超时和三态 CircuitBreaker；派生记录必须保存 model_version。**
+- [x] **步骤 5：运行 `cargo test -p jc-memory-neural` 并提交 `feat(neural): add deterministic offline neural interfaces`**。
 
 ## Task 5：实现持久化 Consolidation Job Runner
 

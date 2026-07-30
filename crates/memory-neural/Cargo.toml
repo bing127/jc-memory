@@ -1,0 +1,25 @@
+[package]
+name = "jc-memory-neural"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+hex.workspace = true
+jc-memory-activation = { path = "../memory-activation" }
+jc-memory-graph = { path = "../memory-graph" }
+jc-memory-protocol = { path = "../memory-protocol" }
+jc-memory-surface = { path = "../memory-surface" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+chrono.workspace = true
+
+[lints]
+workspace = true

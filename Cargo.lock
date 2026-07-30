@@ -841,6 +841,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "jc-memory-neural"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "hex",
+ "jc-memory-activation",
+ "jc-memory-graph",
+ "jc-memory-protocol",
+ "jc-memory-surface",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "jc-memory-protocol"
 version = "0.1.0"
 dependencies = [
