@@ -6,7 +6,7 @@ use jc_memory_protocol::{
     AccessContext, BlobId, CognitiveFragment, DenyReason, EventId, FragmentId, Operation,
     ValidityStatus,
 };
-use jc_memory_security::SecurityInvariantViolation;
+use jc_memory_security::{Admission, RiskAssessment, SecurityInvariantViolation};
 use jc_memory_storage::{
     BlobError, BlobOptions, BlobStore, MemoryRepository, RecoveryError, RecoveryManager,
     RepositoryFailpoint, SqliteConfig, SqliteMemoryRepository, SqliteStore, StorageError,
@@ -18,7 +18,7 @@ use tracing::Instrument as _;
 use crate::{HealthReport, HealthStatus, MemoryConfig, mutation::DerivedGraph};
 
 /// Result of persisting one authoritative cognitive fragment and event.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ObserveReceipt {
     /// Persisted fragment identifier.
     pub fragment_id: FragmentId,
@@ -30,8 +30,10 @@ pub struct ObserveReceipt {
     pub content_hash: BlobId,
     /// Whether this call created the authoritative event.
     pub created: bool,
-    /// Whether the fragment was explicitly submitted with quarantined validity.
+    /// 检测和准入规则执行后，持久化 Fragment 是否处于 Quarantined 状态。
     pub quarantined: bool,
+    /// 确定性检测器对原始 Fragment 的风险评估。
+    pub risk_assessment: RiskAssessment,
 }
 
 /// Errors exposed by the embedded memory facade.
@@ -112,6 +114,15 @@ pub enum MemoryError {
     /// 返回数据违反了独立的 Scope 或来源不变量。
     #[error("memory output security invariant failed: {0}")]
     SecurityInvariantViolation(#[source] SecurityInvariantViolation),
+    /// Quarantine 审查目标不是仍处于隔离状态的权威 Fragment。
+    #[error("fragment {fragment_id} is not quarantined")]
+    ReviewTargetNotQuarantined {
+        /// 无法审查的目标 Fragment。
+        fragment_id: FragmentId,
+    },
+    /// Quarantine 审查理由为空。
+    #[error("quarantine review reason cannot be empty")]
+    EmptyReviewReason,
 }
 
 impl From<StorageError> for MemoryError {
@@ -202,9 +213,21 @@ impl MemoryEngine {
     pub async fn observe(
         &self,
         context: &AccessContext,
-        fragment: CognitiveFragment,
+        mut fragment: CognitiveFragment,
     ) -> Result<ObserveReceipt, MemoryError> {
         crate::security::authorize(context, Operation::Observe, &fragment.scope)?;
+        jc_memory_events::validation::validate_fragment(&fragment)
+            .map_err(EventFactoryError::from)?;
+        let risk_context = self.risk_context(&fragment).await?;
+        let risk_assessment =
+            jc_memory_security::QuarantinePipeline.assess(&fragment, risk_context);
+        let admission =
+            jc_memory_security::QuarantinePipeline.admission(&fragment, &risk_assessment);
+        match admission {
+            Admission::Accept => {}
+            Admission::AcceptUnverified => fragment.validity = ValidityStatus::Unverified,
+            Admission::Quarantine { .. } => fragment.validity = ValidityStatus::Quarantined,
+        }
         let fragment_id = fragment.id;
         let namespace_hash = short_hash(&fragment.scope.namespace_id.to_string());
         let tenant_hash = fragment.scope.tenant_id.map_or_else(
@@ -221,7 +244,23 @@ impl MemoryEngine {
             result = tracing::field::Empty,
         );
         let started = Instant::now();
-        let result = self.observe_inner(fragment).instrument(span.clone()).await;
+        let governance_fragment = fragment.clone();
+        let result = self
+            .observe_inner(fragment)
+            .instrument(span.clone())
+            .await
+            .map(|mut receipt| {
+                receipt.risk_assessment.clone_from(&risk_assessment);
+                receipt
+            });
+        let result = match result {
+            Ok(receipt) if receipt.created && matches!(admission, Admission::Quarantine { .. }) => {
+                self.append_automatic_quarantine(&governance_fragment, &risk_assessment, admission)
+                    .await?;
+                Ok(receipt)
+            }
+            result => result,
+        };
         span.record("elapsed_ms", elapsed_millis(started));
         match &result {
             Ok(receipt) => {
@@ -291,6 +330,7 @@ impl MemoryEngine {
             content_hash: receipt.event.draft.content_hash,
             created: receipt.created,
             quarantined,
+            risk_assessment: RiskAssessment::default(),
         })
     }
 }

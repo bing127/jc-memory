@@ -15,7 +15,7 @@ pub use recovery::{
     RecoveryManager,
 };
 pub use repository::{
-    AppendReceipt, FragmentSearchHit, MemoryRepository, RepositoryFailpoint, RepositoryStats,
-    SqliteMemoryRepository,
+    AppendReceipt, FragmentSearchHit, MemoryRepository, QuarantineDisposition, RepositoryFailpoint,
+    RepositoryStats, SqliteMemoryRepository,
 };
 pub use sqlite::SqliteStore;

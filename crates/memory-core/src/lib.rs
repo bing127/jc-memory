@@ -5,10 +5,14 @@ mod config;
 mod engine;
 mod health;
 mod mutation;
+mod quarantine;
 mod recall;
 mod security;
 
-pub use commands::{MutationCommand, MutationKind, MutationReceipt};
+pub use commands::{
+    MutationCommand, MutationKind, MutationReceipt, QuarantineReview, QuarantineReviewReceipt,
+    ReviewDecision,
+};
 pub use config::MemoryConfig;
 pub use engine::{MemoryEngine, MemoryError, ObserveReceipt};
 pub use health::{HealthReport, HealthStatus};

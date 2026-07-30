@@ -12,6 +12,7 @@ use jc_memory_protocol::{
     MissingEvidence, Operation, PointId, PointView, RecallId, RecallMode, RecallPath,
     ValidityStatus,
 };
+use jc_memory_storage::QuarantineDisposition;
 
 use crate::{MemoryEngine, MemoryError};
 
@@ -121,17 +122,27 @@ impl MemoryEngine {
         let mut episodes = Vec::new();
         let mut evidence = Vec::new();
         for hit in hits_by_fragment.into_values() {
-            let fragment = self
+            let mut fragment = self
                 .repository
                 .get_fragment_in_scope(&query.scope, hit.fragment_id)
                 .await?;
             fragment_scopes.insert(fragment.id, fragment.scope.clone());
-            if matches!(
-                fragment.validity,
-                ValidityStatus::Invalidated | ValidityStatus::Quarantined
-            ) || query
-                .at_time
-                .is_some_and(|effective_at| fragment.occurred_at > effective_at)
+            if fragment.validity == ValidityStatus::Quarantined {
+                match self
+                    .repository
+                    .quarantine_disposition(&query.scope, fragment.id)
+                    .await?
+                {
+                    Some(QuarantineDisposition::Released) => {
+                        fragment.validity = ValidityStatus::Unverified;
+                    }
+                    Some(QuarantineDisposition::Rejected) | None => continue,
+                }
+            }
+            if fragment.validity == ValidityStatus::Invalidated
+                || query
+                    .at_time
+                    .is_some_and(|effective_at| fragment.occurred_at > effective_at)
             {
                 continue;
             }

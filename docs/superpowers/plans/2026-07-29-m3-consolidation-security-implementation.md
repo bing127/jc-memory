@@ -73,9 +73,9 @@ async fn recall_never_loads_or_returns_other_tenant() {
 
 **文件：** `memory-security/src/{quarantine,injection,poisoning,sensitive}.rs`、`tests/poisoning.rs`。
 
-- [ ] **步骤 1：写恶意 Prompt、重复错误和可疑 ToolResult 失败测试**，断言它们进入 Quarantine 且默认 Recall 不可见。
-- [ ] **步骤 2：运行聚焦测试**，预期 QuarantinePipeline 缺失。
-- [ ] **步骤 3：实现：**
+- [x] **步骤 1：写恶意 Prompt、重复错误和可疑 ToolResult 失败测试**，断言它们进入 Quarantine 且默认 Recall 不可见。
+- [x] **步骤 2：运行聚焦测试**，预期 QuarantinePipeline 缺失。
+- [x] **步骤 3：实现：**
 
 ```rust
 pub struct RiskAssessment { pub labels: BTreeSet<RiskLabel>, pub score: f32, pub evidence: Vec<EvidenceRef>, pub detector_versions: Vec<String> }
@@ -85,8 +85,8 @@ pub enum Admission { Accept, AcceptUnverified, Quarantine { reason: QuarantineRe
 
 规则只能改变 Admission/Validity，不能删除原始内容；检测器输出必须记录版本和触发证据。
 
-- [ ] **步骤 4：实现授权 Review 的 Release/Reject，均追加审计和状态事件；运行测试。**
-- [ ] **步骤 5：提交 `feat(security): quarantine untrusted and poisoned memory`**。
+- [x] **步骤 4：实现授权 Review 的 Release/Reject，均追加审计和状态事件；运行测试。**
+- [x] **步骤 5：提交 `feat(security): quarantine untrusted and poisoned memory`**。
 
 ## Task 4：实现 Neural Trait、Manifest 与确定性 Fallback
 

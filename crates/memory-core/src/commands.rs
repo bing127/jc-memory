@@ -59,3 +59,37 @@ pub struct MutationReceipt {
     /// 派生图重建时应建立的关系类型。
     pub relation: Option<EdgeKind>,
 }
+
+/// 授权审查对 Quarantine 内容作出的决定。
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewDecision {
+    /// 允许原 Fragment 以未验证状态重新参与默认 Recall。
+    Release,
+    /// 确认原 Fragment 应继续隔离。
+    Reject,
+}
+
+/// 审查一个 Quarantine Fragment 的调用方输入。
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QuarantineReview {
+    /// 被审查且不会被改写的原始 Fragment。
+    pub target_fragment_id: FragmentId,
+    /// 授权审查决定。
+    pub decision: ReviewDecision,
+    /// 写入审计和状态 Event 的非空理由。
+    pub reason: String,
+}
+
+/// 一次追加式 Quarantine 审查的持久化结果。
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QuarantineReviewReceipt {
+    /// 被审查的原始 Fragment。
+    pub target_fragment_id: FragmentId,
+    /// 承载审计记录的权威 Event。
+    pub audit_event_id: EventId,
+    /// 承载最新 Quarantine 状态的权威 Event。
+    pub state_event_id: EventId,
+    /// 已执行的审查决定。
+    pub decision: ReviewDecision,
+}

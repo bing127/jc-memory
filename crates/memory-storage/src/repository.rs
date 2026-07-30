@@ -65,6 +65,15 @@ pub struct RepositoryStats {
     pub event_count: u64,
 }
 
+/// 由追加式治理状态 Event 得出的最新 Quarantine 审查结果。
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum QuarantineDisposition {
+    /// 授权审查允许内容重新参与默认 Recall。
+    Released,
+    /// 授权审查确认内容应继续隔离。
+    Rejected,
+}
+
 /// Durable operations for immutable memory fragments and events.
 #[async_trait]
 pub trait MemoryRepository: Send + Sync {
@@ -99,6 +108,13 @@ pub trait MemoryRepository: Send + Sync {
         effective_at: Option<DateTime<Utc>>,
         limit: u32,
     ) -> Result<Vec<FragmentSearchHit>, StorageError>;
+
+    /// 读取一个精确 Scope 内目标 Fragment 的最新追加式审查结果。
+    async fn quarantine_disposition(
+        &self,
+        scope: &MemoryScope,
+        target_fragment_id: FragmentId,
+    ) -> Result<Option<QuarantineDisposition>, StorageError>;
 
     /// 统计一个精确 Scope 内的权威 Fragment 和 Event。
     async fn stats(&self, scope: &MemoryScope) -> Result<RepositoryStats, StorageError>;
@@ -448,6 +464,33 @@ impl MemoryRepository for SqliteMemoryRepository {
                 })
             })
             .collect()
+    }
+
+    async fn quarantine_disposition(
+        &self,
+        scope: &MemoryScope,
+        target_fragment_id: FragmentId,
+    ) -> Result<Option<QuarantineDisposition>, StorageError> {
+        let scope_key = scope_key(scope)?;
+        let action: Option<String> = sqlx::query_scalar(
+            "SELECT json_extract(metadata_json, '$.quarantine_action')
+             FROM fragments
+             WHERE scope_key = ?1 AND kind = 'state_transition'
+                   AND json_extract(metadata_json, '$.target_fragment_id') = ?2
+                   AND json_extract(metadata_json, '$.quarantine_action') IN ('released', 'rejected')
+             ORDER BY created_at_us DESC, id DESC
+             LIMIT 1",
+        )
+        .bind(scope_key)
+        .bind(target_fragment_id.to_string())
+        .fetch_optional(&self.pool)
+        .await?
+        .flatten();
+        Ok(match action.as_deref() {
+            Some("released") => Some(QuarantineDisposition::Released),
+            Some("rejected") => Some(QuarantineDisposition::Rejected),
+            _ => None,
+        })
     }
 
     async fn stats(&self, scope: &MemoryScope) -> Result<RepositoryStats, StorageError> {
