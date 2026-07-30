@@ -44,6 +44,8 @@ pub struct AppendReceipt {
 /// One scope-filtered full-text search result.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FragmentSearchHit {
+    /// 承载该 Fragment 的权威 Event 标识。
+    pub event_id: EventId,
     /// Fragment matched by the FTS index.
     pub fragment_id: FragmentId,
     /// Exact memory scope used for the search.
@@ -52,6 +54,15 @@ pub struct FragmentSearchHit {
     pub body: String,
     /// FTS5 BM25 rank, where lower values sort first.
     pub rank: f64,
+}
+
+/// 一个精确 Scope 内的权威存储统计。
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct RepositoryStats {
+    /// 已持久化的 Fragment 数量。
+    pub fragment_count: u64,
+    /// 已持久化的 Event 数量。
+    pub event_count: u64,
 }
 
 /// Durable operations for immutable memory fragments and events.
@@ -73,6 +84,9 @@ pub trait MemoryRepository: Send + Sync {
         query: &str,
         limit: u32,
     ) -> Result<Vec<FragmentSearchHit>, StorageError>;
+
+    /// 统计一个精确 Scope 内的权威 Fragment 和 Event。
+    async fn stats(&self, scope: &MemoryScope) -> Result<RepositoryStats, StorageError>;
 }
 
 /// Injectable boundary used to prove transaction rollback before durable commit.
@@ -279,10 +293,12 @@ impl MemoryRepository for SqliteMemoryRepository {
         let scope_key = scope_key(scope)?;
         let escaped_query = format!("\"{}\"", query.replace('"', "\"\""));
         let rows = sqlx::query(
-            "SELECT fragment_id, body, bm25(fragment_fts) AS rank
+            "SELECT fragment_fts.fragment_id, events.id AS event_id,
+                    fragment_fts.body, bm25(fragment_fts) AS rank
              FROM fragment_fts
-             WHERE fragment_fts MATCH ?1 AND scope_key = ?2
-             ORDER BY rank, fragment_id
+             JOIN events ON events.fragment_id = fragment_fts.fragment_id
+             WHERE fragment_fts MATCH ?1 AND fragment_fts.scope_key = ?2
+             ORDER BY rank, fragment_fts.fragment_id
              LIMIT ?3",
         )
         .bind(escaped_query)
@@ -302,6 +318,14 @@ impl MemoryRepository for SqliteMemoryRepository {
                 })?;
                 let fragment_id =
                     parse_id::<FragmentId>(&raw_id, "fragment_fts", &raw_id, "fragment_id")?;
+                let raw_event_id: String = row.try_get("event_id").map_err(|error| {
+                    corrupt(
+                        "fragment_fts",
+                        &raw_id,
+                        format!("invalid event_id: {error}"),
+                    )
+                })?;
+                let event_id = parse_id::<EventId>(&raw_event_id, "events", &raw_event_id, "id")?;
                 let body: String = row.try_get("body").map_err(|error| {
                     corrupt("fragment_fts", &raw_id, format!("invalid body: {error}"))
                 })?;
@@ -312,6 +336,7 @@ impl MemoryRepository for SqliteMemoryRepository {
                     return Err(corrupt("fragment_fts", &raw_id, "rank is not finite"));
                 }
                 Ok(FragmentSearchHit {
+                    event_id,
                     fragment_id,
                     scope: scope.clone(),
                     body,
@@ -319,6 +344,27 @@ impl MemoryRepository for SqliteMemoryRepository {
                 })
             })
             .collect()
+    }
+
+    async fn stats(&self, scope: &MemoryScope) -> Result<RepositoryStats, StorageError> {
+        let scope_key = scope_key(scope)?;
+        let fragment_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM fragments WHERE scope_key = ?1")
+                .bind(&scope_key)
+                .fetch_one(&self.pool)
+                .await?;
+        let event_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE scope_key = ?1")
+                .bind(scope_key)
+                .fetch_one(&self.pool)
+                .await?;
+        Ok(RepositoryStats {
+            fragment_count: u64::try_from(fragment_count).map_err(|error| {
+                corrupt("fragments", "count", format!("invalid count: {error}"))
+            })?,
+            event_count: u64::try_from(event_count)
+                .map_err(|error| corrupt("events", "count", format!("invalid count: {error}")))?,
+        })
     }
 }
 

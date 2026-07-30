@@ -6,6 +6,7 @@ rust-version.workspace = true
 license-file.workspace = true
 
 [dependencies]
+chrono.workspace = true
 jc-memory-activation = { path = "../memory-activation" }
 jc-memory-episodic = { path = "../memory-episodic" }
 jc-memory-events = { path = "../memory-events" }
@@ -15,15 +16,14 @@ jc-memory-semantic = { path = "../memory-semantic" }
 jc-memory-storage = { path = "../memory-storage" }
 jc-memory-surface = { path = "../memory-surface" }
 serde.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-chrono.workspace = true
 futures.workspace = true
-serde_json.workspace = true
 sqlx.workspace = true
 tempfile.workspace = true
 

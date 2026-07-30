@@ -1,5 +1,6 @@
 use std::{sync::Arc, time::Instant};
 
+use jc_memory_activation::RecallEngineError;
 use jc_memory_events::factory::{EventFactory, EventFactoryError};
 use jc_memory_protocol::{BlobId, CognitiveFragment, EventId, FragmentId, ValidityStatus};
 use jc_memory_storage::{
@@ -7,9 +8,10 @@ use jc_memory_storage::{
     RepositoryFailpoint, SqliteConfig, SqliteMemoryRepository, SqliteStore, StorageError,
 };
 use sha2::{Digest as _, Sha256};
+use tokio::sync::RwLock;
 use tracing::Instrument as _;
 
-use crate::{HealthReport, HealthStatus, MemoryConfig};
+use crate::{HealthReport, HealthStatus, MemoryConfig, mutation::DerivedGraph};
 
 /// Result of persisting one authoritative cognitive fragment and event.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -83,6 +85,18 @@ pub enum MemoryError {
     /// Integrity audit or recovery failed.
     #[error("memory recovery operation failed: {0}")]
     Recovery(#[from] RecoveryError),
+    /// 有界 Recall 流水线拒绝了派生图输入或被取消、超时。
+    #[error("memory recall failed: {0}")]
+    Recall(#[from] RecallEngineError),
+    /// Memory Packet 无法渲染为模型无关 JSON 上下文。
+    #[error("memory packet serialization failed: {0}")]
+    Packet(#[from] serde_json::Error),
+    /// 强类型标识之间的确定性 UUID 转换失败。
+    #[error("memory identifier conversion failed: {0}")]
+    Identifier(#[from] jc_memory_protocol::IdParseError),
+    /// 派生关系的 Point 端点违反图不变量。
+    #[error("memory edge creation failed: {0}")]
+    Edge(#[from] jc_memory_graph::EdgeCreationError),
 }
 
 impl From<StorageError> for MemoryError {
@@ -105,7 +119,8 @@ impl From<StorageError> for MemoryError {
 /// High-level embedded API for durable Jiangcheng Memory operations.
 #[derive(Clone)]
 pub struct MemoryEngine {
-    repository: Arc<dyn MemoryRepository>,
+    pub(crate) repository: Arc<dyn MemoryRepository>,
+    pub(crate) derived_graph: Arc<RwLock<DerivedGraph>>,
     recovery: Arc<RecoveryManager>,
     event_factory: EventFactory,
     schema_version: i64,
@@ -156,6 +171,7 @@ impl MemoryEngine {
         let recovery = Arc::new(RecoveryManager::from_stores(&store, blobs));
         Ok(Self {
             repository,
+            derived_graph: Arc::new(RwLock::new(DerivedGraph::default())),
             recovery,
             event_factory: EventFactory::new(),
             schema_version,
