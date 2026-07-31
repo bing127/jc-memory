@@ -1,6 +1,12 @@
 //! 疆诚记忆 HTTP 与共享协议服务边界。
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
 
 use axum::{
     Json, Router,
@@ -36,6 +42,8 @@ impl ApiKey {
 pub struct ServerState<B> {
     bus: Arc<B>,
     keys: Arc<BTreeMap<String, AccessContext>>,
+    in_flight: Arc<AtomicUsize>,
+    max_in_flight: usize,
 }
 
 impl<B> Clone for ServerState<B> {
@@ -43,6 +51,8 @@ impl<B> Clone for ServerState<B> {
         Self {
             bus: Arc::clone(&self.bus),
             keys: Arc::clone(&self.keys),
+            in_flight: Arc::clone(&self.in_flight),
+            max_in_flight: self.max_in_flight,
         }
     }
 }
@@ -51,6 +61,16 @@ impl<B> ServerState<B> {
     /// 创建服务状态。
     #[must_use]
     pub fn new(bus: B, keys: impl IntoIterator<Item = ApiKey>) -> Self {
+        Self::with_max_in_flight(bus, keys, 64)
+    }
+
+    /// 创建带有界并发限制的服务状态。
+    #[must_use]
+    pub fn with_max_in_flight(
+        bus: B,
+        keys: impl IntoIterator<Item = ApiKey>,
+        max_in_flight: usize,
+    ) -> Self {
         let keys = keys
             .into_iter()
             .map(|key| (key.value, key.context))
@@ -58,6 +78,8 @@ impl<B> ServerState<B> {
         Self {
             bus: Arc::new(bus),
             keys: Arc::new(keys),
+            in_flight: Arc::new(AtomicUsize::new(0)),
+            max_in_flight,
         }
     }
 
@@ -80,6 +102,7 @@ where
     Router::new()
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
+        .route("/metrics", get(metrics))
         .route("/v1/memory/observe", post(observe::<B>))
         .with_state(state)
 }
@@ -92,6 +115,13 @@ async fn readyz() -> impl IntoResponse {
     Json(json!({"status":"ready"}))
 }
 
+async fn metrics() -> impl IntoResponse {
+    (
+        [("content-type", "text/plain; version=0.0.4")],
+        "jc_memory_server_ready 1\n",
+    )
+}
+
 async fn observe<B>(
     State(state): State<ServerState<B>>,
     headers: HeaderMap,
@@ -100,6 +130,7 @@ async fn observe<B>(
 where
     B: CommandBus + Send + Sync + 'static,
 {
+    let _permit = InFlightPermit::acquire(&state)?;
     let key = extract_api_key(&headers).ok_or(ServerError::Unauthorized)?;
     let access = state.access(&key, &request.request_id)?;
     let response = state
@@ -108,6 +139,40 @@ where
         .await
         .map_err(ServerError::Command)?;
     Ok(Json(response))
+}
+
+struct InFlightPermit {
+    counter: Arc<AtomicUsize>,
+}
+
+impl InFlightPermit {
+    fn acquire<B>(state: &ServerState<B>) -> Result<Self, ServerError> {
+        let mut current = state.in_flight.load(Ordering::Acquire);
+        loop {
+            if current >= state.max_in_flight {
+                return Err(ServerError::RateLimited);
+            }
+            match state.in_flight.compare_exchange_weak(
+                current,
+                current + 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => {
+                    return Ok(Self {
+                        counter: Arc::clone(&state.in_flight),
+                    });
+                }
+                Err(observed) => current = observed,
+            }
+        }
+    }
+}
+
+impl Drop for InFlightPermit {
+    fn drop(&mut self) {
+        self.counter.fetch_sub(1, Ordering::AcqRel);
+    }
 }
 
 fn extract_api_key(headers: &HeaderMap) -> Option<String> {
@@ -162,6 +227,9 @@ pub enum ServerError {
     /// API Key 缺失或无效。
     #[error("unauthorized")]
     Unauthorized,
+    /// 当前并发资源已耗尽。
+    #[error("request concurrency limit exceeded")]
+    RateLimited,
     /// Core 命令错误。
     #[error(transparent)]
     Command(#[from] CommandError),
@@ -177,6 +245,7 @@ impl IntoResponse for ServerError {
     fn into_response(self) -> Response {
         let status = match &self {
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
+            Self::RateLimited => StatusCode::TOO_MANY_REQUESTS,
             Self::Command(error) => match error.code() {
                 jc_memory_protocol::CommandErrorCode::InvalidArgument => StatusCode::BAD_REQUEST,
                 jc_memory_protocol::CommandErrorCode::PermissionDenied => StatusCode::FORBIDDEN,
@@ -190,6 +259,7 @@ impl IntoResponse for ServerError {
         };
         let code = match &self {
             Self::Unauthorized => "unauthorized".into(),
+            Self::RateLimited => "resource_exhausted".into(),
             Self::Command(error) => serde_json::to_value(error.code())
                 .unwrap_or(json!("internal"))
                 .as_str()

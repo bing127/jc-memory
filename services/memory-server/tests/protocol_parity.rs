@@ -119,3 +119,43 @@ async fn missing_api_key_is_rejected_without_calling_bus() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn metrics_is_public_and_concurrency_limit_is_stable() {
+    let metrics_response = router(ServerState::new(FixtureBus, Vec::new()))
+        .oneshot(
+            Request::builder()
+                .uri("/metrics")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(metrics_response.status(), StatusCode::OK);
+    let metrics = metrics_response
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes();
+    assert!(String::from_utf8_lossy(&metrics).contains("jc_memory_server_ready 1"));
+
+    let request = request();
+    let key = ApiKey::new(
+        "test-key",
+        AccessContext::new("principal", request.access_scope.clone().into()),
+    );
+    let limited = router(ServerState::with_max_in_flight(FixtureBus, vec![key], 0))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/memory/observe")
+                .header("content-type", "application/json")
+                .header("x-api-key", "test-key")
+                .body(Body::from(serde_json::to_vec(&request).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(limited.status(), StatusCode::TOO_MANY_REQUESTS);
+}
