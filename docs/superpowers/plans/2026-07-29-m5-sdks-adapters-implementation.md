@@ -114,7 +114,7 @@ it("returns the canonical recall packet", async () => {
 - [x] **步骤 2：运行两个 Adapter 测试，先确认两个 crate 缺失，再完成公开契约红灯到绿灯。**
 - [x] **步骤 3：OpenClaw 使用 CommonMark 解析 heading，按文件路径、内容哈希、heading 和行范围生成 Provenance；Hook/MCP 只调用 Core API；重复导入幂等，内容变化追加新历史。**
 - [x] **步骤 4：Mem0 Add 映射 `Fact + Unverified` Fragment，Search 映射有界 Recall；旧数据默认 `Unverified` 并保留 `legacy_confidence`；Export 保留可 round-trip 的 ID mapping manifest。**
-- [ ] **步骤 5：运行契约测试并提交 `feat(adapters): add OpenClaw and Mem0 migration bridges`**。
+- [x] **步骤 5：已提交 `f9a2ce4 feat(adapters): 增加 OpenClaw 与 Mem0 迁移桥接`；两个 Adapter 聚焦测试 7 个、全 workspace 测试、严格 Clippy、rustdoc、fmt 和 `git diff --check` 均通过。**
 
 ## Task 10：实现 Graphiti 与 Dify Adapter
 
