@@ -29,6 +29,20 @@
 - 增加 Snapshot/Restore、固定阶段派生重建、治理 Export、先计划后执行的 Retention、Key Provider 契约和无正文凭证的 Hard Delete。
 - 增加 M3 访问控制、Quarantine、Retention、威胁模型、巩固/重建架构文档与 ADR 0007-0008。
 
+### M4 已实现范围
+
+- 增加可恢复 `RuntimeService`，固定编排 Observe、Recall、Model、Policy/Approval、Execute、Commit 和 Completed，并保留每阶段的 Scope、Trace、截止时间和 EvidenceRef。
+- 增加 Server 的 HTTP/gRPC、YAML/环境变量配置、文件型 TLS、请求超时、并发/速率限制和 Docker/Kubernetes 资源；增加 Sidecar 的本地认证、单实例锁、生命周期检查点、优雅关闭、`jcmem`/`jcmemd` 和 Windows Named Pipe 代码路径。
+- 增加 MCP 七类工具、结构化结果和经 Sidecar 的 `ExecuteAs` 主体转发；增加文件型 `KeyProvider` 的受限权限、原子发布、轮换元数据和损坏记录拒绝。
+- 保留原始 Fragment、Event、EvidenceRef 的权威性，Prediction、Inference、Plan 和 ToolResult 不会自动升级为 Verified Fact。
+
+### M4 Verification
+
+- `cargo test --workspace` 通过；Runtime、Server、Sidecar、MCP、文件型 KeyProvider 和真实 Server 重启测试均通过。
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings`、`RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps`、`cargo fmt --all -- --check` 和 `git diff --check` 通过。
+- 协议一致性使用本地临时 SQLite Fixture 和真实本机进程验收；不把 Fixture 描述为 Windows、Docker、Kubernetes 或其他平台实机结果。
+- 当前主机缺少 Windows MinGW 工具链、Docker、kubectl 和 Wine，因此 Windows 实机传输、容器构建/启动、Kubernetes 集群和独立部署进程组合 E2E 保留为待外部环境验收项。
+
 ### M3 已知边界
 
 - M3 验证限定为本地 Rust、SQLite 和文件系统调用链；没有验证远程身份、HTTP/gRPC/MCP、TLS、KMS/HSM、云备份或外部模型。
