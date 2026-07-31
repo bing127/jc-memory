@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 pub struct SidecarConfig {
     /// 数据目录，也是默认状态文件目录。
     pub data_dir: PathBuf,
-    /// 本地传输端点；Unix 使用 UDS 路径，其他平台使用地址文本。
+    /// 本地传输端点；Unix 使用 UDS，Windows 使用 Named Pipe 名称映射，其他平台使用地址文本。
     pub endpoint: PathBuf,
     /// 认证 Token 文件。
     pub token_file: PathBuf,

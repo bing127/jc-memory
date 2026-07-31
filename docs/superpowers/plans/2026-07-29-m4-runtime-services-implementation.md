@@ -122,7 +122,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - [x] **步骤 4：Tonic 实现同一 CommandBus；REST/gRPC 共享错误分类和 request_id；TLS 从文件加载且不记录密钥；HTTP/gRPC 统一请求超时、并发和按 API Key 速率限制。**
 - [x] **步骤 5：运行协议测试、TCP gRPC 测试和全仓门禁；按命令能力独立提交并推送。**
 
-> 当前已落地 Server 基础边界：`/healthz`、`/readyz`、Observe/Recall/Stats/Correct/Forget/Explain REST 路由、API Key 到服务端 `AccessContext` 的映射，以及共享 `CommandBus` 的适配器。真实 Tonic `Execute` 网络门面已接入；gRPC 文件型 TLS 已接入 `JC_MEMORY_TLS_CERT_FILE` 与 `JC_MEMORY_TLS_KEY_FILE`，并要求证书和私钥成对配置。未配置 TLS 时仍保留本机明文开发模式。当前七类 Memory 命令、请求超时、并发门禁和速率限制已有协议实现；KeyProvider 生产实现和 M4 总体验收仍待完成。
+> 当前已落地 Server 基础边界：`/healthz`、`/readyz`、Observe/Recall/Stats/Correct/Forget/Explain REST 路由、API Key 到服务端 `AccessContext` 的映射，以及共享 `CommandBus` 的适配器。真实 Tonic `Execute` 网络门面已接入；gRPC 文件型 TLS 已接入 `JC_MEMORY_TLS_CERT_FILE` 与 `JC_MEMORY_TLS_KEY_FILE`，并要求证书和私钥成对配置。未配置 TLS 时仍保留本机明文开发模式。当前七类 Memory 命令、请求超时、并发门禁和速率限制已有协议实现；文件型 KeyProvider 已完成，M4 总体验收仍待完成。
 
 ### 2026-07-31 进度记录
 
@@ -147,7 +147,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - 已接入可配置请求 deadline；`JC_MEMORY_REQUEST_TIMEOUT_MS` 默认 30000，HTTP 超时返回 504，gRPC 超时返回 `DeadlineExceeded`，并保留请求标识。
 - 已完成 Recall、Stats、Correct、Forget、Explain 的强类型 Protobuf 请求/响应扩展，所有领域字段通过编解码往返测试保持无损；真实 TCP gRPC 已覆盖 Recall Execute。
 - 已完成按文件加载的 gRPC TLS、YAML/环境变量配置、请求超时、共享并发门禁和按 API Key 速率限制；Docker/Kubernetes 仅完成静态资源与契约验证。
-- Task 7 仍不代表 M4 完成：KeyProvider 生产实现、Sidecar 到 MCP 的身份转发链和完整 Embedded/REST/gRPC/Sidecar/MCP 跨协议 E2E 仍待完成。
+- Task 7 仍不代表 M4 完成：Sidecar 到 MCP 的身份转发链和完整 Embedded/REST/gRPC/Sidecar/MCP 跨协议部署级 E2E 仍待完成。
 
 ## Task 8：实现本地 Sidecar
 
@@ -155,14 +155,14 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 
 - [x] **步骤 1：写第二实例被锁拒绝、Token 错误、崩溃重启和 shutdown 失败测试。** 已覆盖锁拒绝、错误 Token、重启、在途 Execute、未认证空闲连接、畸形连接隔离、shutdown 成功与失败。
 - [x] **步骤 2：运行聚焦 Sidecar 契约测试。**
-- [x] **步骤 3a：实现 Transport Trait；Unix 使用权限 0600 的 UDS，非 Unix 使用随机 Loopback 端点文件；Named Pipe 只保留 Trait 扩展点，不宣称已实现。`jcmemd` 运行守护进程；`jcmem` 提供 status/stop/doctor/observe/recall/commit/correct/forget/explain/stats 子命令并使用同一协议 Client。**
+- [x] **步骤 3a：实现 Transport Trait；Unix 使用权限 0600 的 UDS，Windows 使用 Tokio Named Pipe，其他平台使用随机 Loopback 端点文件。`jcmemd` 运行守护进程；`jcmem` 提供 status/stop/doctor/observe/recall/commit/correct/forget/explain/stats 子命令并使用同一协议 Client。**
 - [x] **步骤 3b-1：补充 `jcmem start`，并通过本机启动、状态和停止探针。**
 - [ ] **步骤 3b-2：补充 Windows 实机传输验证。** 当前环境为 macOS，未宣称 Windows 实机验证。
 - [x] **步骤 4a：Token 使用 256-bit 随机值、权限受限文件和常量时间比较；停止流程等待已认证在途请求。**
 - [x] **步骤 4b-1：文件锁记录 PID/启动标识，并在 OS 锁可取得但存在旧元数据时标记陈旧锁。**
 - [x] **步骤 4b-2：生命周期 checkpoint 识别非干净重启并原子发布；停止时取消未认证空闲连接、等待已认证在途请求、显式关闭 CommandBus/SQLite 并记录干净退出。**
 - [x] **步骤 5a：运行 Sidecar 测试、Clippy、rustdoc、fmt 和 `git diff --check`。**
-- [ ] **步骤 5b：完成 Sidecar 全部边界后创建阶段总提交。**
+- [x] **步骤 5b：提交当前已实现的 Sidecar 传输与生命周期边界。** Windows 实机传输仍受当前主机缺少 MinGW 工具链限制，保留步骤 3b-2 未勾选，不创建 M4 总 Tag。
 
 ### 2026-07-31 进度记录
 
@@ -171,11 +171,12 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - 已增加带共享 `CommandBus` 的 `execute` 控制消息和 Commit 转发契约测试；请求仍由本地 Token、精确 Scope 和 Core ACL 共同保护。
 - 已增加 `jcmem observe/commit/recall/correct/forget/explain/stats` 专用子命令；每个子命令接收 `--request-file` 或 `--request-json`，并在发送前校验命令类型与 Envelope。
 - 已将 Sidecar 连接改为并发任务处理；`stop` 会停止接收新连接并等待已认证的在途连接完成后再退出，新增阻塞 CommandBus 契约测试。
-- 非 Unix Loopback 已通过端点文件保存随机端口并由客户端读取连接；Named Pipe 和 Windows 实机验证尚未完成。因此 Task 8 不标记为完成。
+- Windows Named Pipe 已通过目标专用代码路径和稳定管道名契约测试；当前主机缺少 MinGW 编译器，Windows 编译和实机验证仍未完成。其他非 Unix 平台继续使用端点文件保存随机端口。
 - 已增加 `jcmemd` 守护进程别名和 `jcmem start`；本机临时目录启动、状态、停止探针通过。Windows 实机传输仍待专用环境验证。
 - 锁文件现在记录 PID/启动标识，并在旧元数据残留但 OS 锁已释放时报告陈旧恢复。
 - 生命周期检查点记录 `running`/`stopped`、PID 和启动时间；非干净重启可被识别，干净停止会在等待在途请求后调用 CommandBus shutdown，Embedded Bus 显式关闭 SQLite 连接池。
 - 检查点通过同目录临时文件、文件同步和原子替换发布；Unix 同步父目录，Windows 使用目录句柄刷新目录项。取得实例锁后才读取旧状态。单连接解析错误不会终止守护进程，未认证空闲连接也不会阻塞干净停止；shutdown 失败会保留 `running`。
+- Windows 传输抽象已切换为 Tokio Named Pipe，服务端滚动创建管道实例，端点路径通过稳定 FNV-1a 名称映射；当前仅完成代码路径和目标专用契约测试，未完成 Windows 编译工具链与实机传输验证。
 
 ## Task 9：实现 MCP Server
 

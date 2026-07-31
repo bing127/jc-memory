@@ -26,4 +26,4 @@ Runtime Snapshot 和 Transition 保存在 SQLite。恢复会校验 Scope、版�
 
 Sidecar 锁文件记录 PID 与启动标识。OS 锁可取得但旧元数据仍存在时，会标记为陈旧元数据恢复；如果其他进程仍持有 OS 锁，则拒绝第二实例。`stop` 等待已认证在途请求后退出。
 
-Sidecar 生命周期 checkpoint 记录 `running`、`stopped`、PID 和启动时间，通过同目录临时文件、文件同步和原子替换发布；Unix 同步父目录，Windows 使用目录句柄刷新目录项。实例取得 OS 锁后才读取该文件，可识别上一次未干净停止；关闭资源失败时不会写入 `stopped`。它不包含记忆数据，也不会自动执行 Snapshot Restore 或 Runtime Run 恢复。Windows 实机传输和完整恢复演练完成前，不应把 Sidecar 描述为完整跨平台崩溃恢复服务。
+Sidecar 生命周期 checkpoint 记录 `running`、`stopped`、PID 和启动时间，通过同目录临时文件、文件同步和原子替换发布；Unix 同步父目录，Windows 使用目录句柄刷新目录项。实例取得 OS 锁后才读取该文件，可识别上一次未干净停止；关闭资源失败时不会写入 `stopped`。它不包含记忆数据，也不会自动执行 Snapshot Restore 或 Runtime Run 恢复。Windows Named Pipe 已实现，但 Windows 编译工具链、实机传输和完整恢复演练仍未完成，不应把当前结果描述为完整跨平台崩溃恢复服务。
