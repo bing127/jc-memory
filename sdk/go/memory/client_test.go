@@ -88,7 +88,10 @@ func TestClientHonorsContextCancellation(t *testing.T) {
 	started := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
 		close(started)
-		<-request.Context().Done()
+		select {
+		case <-request.Context().Done():
+		case <-time.After(500 * time.Millisecond):
+		}
 	}))
 	defer server.Close()
 

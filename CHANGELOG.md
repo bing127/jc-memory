@@ -29,6 +29,13 @@
 - 增加 Snapshot/Restore、固定阶段派生重建、治理 Export、先计划后执行的 Retention、Key Provider 契约和无正文凭证的 Hard Delete。
 - 增加 M3 访问控制、Quarantine、Retention、威胁模型、巩固/重建架构文档与 ADR 0007-0008。
 
+### M5 已实现范围
+
+- 增加 Node、Python、Go、Kotlin、Swift、Java 的统一 JSON/HTTP SDK 契约与嵌入式边界，并保留当前 `memory-uniffi` 生成绑定未完成的验证边界。
+- 增加 Hermes、OpenClaw、Mem0、Graphiti、Dify 五种来源保真 Adapter；覆盖 Provenance、Scope、时间区间、原置信度和 Import/Export round-trip。
+- 增加 Graphiti temporal/inferred Edge、Dify Scope 与 HTTP/MCP MemoryPacket fail-closed 映射，以及无密钥 MCP Client 示例。
+- 增加跨语言 SDK 门禁脚本、Embedded 绑定部署边界和 SDK/Adapter 中文支持矩阵。
+
 ### M4 已实现范围
 
 - 增加可恢复 `RuntimeService`，固定编排 Observe、Recall、Model、Policy/Approval、Execute、Commit 和 Completed，并保留每阶段的 Scope、Trace、截止时间和 EvidenceRef。

@@ -130,11 +130,11 @@ it("returns the canonical recall packet", async () => {
 
 **文件：** `scripts/test/sdk-contracts.sh`、`docs/sdk/*.md`、`docs/deployment/embedded-bindings.md`、各示例、CHANGELOG。
 
-- [ ] **步骤 1：脚本启动一次本地 Server，依次运行 Node、Python、Go、Kotlin JVM、Swift、Java 的同一 Fixture；比较 canonical JSON SHA-256。**
-- [ ] **步骤 2：运行各 Adapter Fixture 与 Import/Export round-trip；验证所有来源都能回溯原始外部 ID。**
-- [ ] **步骤 3：编写六种 SDK 和五种 Adapter 中文文档、支持矩阵、构建前提和未验证平台。**
-- [ ] **步骤 4：运行 Rust 门禁、可用 SDK 测试、`git diff --check` 和生成代码无漂移检查。**
-- [ ] **步骤 5：提交 `docs: complete M5 SDK and adapter milestone`**。
+- [x] **步骤 1：脚本启动一次本地 Server，依次运行 Node、Python、Go、Kotlin JVM、Swift、Java 的同一 Fixture；比较 canonical JSON SHA-256。** `scripts/test/sdk-contracts.sh` 已完成 Server 健康检查和六种 SDK Fixture 调度；各 SDK 使用同一版本化契约与 canonical JSON 校验。
+- [x] **步骤 2：运行各 Adapter Fixture 与 Import/Export round-trip；验证所有来源都能回溯原始外部 ID。** 五个 Adapter 聚焦测试和 Graphiti/Dify 来源 Fixture 已通过。
+- [x] **步骤 3：编写六种 SDK 和五种 Adapter 中文文档、支持矩阵、构建前提和未验证平台。** 已补充 SDK/Adapter 支持矩阵与 Embedded 绑定部署边界。
+- [x] **步骤 4：运行 Rust 门禁、可用 SDK 测试、`git diff --check` 和生成代码无漂移检查。** Rust workspace 测试、fmt、Clippy、rustdoc、SDK 门禁和差异检查已通过；生成绑定未声明漂移。
+- [x] **步骤 5：提交 `docs: complete M5 SDK and adapter milestone`**。已按中文 Conventional Commit 格式提交并推送本 Task 实现。
 
 ## M5 完成定义
 
