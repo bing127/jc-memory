@@ -56,7 +56,7 @@ impl EventFactory {
 }
 
 fn hex_digest(bytes: &[u8]) -> Result<BlobId, jc_memory_protocol::IdParseError> {
-    BlobId::from_str(&format!("{:x}", Sha256::digest(bytes)))
+    BlobId::from_str(&hex::encode(Sha256::digest(bytes)))
 }
 
 fn canonicalize(value: Value) -> Value {

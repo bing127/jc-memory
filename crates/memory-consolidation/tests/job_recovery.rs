@@ -385,7 +385,7 @@ async fn expired_lease_can_be_taken_over_by_another_worker() {
     let job = harness.jobs.submit(Harness::spec(2)).await.unwrap();
     harness
         .jobs
-        .claim(job.id, "worker-a", Duration::from_secs(60))
+        .claim(job.id, "worker-a", Duration::from_mins(1))
         .await
         .unwrap();
     assert!(matches!(

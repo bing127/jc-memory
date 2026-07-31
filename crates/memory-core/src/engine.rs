@@ -337,7 +337,7 @@ impl MemoryEngine {
 }
 
 pub(crate) fn short_hash(value: &str) -> String {
-    let digest = format!("{:x}", Sha256::digest(value.as_bytes()));
+    let digest = hex::encode(Sha256::digest(value.as_bytes()));
     digest[..12].to_owned()
 }
 

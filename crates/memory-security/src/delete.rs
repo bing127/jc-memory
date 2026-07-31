@@ -461,10 +461,11 @@ async fn restore_staged_blobs(staged_blobs: &[StagedBlob]) -> Result<(), Governa
 async fn remove_staged_blobs(staged_blobs: &[StagedBlob]) -> Result<(), std::io::Error> {
     let mut first_error = None;
     for staged in staged_blobs {
-        if let Err(error) = tokio::fs::remove_file(&staged.staged).await {
-            if error.kind() != std::io::ErrorKind::NotFound && first_error.is_none() {
-                first_error = Some(error);
-            }
+        if let Err(error) = tokio::fs::remove_file(&staged.staged).await
+            && error.kind() != std::io::ErrorKind::NotFound
+            && first_error.is_none()
+        {
+            first_error = Some(error);
         }
     }
     match first_error {

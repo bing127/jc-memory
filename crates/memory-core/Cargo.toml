@@ -17,6 +17,7 @@ jc-memory-semantic = { path = "../memory-semantic" }
 jc-memory-security = { path = "../memory-security" }
 jc-memory-storage = { path = "../memory-storage" }
 jc-memory-surface = { path = "../memory-surface" }
+hex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

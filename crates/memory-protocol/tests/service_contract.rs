@@ -81,7 +81,9 @@ fn buf_round_trips_observe_json_through_protobuf() {
         proto::RequestEnvelope::decode(std::fs::read(binary).expect("读取 Buf Proto").as_slice())
             .expect("解码 Buf Proto");
     let request = MemoryRequest::try_from(wire).expect("完整 Fixture 转 Rust 请求");
-    let MemoryCommand::Observe(command) = request.command;
+    let MemoryCommand::Observe(command) = request.command else {
+        panic!("Fixture command must be Observe");
+    };
     assert_eq!(
         MemoryScope::from(request.access_scope),
         command.fragment.scope

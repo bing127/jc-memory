@@ -344,26 +344,28 @@ impl RecoveryManager {
     pub async fn rebuild_fts(&self) -> Result<RebuildReport, RecoveryError> {
         let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
         let result = async {
-            sqlx::query(&format!("DROP TABLE IF EXISTS {FTS_REBUILD_TABLE}"))
-                .execute(&mut *transaction)
-                .await?;
-            sqlx::query(&format!(
+            sqlx::query(sqlx::AssertSqlSafe(format!(
+                "DROP TABLE IF EXISTS {FTS_REBUILD_TABLE}"
+            )))
+            .execute(&mut *transaction)
+            .await?;
+            sqlx::query(sqlx::AssertSqlSafe(format!(
                 "CREATE VIRTUAL TABLE {FTS_REBUILD_TABLE} USING fts5(
                     fragment_id UNINDEXED,
                     scope_key UNINDEXED,
                     body,
                     tokenize = 'unicode61 remove_diacritics 2'
                  )"
-            ))
+            )))
             .execute(&mut *transaction)
             .await?;
-            sqlx::query(&format!(
+            sqlx::query(sqlx::AssertSqlSafe(format!(
                 "INSERT INTO {FTS_REBUILD_TABLE} (fragment_id, scope_key, body)
                  SELECT f.id, f.scope_key, CAST(c.inline_value AS TEXT)
                  FROM fragments AS f
                  JOIN fragment_contents AS c ON c.id = f.content_id
                  WHERE c.storage_kind IN ('inline_text', 'inline_json')"
-            ))
+            )))
             .execute(&mut *transaction)
             .await?;
 
@@ -383,15 +385,17 @@ impl RecoveryManager {
             sqlx::query("DELETE FROM fragment_fts")
                 .execute(&mut *transaction)
                 .await?;
-            sqlx::query(&format!(
+            sqlx::query(sqlx::AssertSqlSafe(format!(
                 "INSERT INTO fragment_fts (fragment_id, scope_key, body)
                  SELECT fragment_id, scope_key, body FROM {FTS_REBUILD_TABLE}"
-            ))
+            )))
             .execute(&mut *transaction)
             .await?;
-            sqlx::query(&format!("DROP TABLE {FTS_REBUILD_TABLE}"))
-                .execute(&mut *transaction)
-                .await?;
+            sqlx::query(sqlx::AssertSqlSafe(format!(
+                "DROP TABLE {FTS_REBUILD_TABLE}"
+            )))
+            .execute(&mut *transaction)
+            .await?;
             Ok(RebuildReport {
                 indexed_fragments: indexed,
                 replaced_rows,
@@ -573,7 +577,7 @@ async fn validate_scope_derived_table(
     validate_stage_tables(pool, &[table]).await?;
     let scope_key = canonical_scope_key(scope)?;
     let statement = format!("SELECT COUNT(*) FROM {table} WHERE scope_key = ?1");
-    let _: i64 = sqlx::query_scalar(&statement)
+    let _: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(statement))
         .bind(scope_key)
         .fetch_one(pool)
         .await?;
@@ -758,7 +762,7 @@ async fn query_count(
     transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     query: &str,
 ) -> Result<u64, RecoveryError> {
-    let count: i64 = sqlx::query_scalar(query)
+    let count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(query))
         .fetch_one(&mut **transaction)
         .await?;
     Ok(u64::try_from(count).unwrap_or(0))

@@ -348,7 +348,7 @@ async fn runtime_rows_are_append_only_without_breaking_legacy_transition_foreign
         .await
         .unwrap();
     let statement = "UPDATE runtime_runs SET scope_key = ?1 WHERE run_id = 'run-scope'";
-    let error = sqlx::query(statement)
+    let error = sqlx::query(sqlx::AssertSqlSafe(statement))
         .bind(&other_scope_key)
         .execute(database.store.pool())
         .await
@@ -503,7 +503,7 @@ async fn insert_legacy_transition(store: &SqliteStore, id: &str, scope_key: &str
 }
 
 async fn assert_sql_rejected(store: &SqliteStore, statement: &str) {
-    let error = sqlx::query(statement)
+    let error = sqlx::query(sqlx::AssertSqlSafe(statement))
         .execute(store.pool())
         .await
         .expect_err("不可变 Runtime 行修改必须被拒绝");

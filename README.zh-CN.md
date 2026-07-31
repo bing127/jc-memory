@@ -27,7 +27,7 @@
 
 ## 五分钟开始
 
-需要 Rust 1.85 或更高版本。仓库当前使用 Rust 2024 Edition，不依赖外部 LLM、Python、数据库服务或网络 API。
+需要 Rust 1.97 或更高版本。仓库当前使用 Rust 2024 Edition，不依赖外部 LLM、Python、数据库服务或网络 API。
 
 先运行真实的嵌入式持久化与 M3 聚焦验收：
 

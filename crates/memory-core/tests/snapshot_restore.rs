@@ -440,7 +440,7 @@ async fn authority_hash(data_dir: &Path) -> String {
         "SELECT json_array(id, owner_fragment_id, referenced_fragment_id, referenced_event_id,
                 verification_method, note, created_at_us) FROM evidence_refs ORDER BY id",
     ] {
-        let rows: Vec<String> = sqlx::query_scalar(query)
+        let rows: Vec<String> = sqlx::query_scalar(sqlx::AssertSqlSafe(query))
             .fetch_all(store.pool())
             .await
             .expect("读取权威行");
@@ -449,7 +449,7 @@ async fn authority_hash(data_dir: &Path) -> String {
             digest.update([0]);
         }
     }
-    format!("{:x}", digest.finalize())
+    hex::encode(digest.finalize())
 }
 
 async fn open_store(data_dir: &Path) -> SqliteStore {

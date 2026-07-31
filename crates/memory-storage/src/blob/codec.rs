@@ -37,9 +37,10 @@ pub(crate) fn encode(plaintext: &[u8], options: &BlobOptions) -> Result<Vec<u8>,
     if let Encryption::Aes256Gcm { key } = &options.encryption {
         let cipher =
             Aes256Gcm::new_from_slice(key.as_ref()).map_err(|_| BlobError::EncryptionFailed)?;
+        let nonce = Nonce::try_from(nonce.as_slice()).map_err(|_| BlobError::EncryptionFailed)?;
         payload = cipher
             .encrypt(
-                Nonce::from_slice(&nonce),
+                &nonce,
                 Payload {
                     msg: &payload,
                     aad: &header,
@@ -82,9 +83,10 @@ pub(crate) fn decode(
     } else if let Encryption::Aes256Gcm { key } = &options.encryption {
         let cipher =
             Aes256Gcm::new_from_slice(key.as_ref()).map_err(|_| BlobError::DecryptionFailed)?;
+        let nonce = Nonce::try_from(envelope.nonce).map_err(|_| BlobError::DecryptionFailed)?;
         cipher
             .decrypt(
-                Nonce::from_slice(envelope.nonce),
+                &nonce,
                 Payload {
                     msg: envelope.payload,
                     aad: envelope.authenticated_header,

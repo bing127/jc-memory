@@ -911,7 +911,7 @@ async fn seed_derived_rows(
 
 async fn count(store: &SqliteStore, table: &str, column: &str, value: &str) -> i64 {
     let query = format!("SELECT COUNT(*) FROM {table} WHERE {column} = ?1");
-    sqlx::query_scalar(&query)
+    sqlx::query_scalar(sqlx::AssertSqlSafe(query))
         .bind(value)
         .fetch_one(store.pool())
         .await

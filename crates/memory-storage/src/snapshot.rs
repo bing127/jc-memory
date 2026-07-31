@@ -168,10 +168,10 @@ impl SnapshotManager {
         };
         if let Err(switch) = tokio::fs::rename(&staging_path, data_dir).await {
             let _ = tokio::fs::remove_dir_all(&staging_path).await;
-            if let Some(backup) = &backup {
-                if let Err(rollback) = tokio::fs::rename(backup, data_dir).await {
-                    return Err(SnapshotError::RollbackFailed { switch, rollback });
-                }
+            if let Some(backup) = &backup
+                && let Err(rollback) = tokio::fs::rename(backup, data_dir).await
+            {
+                return Err(SnapshotError::RollbackFailed { switch, rollback });
             }
             return Err(switch.into());
         }
@@ -378,7 +378,7 @@ async fn validate_database_scope(
         // 表名来自 SQLite Schema，仍需引用转义以避免损坏快照改变语句结构。
         let quoted_table = table.replace('"', "\"\"");
         let statement = format!("SELECT COUNT(*) FROM \"{quoted_table}\" WHERE scope_key != ?1");
-        let foreign_rows: i64 = sqlx::query_scalar(&statement)
+        let foreign_rows: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(statement))
             .bind(&scope_key)
             .fetch_one(&mut connection)
             .await?;

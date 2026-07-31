@@ -20,37 +20,37 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.97"
 license-file = "LICENSE"
 authors = ["Jiangcheng Memory Contributors"]
 
 [workspace.dependencies]
-aes-gcm = "0.10"
+aes-gcm = "0.11"
 axum = "0.8"
 async-trait = "0.1"
 bytes = "1"
 chrono = { version = "0.4", features = ["serde"] }
 fs2 = "0.4"
 futures = "0.3"
-getrandom = "0.3"
 hex = "0.4"
+getrandom = "0.4"
 proptest = "1"
-prost = "0.13"
-prost-build = "0.13"
-prost-types = "0.13"
-reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+prost = "0.14"
+prost-types = "0.14"
+reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls"] }
 semver = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = "0.10"
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros", "chrono", "uuid", "json"] }
+sha2 = "0.11"
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros", "chrono", "uuid", "json"] }
 tempfile = "3"
 thiserror = "2"
 tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-stream = { version = "0.1", features = ["net"] }
 tokio-util = { version = "0.7", features = ["rt"] }
-tonic = { version = "0.13", features = ["transport"] }
-tonic-build = "0.13"
+tonic = { version = "0.14", features = ["tls-ring", "transport"] }
+tonic-prost = "0.14"
+tonic-prost-build = "0.14"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 uuid = { version = "1", features = ["serde", "v7"] }

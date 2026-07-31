@@ -85,7 +85,9 @@ async fn run_check(
     check: &'static str,
     statement: &str,
 ) -> Result<(), StorageError> {
-    let results: Vec<String> = sqlx::query_scalar(statement).fetch_all(pool).await?;
+    let results: Vec<String> = sqlx::query_scalar(sqlx::AssertSqlSafe(statement))
+        .fetch_all(pool)
+        .await?;
     if results.len() == 1 && results[0].eq_ignore_ascii_case("ok") {
         return Ok(());
     }

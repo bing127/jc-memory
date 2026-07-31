@@ -732,7 +732,7 @@ impl Harness {
 
 async fn table_count(pool: &sqlx::SqlitePool, table: &str) -> i64 {
     let statement = format!("SELECT COUNT(*) FROM {table}");
-    sqlx::query_scalar(&statement)
+    sqlx::query_scalar(sqlx::AssertSqlSafe(statement))
         .fetch_one(pool)
         .await
         .expect("count table rows")

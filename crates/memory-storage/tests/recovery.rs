@@ -106,7 +106,7 @@ async fn garbage_collection_respects_grace_period_and_process_lock() {
     let orphan = harness.put_orphan_blob(b"young orphan").await;
     let report = harness
         .recovery
-        .collect_garbage(GcPolicy::delete_after(Duration::from_secs(3600)))
+        .collect_garbage(GcPolicy::delete_after(Duration::from_hours(1)))
         .await
         .expect("collect with grace period");
     assert!(report.removed.is_empty());
