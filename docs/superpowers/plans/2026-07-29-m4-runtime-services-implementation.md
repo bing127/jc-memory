@@ -107,11 +107,10 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 
 - [x] **步骤 1：写 WaitingUser 恢复、取消、重试上限、非幂等工具不重放、MCP 超时失败测试。**
 - [x] **步骤 2：运行测试**，预期控制 API 缺失。
-- [ ] **步骤 3：实现 RunControl 的 pause/resume/cancel/provide_user_input；RetryPolicy 按错误分类且持久化 next_attempt_at。**
+- [x] **步骤 3：实现 RunControl 的 pause/resume/cancel/provide_user_input；RetryPolicy 按错误分类且持久化 next_attempt_at。**
 - [x] **步骤 4：MCP Client 支持 initialize、tools/list、tools/call、协议版本和超时；CompletionJudge 同时检查目标、待审批、待工具、缺失证据和最大步数。**
 - [x] **步骤 5：运行测试并提交 `feat(runtime): add pause resume MCP and completion control`**。
 
-> Task 6 当前控制状态与 `next_attempt_at` 仍是可持久化值对象，尚未接入 Runtime SQLite 的跨重启恢复；该持久化闭环在后续恢复增强中继续完成。
 
 ## Task 7：实现 HTTP/gRPC Server
 

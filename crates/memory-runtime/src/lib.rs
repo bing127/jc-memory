@@ -7,6 +7,7 @@ mod control;
 mod mcp_client;
 mod model;
 mod parser;
+mod persistence;
 mod policy;
 mod providers;
 mod recovery;
@@ -31,6 +32,7 @@ pub use model::{
     ToolRequest,
 };
 pub use parser::{ModelParseError, parse_model_output};
+pub use persistence::{RuntimeCheckpoint, RuntimeCheckpointError, RuntimeCheckpointStore};
 pub use policy::{PolicyDecision, PolicyEngine};
 pub use providers::{
     GenericHttpConfig, GenericHttpProvider, OpenAiAuth, OpenAiCompatibleConfig,

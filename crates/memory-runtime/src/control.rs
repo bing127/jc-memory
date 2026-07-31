@@ -118,6 +118,27 @@ impl RunControl {
     }
 }
 
+impl ControlState {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::WaitingUser => "waiting_user",
+            Self::Paused => "paused",
+            Self::Cancelled => "cancelled",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "running" => Some(Self::Running),
+            "waiting_user" => Some(Self::WaitingUser),
+            "paused" => Some(Self::Paused),
+            "cancelled" => Some(Self::Cancelled),
+            _ => None,
+        }
+    }
+}
+
 impl Default for RunControl {
     fn default() -> Self {
         Self::new()

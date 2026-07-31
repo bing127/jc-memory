@@ -177,7 +177,7 @@ async fn reopening_the_same_database_is_migration_idempotent() {
             .fetch_one(second.pool())
             .await
             .expect("count applied migrations");
-    assert_eq!(applied_migrations, 4);
+    assert_eq!(applied_migrations, 5);
 }
 
 #[tokio::test]
