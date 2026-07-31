@@ -25,6 +25,10 @@ mod platform {
         tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).await?;
         Ok(listener)
     }
+
+    pub async fn connect(path: &Path) -> Result<Stream, TransportError> {
+        Ok(UnixStream::connect(path).await?)
+    }
 }
 
 #[cfg(not(unix))]
@@ -35,8 +39,16 @@ mod platform {
     pub type Listener = TcpListener;
     pub type Stream = TcpStream;
 
-    pub async fn bind(_path: &Path) -> Result<Listener, TransportError> {
-        Ok(TcpListener::bind("127.0.0.1:0").await?)
+    pub async fn bind(path: &Path) -> Result<Listener, TransportError> {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let address = listener.local_addr()?.to_string();
+        tokio::fs::write(path, address).await?;
+        Ok(listener)
+    }
+
+    pub async fn connect(path: &Path) -> Result<Stream, TransportError> {
+        let address = tokio::fs::read_to_string(path).await?;
+        Ok(TcpStream::connect(address.trim()).await?)
     }
 }
 
@@ -84,15 +96,59 @@ impl SidecarStream {
     ///
     /// 端点不存在或连接失败时返回错误。
     pub async fn connect(path: &Path) -> Result<Self, TransportError> {
-        #[cfg(unix)]
-        let inner = tokio::net::UnixStream::connect(path).await?;
-        #[cfg(not(unix))]
-        let inner = tokio::net::TcpStream::connect(path.to_string_lossy().as_ref()).await?;
+        let inner = platform::connect(path).await?;
         Ok(Self { inner })
     }
 
     /// 拆出底层 Tokio 流以便读写行协议。
     pub fn into_inner(self) -> platform::Stream {
         self.inner
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SidecarListener, SidecarStream};
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn unix_endpoint_accepts_a_local_connection() {
+        let directory = tempfile::tempdir().expect("创建传输测试目录");
+        let endpoint = directory.path().join("jcmemd.sock");
+        let listener = SidecarListener::bind(&endpoint).await.expect("绑定 UDS");
+        let connecting = tokio::spawn({
+            let endpoint = endpoint.clone();
+            async move { SidecarStream::connect(&endpoint).await }
+        });
+        let accepted = listener.accept().await.expect("接受 UDS 连接");
+        connecting
+            .await
+            .expect("等待 UDS 客户端")
+            .expect("连接 UDS");
+        drop(accepted);
+    }
+
+    #[cfg(not(unix))]
+    #[tokio::test]
+    async fn loopback_endpoint_persists_the_random_address_for_clients() {
+        let directory = tempfile::tempdir().expect("创建传输测试目录");
+        let endpoint = directory.path().join("jcmemd.endpoint");
+        let listener = SidecarListener::bind(&endpoint)
+            .await
+            .expect("绑定 Loopback");
+        let address = tokio::fs::read_to_string(&endpoint)
+            .await
+            .expect("读取 Loopback 地址");
+        assert!(address.starts_with("127.0.0.1:"));
+        let connecting = tokio::spawn({
+            let endpoint = endpoint.clone();
+            async move { SidecarStream::connect(&endpoint).await }
+        });
+        let accepted = listener.accept().await.expect("接受 Loopback 连接");
+        connecting
+            .await
+            .expect("等待 Loopback 客户端")
+            .expect("连接 Loopback");
+        drop(accepted);
     }
 }

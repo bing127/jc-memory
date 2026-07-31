@@ -8,7 +8,7 @@
 - 使用固定长度逐字节比较验证控制请求，不把 Token 写入日志或响应。
 - 使用文件排他锁保证一个数据目录只运行一个 Sidecar；进程退出或崩溃后由操作系统释放锁。
 - Unix 使用权限为 `0600` 的 Unix Domain Socket。
-- 非 Unix 平台保留本地 Loopback 传输抽象；Named Pipe 尚未实现。
+- 非 Unix 平台使用随机端口的本地 Loopback，并将地址写入受数据目录保护的端点文件；Named Pipe 尚未实现。
 - 控制命令支持 `status`、`stop`、`doctor`，以及 `observe`、`commit`、`recall`、`correct`、`forget`、`explain`、`stats` 七个业务子命令。
 - 绑定 Core 的守护进程支持 `execute` 控制消息，将 `MemoryRequest` 转发到共享 `CommandBus` 并返回 `ResponseEnvelope`；Commit 已覆盖该转发路径。
 - 连接按任务并发处理；收到 `stop` 后停止接收新连接，并等待已经通过认证的在途请求完成响应后退出。

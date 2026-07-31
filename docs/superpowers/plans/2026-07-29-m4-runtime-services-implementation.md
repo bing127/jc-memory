@@ -165,7 +165,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - 已增加带共享 `CommandBus` 的 `execute` 控制消息和 Commit 转发契约测试；请求仍由本地 Token、精确 Scope 和 Core ACL 共同保护。
 - 已增加 `jcmem observe/commit/recall/correct/forget/explain/stats` 专用子命令；每个子命令接收 `--request-file` 或 `--request-json`，并在发送前校验命令类型与 Envelope。
 - 已将 Sidecar 连接改为并发任务处理；`stop` 会停止接收新连接并等待已认证的在途连接完成后再退出，新增阻塞 CommandBus 契约测试。
-- 非 Unix Loopback 仅保留传输抽象，Named Pipe、完整 checkpoint 恢复和跨协议身份链尚未实现。因此 Task 8 不标记为完成。
+- 非 Unix Loopback 已通过端点文件保存随机端口并由客户端读取连接；Named Pipe、完整 checkpoint 恢复和跨协议身份链尚未实现。因此 Task 8 不标记为完成。
 
 ## Task 9：实现 MCP Server
 
