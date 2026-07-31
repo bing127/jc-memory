@@ -156,6 +156,12 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - [ ] **步骤 4：Token 使用 256-bit 随机值、权限受限文件和常量时间比较；文件锁记录 PID/启动标识并检测陈旧锁；信号触发停止接收、等待 in-flight、checkpoint、关闭 DB。**
 - [ ] **步骤 5：运行测试并提交 `feat(sidecar): add authenticated local daemon`**。
 
+### 2026-07-31 进度记录
+
+- 已建立 `jc-memory-sidecar` crate，完成 32 字节随机 Token、Unix `0600` 文件权限、恒时比较和文件排他锁。
+- 已完成 Unix Domain Socket 控制行协议、`status`/`stop`/`doctor` 控制命令，以及错误 Token、第二实例、停止和重启契约测试。
+- 当前仍未实现 Observe/Recall/Correct/Forget/Explain/Stats 的同协议转发；非 Unix Loopback 仅保留传输抽象，Named Pipe 尚未实现。因此 Task 8 不标记为完成。
+
 ## Task 9：实现 MCP Server
 
 **文件：** `services/memory-mcp/src/{main,server,tools,schema}.rs`、`tests/mcp_contract.rs`。

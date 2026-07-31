@@ -1353,6 +1353,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "jc-memory-sidecar"
+version = "0.1.0"
+dependencies = [
+ "fs2",
+ "getrandom 0.4.3",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "jc-memory-storage"
 version = "0.1.0"
 dependencies = [
