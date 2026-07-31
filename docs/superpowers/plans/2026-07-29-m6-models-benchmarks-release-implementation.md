@@ -102,11 +102,11 @@ pub trait Metric { fn name(&self) -> &'static str; fn evaluate(&self, cases: &[B
 
 **文件：** `.github/workflows/{rust,sdks,proto,security,benchmarks,mobile}.yml`、`deny.toml`、`.github/dependabot.yml`。
 
-- [ ] **步骤 1：使用 actionlint/yamllint 验证失败的最小工作流 Fixture。**
-- [ ] **步骤 2：先运行本地 YAML/Action 校验，预期缺少工作流。**
-- [ ] **步骤 3：Rust 矩阵覆盖 ubuntu/windows/macos，执行 fmt、clippy、test、doc；SDK Workflow 执行 Node/Python/Go/Kotlin JVM/Swift/Java；Proto 执行 Buf lint/breaking/generated-diff。**
-- [ ] **步骤 4：Security 执行 cargo-audit、cargo-deny、npm/pip/go 审计和 Secret Scan；Benchmark 跑 Smoke；Mobile 独立执行 Android/iOS 可用构建。第三方 Action 固定完整 commit SHA。**
-- [ ] **步骤 5：运行 actionlint 并提交 `ci: add cross-platform quality and supply-chain gates`**。
+- [x] **步骤 1：使用 actionlint/yamllint 验证失败的最小工作流 Fixture。** 已新增无效 YAML Fixture 和拒绝测试；actionlint 通过全部 6 个工作流，yamllint 未安装时由 Ruby YAML 解析和固定 SHA 规则兜底。
+- [x] **步骤 2：先运行本地 YAML/Action 校验，预期缺少工作流。** 已先确认工作流和校验器缺失导致契约测试红灯，再补齐本地校验脚本。
+- [x] **步骤 3：Rust 矩阵覆盖 ubuntu/windows/macos，执行 fmt、clippy、test、doc；SDK Workflow 执行 Node/Python/Go/Kotlin JVM/Swift/Java；Proto 执行 Buf lint/breaking/generated-diff。** 已配置六类工作流和固定 Rust/Buf 版本；本机已实际运行 Buf lint/generate，托管平台矩阵留待 CI 实机执行。
+- [x] **步骤 4：Security 执行 cargo-audit、cargo-deny、npm/pip/go 审计和 Secret Scan；Benchmark 跑 Smoke；Mobile 独立执行 Android/iOS 可用构建。第三方 Action 固定完整 commit SHA。** 已配置供应链审计、Secret Scan、Benchmark Smoke、Android assemble 和 Swift test；本机 cargo-audit/cargo-deny 未安装，未将其配置冒充本机审计结果。
+- [x] **步骤 5：运行 actionlint 并提交 `ci: add cross-platform quality and supply-chain gates`**。actionlint、YAML/SHA 校验、无效 Fixture 拒绝、Buf lint/generate/diff、SDK/Mobile 本机契约检查均已通过；cargo-audit/cargo-deny 和三平台矩阵仅配置于 CI，未将本机缺少工具的状态描述为通过；实现提交为 `99e0a3e ci: add cross-platform quality and supply-chain gates`。
 
 ## Task 9：实现私有 Release 构建
 
