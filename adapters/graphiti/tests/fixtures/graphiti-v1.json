@@ -1,0 +1,6 @@
+{
+  "source_version": "graphiti/v1",
+  "verification": "fixture_only",
+  "valid_at_field": "valid_at",
+  "invalid_at_field": "invalid_at"
+}

@@ -1,0 +1,26 @@
+[package]
+name = "jc-memory-adapter-graphiti"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+description = "Graphiti Node/Edge 到疆诚记忆候选 Point/Edge 的来源保真适配器"
+
+[dependencies]
+chrono.workspace = true
+jc-memory-graph = { path = "../../crates/memory-graph" }
+jc-memory-protocol = { path = "../../crates/memory-protocol" }
+serde.workspace = true
+thiserror.workspace = true
+yaml_serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }

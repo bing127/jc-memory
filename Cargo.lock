@@ -1344,6 +1344,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "jc-memory-adapter-dify"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "hex",
+ "jc-memory-core",
+ "jc-memory-protocol",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "uuid",
+ "yaml_serde",
+]
+
+[[package]]
+name = "jc-memory-adapter-graphiti"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "jc-memory-graph",
+ "jc-memory-protocol",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "yaml_serde",
+]
+
+[[package]]
 name = "jc-memory-adapter-hermes"
 version = "0.1.0"
 dependencies = [

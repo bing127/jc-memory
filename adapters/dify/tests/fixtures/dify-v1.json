@@ -1,0 +1,6 @@
+{
+  "contract_version": "dify/v1",
+  "verification": "fixture_only",
+  "node_types": ["http", "mcp"],
+  "scope_fields": ["user_id", "conversation_id", "app_id", "workflow_id", "trace_id"]
+}
