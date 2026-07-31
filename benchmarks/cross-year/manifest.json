@@ -1,0 +1,8 @@
+{
+  "dataset": "cross-year",
+  "version": "generator-v1",
+  "seed": 7,
+  "case_count": 32,
+  "digest": "8c752cfe061fe2af05be8e13a4edc2e569110e06a57054c01278aab7f597e351",
+  "smoke": true
+}

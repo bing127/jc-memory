@@ -8,10 +8,12 @@ authors.workspace = true
 
 [dependencies]
 chrono.workspace = true
+hex.workspace = true
 jc-memory-activation = { path = "../../crates/memory-activation" }
 jc-memory-protocol = { path = "../../crates/memory-protocol" }
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 
 [lints]

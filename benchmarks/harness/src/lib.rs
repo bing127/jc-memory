@@ -1,7 +1,10 @@
 //! 统一 Benchmark Case、执行器、指标和报告实现。
 
 mod case;
+pub mod cross_year;
+pub mod memory_poisoning;
 mod metrics;
+pub mod model_swap;
 mod report;
 mod runner;
 mod suite;

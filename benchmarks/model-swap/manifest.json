@@ -1,0 +1,7 @@
+{
+  "dataset": "model-swap",
+  "version": "deterministic-v1",
+  "models": ["alpha", "beta"],
+  "comparison": "fragment-evidence-current-state-canonical-sha256",
+  "smoke": true
+}

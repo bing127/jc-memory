@@ -1,0 +1,12 @@
+{
+  "schema_version": "jcmem.poisoning.v1",
+  "smoke": true,
+  "cases": [
+    {"id": "poison-injection", "kind": "injection", "expected": {"quarantined": true, "denied": false}},
+    {"id": "poison-cross-tenant", "kind": "cross_tenant", "expected": {"quarantined": true, "denied": true}},
+    {"id": "poison-unverified-inference", "kind": "unverified_inference", "expected": {"quarantined": true, "denied": false}},
+    {"id": "poison-repeated-error", "kind": "repeated_error", "expected": {"quarantined": true, "denied": false}},
+    {"id": "poison-malicious-tool-result", "kind": "malicious_tool_result", "expected": {"quarantined": true, "denied": false}},
+    {"id": "poison-permission-bypass", "kind": "permission_bypass", "expected": {"quarantined": true, "denied": true}}
+  ]
+}

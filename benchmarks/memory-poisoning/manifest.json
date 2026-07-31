@@ -1,0 +1,8 @@
+{
+  "dataset": "memory-poisoning",
+  "version": "fixture-2026-08-01",
+  "license": "PRIVATE-FIXTURE",
+  "fixture": "fixtures/smoke.json",
+  "sha256": "5c6e06a32e93f09263e85cd323cb4683f8cb4152aed62f18878f778ac419c561",
+  "smoke": true
+}
