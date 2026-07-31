@@ -95,11 +95,11 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 
 **文件：** `memory-runtime/src/{policy,approval,tool,runner}.rs`、`tests/tool_loop.rs`。
 
-- [ ] **步骤 1：写高风险工具需要审批、拒绝不执行、失败结果否定 Prediction 的失败测试。**
-- [ ] **步骤 2：运行测试**，预期 PolicyEngine/ToolRegistry 缺失。
-- [ ] **步骤 3：实现 `PolicyDecision::{Allow,Deny,RequireApproval}`、持久化 Approval、ToolDescriptor 的 JSON Schema/权限/风险/idempotency、ToolExecutor CancellationToken。**
-- [ ] **步骤 4：Runner 顺序固定为 Observe -> Recall -> Model -> Parse -> Policy -> Approval -> Execute -> Capture -> Commit；Commit 写 Prediction、Action、ToolResult、Outcome 和 ValidatedBy/DisprovedBy，不把 Prediction 改成 Fact。**
-- [ ] **步骤 5：运行测试并提交 `feat(runtime): execute approved tools and commit outcomes`**。
+- [x] **步骤 1：写高风险工具需要审批、拒绝不执行、失败结果否定 Prediction 的失败测试。**
+- [x] **步骤 2：运行测试**，预期 PolicyEngine/ToolRegistry 缺失。
+- [x] **步骤 3：实现 `PolicyDecision::{Allow,Deny,RequireApproval}`、持久化 Approval、ToolDescriptor 的 JSON Schema/权限/风险/idempotency、ToolExecutor CancellationToken。**
+- [x] **步骤 4：Runner 顺序固定为 Observe -> Recall -> Model -> Parse -> Policy -> Approval -> Execute -> Capture -> Commit；Commit 写 Prediction、Action、ToolResult、Outcome 和 ValidatedBy/DisprovedBy，不把 Prediction 改成 Fact。**
+- [x] **步骤 5：运行测试并提交 `feat(runtime): execute approved tools and commit outcomes`**。
 
 ## Task 6：实现 WaitingUser、Pause/Resume、Retry、MCP Client 与 Completion
 
