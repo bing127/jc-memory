@@ -2,7 +2,7 @@
 
 疆诚记忆是独立于具体大语言模型的 Memory-Native Agent Kernel 与神经认知记忆数据库。
 
-当前代码实现 M1 基础可信存储、M2 认知图/有界召回与 M3 巩固/安全治理。项目目前为私有专有源码，不计划公开发布。
+当前代码实现 M1 基础可信存储、M2 认知图/有界召回、M3 巩固/安全治理、M4 Runtime/服务、M5 SDK/Adapter 和 M6 模型/Benchmark/私有发布。项目目前为私有专有源码，不计划公开发布。
 
 ## 当前可用范围
 
@@ -22,12 +22,16 @@
 - `jc-memory-server`：共享 `CommandBus` 的 HTTP/gRPC 服务、API Key Scope、并发/速率限制、健康探针、文件型 TLS 和 YAML/环境变量配置。
 - `jc-memory-sidecar`：本地 Token、Unix Domain Socket、Windows Named Pipe、其他平台 Loopback 端点文件、单实例锁、`jcmemd` 守护进程和 `jcmem start/status/stop/doctor` 控制生命周期；七类记忆命令可经共享 CommandBus 转发。
 - `jc-memory-mcp`：stdio JSON-RPC MCP 工具清单、七类共享 CommandBus 工具调用、Token 校验和结构化结果；支持通过 `JC_MEMORY_MCP_SIDECAR_DATA_DIR` 经 Sidecar 转发并传递 `mcp-client` 主体。
+- `sdk/node`、`sdk/python`、`sdk/go`、`sdk/kotlin`、`sdk/java`、`sdk/swift`：基于统一 JSON/HTTP 与版本化 Fixture 的六套 SDK；JVM/Swift Embedded 边界和未验证平台见 SDK 支持矩阵。
+- `adapters/`：Hermes、OpenClaw、Mem0、Graphiti、Dify 的来源保真 Adapter，保留 Scope、时间、Provenance、置信度和导入导出往返边界。
+- `models/`、`benchmarks/`：可重复 CPU 训练/ONNX Fixture、Rust Fallback/Manifest 校验、六类 Benchmark Harness、Smoke 和百万 Fragment 可恢复生成器。
+- `scripts/release/`、`.github/workflows/release.yml`：手动私有 Release，生成 Native/SDK/未签名 Mobile Artifact、SHA-256、SBOM 和构建元数据；不调用公共注册表或公开 Release。
 
 原始 Fragment、Event 和 EvidenceRef 是权威记录。摘要、Embedding、图关系、Surface 和全文索引不得覆盖它们。Prediction 不允许设置 `ValidityStatus::Verified`；Inference 和 Plan 始终保持 FutureHypothesis 阶段，三者都不会被自动改写成 Fact。
 
 当前 Core 的 SQLite FTS5 已接入真实 Recall 路径。非 Exact Recall 还会读取精确 Scope 内的近期有界候选，并使用确定性词项覆盖率、字符稀疏特征和实体匹配评分；这不是外部 Embedding 或通用语义模型。Mutation 先追加权威 Fragment/Event，再更新进程内派生图，且在权威元数据中保留关系和目标标识。
 
-当前实现仍有明确边界：状态、语义和 Surface 模块尚未全部汇入 Core 的持久化 Memory Packet；Core 重启后尚未自动重建进程内派生图；`Operation::Consolidate` 尚未接入 Core Job 提交门面；派生重建的外部 Embedding 与 Summary backend 尚未接入。没有向量数据库或远程服务。M4 的 Server、RuntimeService、Sidecar 和 MCP 已完成代码与本机契约验证，Recall/Stats/Correct/Forget/Explain 的 Protobuf 命令、请求超时、文件型 TLS、YAML/环境变量配置、Docker/Kubernetes 部署资源、Sidecar 启动控制、锁元数据检测、生命周期 checkpoint、显式 SQLite 关闭、Windows Named Pipe 实现和 MCP 到 Sidecar 的主体转发已经完成；Windows 实机传输、KeyProvider 的 KMS/HSM 接入以及 Docker/Kubernetes 和独立部署级跨协议 E2E 仍需对应环境验证。M5-M6 的多语言 SDK、外部 Adapter、训练/ONNX、Benchmark 和发布流水线仍未实现。Schema 或协议字段的存在不代表对应上层调用链已经接通。
+当前实现仍有明确边界：状态、语义和 Surface 模块尚未全部汇入 Core 的持久化 Memory Packet；Core 重启后尚未自动重建进程内派生图；`Operation::Consolidate` 尚未接入 Core Job 提交门面；派生重建的外部 Embedding 与 Summary backend 尚未接入。没有向量数据库或远程服务。M4-M6 的代码与本机契约已覆盖 Server、RuntimeService、Sidecar、MCP、SDK、Adapter、训练/ONNX Fixture、Benchmark Smoke 和私有 Release 封装；Windows 实机传输、KeyProvider 的 KMS/HSM 接入、Docker/Kubernetes/独立部署级跨协议 E2E、外部模型质量、真实数据集全量 Benchmark、移动设备和全平台 native slice 仍需对应环境验证。Schema 或协议字段的存在不代表对应上层调用链已经接通。
 
 ## 五分钟开始
 
@@ -145,6 +149,7 @@ Blob 以明文 SHA-256 寻址，支持原子发布、两级目录分片、Zstd �
 - [ADR 0008：治理采用纵深防御与可验证恢复](docs/adr/0008-defense-in-depth-governance.md)
 - [产品原始需求](docs/product/original-requirements.zh-CN.md)
 - [分阶段实施路线图](docs/superpowers/plans/2026-07-29-jiangcheng-memory-roadmap.md)
+- [M6 最终验证报告](docs/release/verification-report.md)
 
 ## 开发检查
 

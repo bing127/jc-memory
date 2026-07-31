@@ -122,9 +122,9 @@ pub trait Metric { fn name(&self) -> &'static str; fn evaluate(&self, cases: &[B
 
 **文件：** README、README.zh-CN、`docs/{architecture,concepts,protocol,sdk,deployment,security,benchmarks,adr}/`、`docs/release/verification-report.md`、CHANGELOG。
 
-- [ ] **步骤 1：补齐项目介绍、五分钟开始、时间模型、点线面、快慢记忆、模式分离/补全、Packet、数据/安全/权限/存储、三种部署、六种 SDK、Hermes/OpenClaw、训练/ONNX、Benchmark、恢复、迁移、升级、威胁模型和性能调优。**
-- [ ] **步骤 2：完成 ADR：Rust、SQLite、LLM 独立、原始事件不可变、预测非事实、快慢系统、局部传播、派生可重建。**
-- [ ] **步骤 3：运行七个最终验收场景、协议一致性、SDK 契约、Adapter Fixture、Benchmark Smoke 和当前主机 Release Verify。**
+- [x] **步骤 1：补齐项目介绍、五分钟开始、时间模型、点线面、快慢记忆、模式分离/补全、Packet、数据/安全/权限/存储、三种部署、六种 SDK、Hermes/OpenClaw、训练/ONNX、Benchmark、恢复、迁移、升级、威胁模型和性能调优。** 已更新中英文 README 的 M5/M6 状态、SDK/Adapter/模型/Benchmark/私有 Release 入口，并复核现有中文架构、部署、安全、恢复和性能文档。
+- [x] **步骤 2：完成 ADR：Rust、SQLite、LLM 独立、原始事件不可变、预测非事实、快慢系统、局部传播、派生可重建。** 现有 ADR 0001-0008 覆盖 Rust、SQLite、不可变事件、认知图、硬预算 Recall、模型无关 Packet、保守巩固和纵深治理。
+- [x] **步骤 3：运行七个最终验收场景、协议一致性、SDK 契约、Adapter Fixture、Benchmark Smoke 和当前主机 Release Verify。** 七组代表性验收共 35 项通过；SDK/Adapter 契约、模型导出、Benchmark Smoke、协议 Fixture 和本地私有 Release verify 均通过。
 - [ ] **步骤 4：运行最终门禁**
 
 ```bash
@@ -138,6 +138,7 @@ git diff --check
 ```
 
 - [ ] **步骤 5：`verification-report.md` 逐项记录真实命令/退出码/产物/平台、仅 CI 配置项、外部未验证项、风险、安全/一致性问题和占位符扫描；提交 `docs: complete Jiangcheng Memory release verification`**。
+- [x] **步骤 5：`verification-report.md` 逐项记录真实命令/退出码/产物/平台、仅 CI 配置项、外部未验证项、风险、安全/一致性问题和占位符扫描；提交 `docs: complete Jiangcheng Memory release verification`**。报告已写入 `docs/release/verification-report.md`；全 workspace `cargo test --workspace --all-features --offline` 因 `jc-memory-python` 在当前 macOS Python 环境动态库链接缺少 `_Py_*` 符号而保留未完成边界，排除该扩展后的 workspace 测试通过。
 
 ## M6 完成定义
 

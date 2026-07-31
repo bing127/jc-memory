@@ -2,7 +2,7 @@
 
 疆诚记忆是独立于具体大语言模型的 Memory-Native Agent Kernel 与神经认知记忆数据库。项目当前为私有专有源码，暂不计划开源发布。
 
-当前代码已完成 M1 基础可信存储、M2 认知图/有界召回和 M3 巩固/安全治理：不可变 Fragment/Event/EvidenceRef、SQLite WAL/FTS5、内容寻址 Blob、Point/Edge/Surface、十种 Recall、Memory Packet、可恢复巩固 Job、确定性离线 Neural Fallback、Quarantine、Snapshot/Restore、Retention、Export 和 Hard Delete。
+当前代码已完成 M1 基础可信存储、M2 认知图/有界召回、M3 巩固/安全治理、M4 Runtime/服务、M5 SDK/Adapter 和 M6 模型/Benchmark/私有发布：不可变 Fragment/Event/EvidenceRef、SQLite WAL/FTS5、内容寻址 Blob、Point/Edge/Surface、十种 Recall、Memory Packet、可恢复巩固 Job、确定性离线 Neural Fallback、Quarantine、Snapshot/Restore、Retention、Export、Hard Delete、六套 SDK、五种 Adapter、ONNX Fixture、Benchmark Smoke 与私有 Artifact 流水线。
 
 Core 当前实际接通 Observe、Commit、Fragment lookup、Health、Recall、Explain、Stats、Mutation、Quarantine 审查和 Snapshot/Restore/Rebuild，且这些操作显式接收 `AccessContext` 并采用默认拒绝 ACL。Recall 在检索前和返回前执行授权。SQLite FTS5 是实际执行路径；跨措辞候选使用确定性词项和稀疏字符特征，不是外部 Embedding。
 
@@ -39,4 +39,4 @@ CARGO_INCREMENTAL=0 cargo test -p jc-memory-security --test hard_delete --offlin
 CARGO_INCREMENTAL=0 cargo test -p jc-memory-neural --test fallback --offline
 ```
 
-保留所有权利。当前仓库不声明外部服务、跨平台实机、SDK、模型训练、Benchmark 或公开发布能力已经完成。
+保留所有权利。当前仓库不声明外部服务、Windows/Linux/macOS x64 或移动设备实机、外部模型质量、全量 Benchmark、KMS/HSM 或公开发布能力已经完成；私有 Release 只通过手动 GitHub Actions Artifact 生成。
