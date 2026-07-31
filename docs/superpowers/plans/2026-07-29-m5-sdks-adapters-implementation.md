@@ -100,10 +100,10 @@ it("returns the canonical recall packet", async () => {
 
 **文件：** `adapters/hermes/{Cargo.toml,src/{lib,config,mapping}.rs,tests/fixtures/*.json,README.md}`。
 
-- [ ] **步骤 1：写 sync_turn、prefetch、shutdown 和配置 Fixture 失败测试。**
-- [ ] **步骤 2：运行 `cargo test -p jc-memory-adapter-hermes`**，预期 crate 缺失。
-- [ ] **步骤 3：实现 MemoryProvider；sync_turn 映射 Observation/ModelOutput/ToolResult，prefetch 返回 MemoryPacket，shutdown 等待 in-flight 并 flush；source_id 保存 Hermes turn ID 和接口版本。**
-- [ ] **步骤 4：契约测试只声明 Fixture 对应的 Hermes 版本，真实依赖不可用时不写实机通过结论。**
+- [x] **步骤 1：写 sync_turn、prefetch、shutdown 和配置 Fixture 失败测试。已覆盖来源保真、模型候选不升级、Recall Packet 透传、关闭期间拒绝新请求和 in-flight 等待。**
+- [x] **步骤 2：运行 `cargo test -p jc-memory-adapter-hermes`，先确认 workspace 中 crate 缺失，再确认公开契约缺失的编译红灯。**
+- [x] **步骤 3：实现 MemoryProvider；sync_turn 通过 Core Commit 映射 Observation/ModelOutput/ToolResult，prefetch 原样返回 MemoryPacket，shutdown 等待 in-flight 后调用 CommandBus flush；source_id 和 metadata 保存 Hermes 版本、observer 接口版本与 turn ID。**
+- [x] **步骤 4：Fixture 仅声明 Hermes 0.19.0 / `hermes.observer.v1` 契约；测试已使用真实 EmbeddedCommandBus 验证 Core 边界，但未把 Fixture 描述为 Hermes Python 运行时实机验证。**
 - [ ] **步骤 5：提交 `feat(adapter-hermes): add provenance-preserving memory provider`**。
 
 ## Task 9：实现 OpenClaw 与 Mem0 Adapter

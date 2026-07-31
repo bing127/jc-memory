@@ -1,0 +1,29 @@
+{
+  "contract": {
+    "hermes_version": "0.19.0",
+    "observer_schema_version": "hermes.observer.v1",
+    "verification": "fixture_only"
+  },
+  "turn": {
+    "turn_id": "turn-fixture-001",
+    "occurred_at": "2026-07-31T08:09:10Z",
+    "observations": [
+      {
+        "text": "用户要求保留原始来源"
+      }
+    ],
+    "model_output": {
+      "kind": "final_response",
+      "text": "已记录候选响应",
+      "raw_text": "已记录候选响应"
+    },
+    "tool_results": [
+      {
+        "success": true,
+        "value": {
+          "status": "ok"
+        }
+      }
+    ]
+  }
+}

@@ -1335,6 +1335,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "jc-memory-adapter-hermes"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "jc-memory-core",
+ "jc-memory-protocol",
+ "jc-memory-runtime",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "yaml_serde",
+]
+
+[[package]]
 name = "jc-memory-consolidation"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,30 @@
+[package]
+name = "jc-memory-adapter-hermes"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+description = "Hermes turn 到疆诚记忆 Core 的来源保真适配器"
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+jc-memory-core = { path = "../../crates/memory-core" }
+jc-memory-protocol = { path = "../../crates/memory-protocol" }
+jc-memory-runtime = { path = "../../crates/memory-runtime" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+yaml_serde.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }

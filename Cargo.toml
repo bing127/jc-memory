@@ -18,6 +18,7 @@ members = [
   "crates/memory-ffi",
   "crates/memory-uniffi",
   "crates/memory-python",
+  "adapters/hermes",
   "services/memory-server",
   "services/memory-sidecar",
   "services/memory-mcp",
