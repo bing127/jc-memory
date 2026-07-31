@@ -156,7 +156,8 @@ Blob 以明文 SHA-256 寻址，支持原子发布、两级目录分片、Zstd �
 ```bash
 cargo fmt --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace --all-features
+cargo test --workspace --all-features --exclude jc-memory-python
+cargo test -p jc-memory-python --no-default-features
 RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps
 git diff --check
 ```

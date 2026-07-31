@@ -28,6 +28,7 @@
 | `CARGO_INCREMENTAL=0 cargo clippy --workspace --all-targets --all-features --offline -- -D warnings` | 退出码 0 | Rust 严格 Clippy |
 | `RUSTDOCFLAGS='-D warnings' CARGO_INCREMENTAL=0 cargo doc --workspace --all-features --no-deps --offline` | 退出码 0 | Rust 文档和 doctest 编译 |
 | `CARGO_INCREMENTAL=0 cargo test --workspace --exclude jc-memory-python --all-features --offline` | 退出码 0 | 其余 workspace 测试与 doctest |
+| `CARGO_INCREMENTAL=0 cargo test -p jc-memory-python --no-default-features --offline` | 退出码 0 | Python 绑定 crate 的 Rust 测试，不构建不可链接的 `cdylib` 测试目标 |
 | `models/.venv/bin/pytest models/tests -q` | 6 项通过 | 训练/导出/ONNX Fixture |
 | `scripts/test/sdk-contracts.sh` | 退出码 0 | Rust/Proto、Server 健康、Node/Python/Go/Kotlin/Swift/Java 和五个 Adapter Fixture |
 | `scripts/benchmark/smoke.sh --output target/benchmarks/m6-task10-smoke.json` | 退出码 0 | Harness、million-fragments 恢复测试和审计 JSON |

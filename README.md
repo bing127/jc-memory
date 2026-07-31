@@ -40,3 +40,10 @@ CARGO_INCREMENTAL=0 cargo test -p jc-memory-neural --test fallback --offline
 ```
 
 保留所有权利。当前仓库不声明外部服务、Windows/Linux/macOS x64 或移动设备实机、外部模型质量、全量 Benchmark、KMS/HSM 或公开发布能力已经完成；私有 Release 只通过手动 GitHub Actions Artifact 生成。
+
+Workspace 测试排除 Python `cdylib` 特性，因为 PyO3 的 `extension-module` 使用动态查找，不能在每个主机上作为 Rust 测试目标链接；Python crate 单独使用无扩展特性测试：
+
+```bash
+cargo test --workspace --all-features --exclude jc-memory-python
+cargo test -p jc-memory-python --no-default-features
+```
