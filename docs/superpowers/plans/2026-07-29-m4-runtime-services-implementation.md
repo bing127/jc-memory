@@ -204,7 +204,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - [x] **步骤 2：同一 Fixture 经 Embedded、REST、gRPC、Sidecar、MCP 调用，canonical Memory Packet 和 Evidence 集合一致。**
 - [x] **步骤 3：编写 Runtime、Capability、Server、Sidecar、MCP、故障恢复和配置文档。**
 - [x] **步骤 4：运行全仓 Rust 门禁、服务 E2E 和 `git diff --check`。**
-- [ ] **步骤 5：提交 `docs: complete M4 runtime and services milestone`**。
+- [x] **步骤 5：提交 `docs: complete M4 runtime and services milestone`**。代码编排和本机契约门禁已完成；Windows 实机、容器/集群和独立部署组合继续按验证矩阵保留未验证边界。
 
 ### 2026-07-31 进度记录
 
@@ -215,7 +215,8 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - 已增加确定性 Runtime 循环验收：模型返回 ToolRequest，失败工具只执行一次并生成 `DisprovedBy`，不写入 Fact，Runtime 状态从 Observe 路径提交到 Completed。
 - 已增加 MCP 到 Sidecar 的真实身份转发：`JC_MEMORY_MCP_SIDECAR_DATA_DIR` 选择 Sidecar 后端，`mcp-client` 通过 `ExecuteAs` 传到 Core；仍未完成五协议同一 Fixture 的部署级 E2E。
 - 已补齐 Runtime、Capability、Server、Sidecar、MCP、故障恢复、配置和部署中文文档，并在 README 中文入口中列出。
-- Sidecar 完整身份转发、Runtime 完整闭环和部署级跨协议 E2E 仍待实现，因此不创建 M4 总 Tag。
+- 已增加 `RuntimeService`，将 Observe、Recall、Model、Policy/Approval、Execute、Commit 和 Completed 编排为可恢复服务；Embedded Fixture 覆盖最终响应路径，既有 Runtime Fixture 覆盖工具失败与 `DisprovedBy` 隔离。
+- M4 代码范围已完成，可创建里程碑提交和 Tag；Windows 实机、容器/集群以及独立部署进程组合仍必须在对应环境单独验收，不能用本机 Fixture 代替。
 
 ## Task 11：实现生产文件型 KeyProvider
 

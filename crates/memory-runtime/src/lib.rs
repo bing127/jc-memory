@@ -13,6 +13,7 @@ mod providers;
 mod recovery;
 mod retry;
 mod runner;
+mod service;
 mod state;
 mod tool;
 mod tool_loop;
@@ -41,6 +42,10 @@ pub use providers::{
 pub use recovery::RuntimeRecovery;
 pub use retry::{RetryClass, RetryDecision, RetryPolicy};
 pub use runner::{RunId, RuntimeError, RuntimeRunner, RuntimeSnapshot, TransitionMetadata};
+pub use service::{
+    RuntimeBackend, RuntimeCommit, RuntimeRequest, RuntimeResult, RuntimeService,
+    RuntimeServiceError,
+};
 pub use state::{RuntimeEvent, RuntimeState, TransitionError};
 pub use tool::{
     ResolvedTool, ToolDescriptor, ToolError, ToolExecutor, ToolIdempotency, ToolRegistry,

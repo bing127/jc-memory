@@ -18,7 +18,7 @@
 - `jc-memory-consolidation`：12 种保守 Handler、持久化 Lease/Checkpoint、Pause/Resume/Retry/Cancel 和批量/CPU/IO/墙钟预算；
 - `jc-memory-security`：默认拒绝、精确 Scope、`None` 非通配和跨 Tenant 显式 Admin 的 ACL，Packet 返回前来源复核，以及 Quarantine、Retention、Export、Hard Delete 和 Key Provider 契约；
 - `jc-memory-core`：本地嵌入式 `MemoryEngine`，公开 Observe、Fragment、Health、Recall、Explain、Stats、Mutation、Quarantine 审查和 Snapshot/Restore/Rebuild，所有操作显式接收 `AccessContext`。
-- `jc-memory-runtime`：可恢复 Agent 状态机、模型 Provider、Capability、Policy、Approval、Tool、MCP Client 和完成判定；
+- `jc-memory-runtime`：可恢复 Agent 状态机、`RuntimeService` 编排、模型 Provider、Capability、Policy、Approval、Tool、MCP Client 和完成判定；
 - `jc-memory-server`：共享 `CommandBus` 的 HTTP/gRPC 服务、API Key Scope、并发/速率限制、健康探针、文件型 TLS 和 YAML/环境变量配置。
 - `jc-memory-sidecar`：本地 Token、Unix Domain Socket、Windows Named Pipe、其他平台 Loopback 端点文件、单实例锁、`jcmemd` 守护进程和 `jcmem start/status/stop/doctor` 控制生命周期；七类记忆命令可经共享 CommandBus 转发。
 - `jc-memory-mcp`：stdio JSON-RPC MCP 工具清单、七类共享 CommandBus 工具调用、Token 校验和结构化结果；支持通过 `JC_MEMORY_MCP_SIDECAR_DATA_DIR` 经 Sidecar 转发并传递 `mcp-client` 主体。
@@ -27,7 +27,7 @@
 
 当前 Core 的 SQLite FTS5 已接入真实 Recall 路径。非 Exact Recall 还会读取精确 Scope 内的近期有界候选，并使用确定性词项覆盖率、字符稀疏特征和实体匹配评分；这不是外部 Embedding 或通用语义模型。Mutation 先追加权威 Fragment/Event，再更新进程内派生图，且在权威元数据中保留关系和目标标识。
 
-当前实现仍有明确边界：状态、语义和 Surface 模块尚未全部汇入 Core 的持久化 Memory Packet；Core 重启后尚未自动重建进程内派生图；`Operation::Consolidate` 尚未接入 Core Job 提交门面；派生重建的外部 Embedding 与 Summary backend 尚未接入。没有向量数据库或远程服务。M4 的 Server、Runtime、Sidecar 和 MCP 已部分落地，Recall/Stats/Correct/Forget/Explain 的 Protobuf 命令、请求超时、文件型 TLS、YAML/环境变量配置、Docker/Kubernetes 部署资源、Sidecar 启动控制、锁元数据检测、生命周期 checkpoint、显式 SQLite 关闭、Windows Named Pipe 实现和 MCP 到 Sidecar 的主体转发已经完成；Windows 实机传输、KeyProvider 的 KMS/HSM 接入、完整 Runtime 服务编排和部署级跨协议 E2E 尚未完成。M5-M6 的多语言 SDK、外部 Adapter、训练/ONNX、Benchmark 和发布流水线仍未实现。Schema 或协议字段的存在不代表对应上层调用链已经接通。
+当前实现仍有明确边界：状态、语义和 Surface 模块尚未全部汇入 Core 的持久化 Memory Packet；Core 重启后尚未自动重建进程内派生图；`Operation::Consolidate` 尚未接入 Core Job 提交门面；派生重建的外部 Embedding 与 Summary backend 尚未接入。没有向量数据库或远程服务。M4 的 Server、RuntimeService、Sidecar 和 MCP 已完成代码与本机契约验证，Recall/Stats/Correct/Forget/Explain 的 Protobuf 命令、请求超时、文件型 TLS、YAML/环境变量配置、Docker/Kubernetes 部署资源、Sidecar 启动控制、锁元数据检测、生命周期 checkpoint、显式 SQLite 关闭、Windows Named Pipe 实现和 MCP 到 Sidecar 的主体转发已经完成；Windows 实机传输、KeyProvider 的 KMS/HSM 接入以及 Docker/Kubernetes 和独立部署级跨协议 E2E 仍需对应环境验证。M5-M6 的多语言 SDK、外部 Adapter、训练/ONNX、Benchmark 和发布流水线仍未实现。Schema 或协议字段的存在不代表对应上层调用链已经接通。
 
 ## 五分钟开始
 

@@ -1,6 +1,6 @@
 # Agent Runtime
 
-`jc-memory-runtime` 提供可恢复状态机、模型输出解析、策略审批、工具执行、提交记录、暂停恢复和完成判断等 Rust 组件。当前这些组件可独立调用并有契约测试，但仓库尚未提供一个把所有组件自动编排到底的生产级 Agent 循环服务。
+`jc-memory-runtime` 提供可恢复状态机、模型输出解析、策略审批、工具执行、提交记录、暂停恢复和完成判断等 Rust 组件，并通过 `RuntimeService` 将这些阶段编排为可注入后端的单次运行服务。
 
 ## 状态与持久化
 
@@ -22,6 +22,12 @@ Runtime 状态包括 `Observing`、`Recalling`、`Reasoning`、`AwaitingApproval
 
 `RunControl` 支持 `pause`、`resume`、`cancel`、`wait_for_user` 和 `provide_user_input`。`RetryPolicy` 按错误类别和最大次数给出重试、等待或终止决策。`CompletionJudge` 同时检查目标状态、待审批、待工具、缺失证据和最大步骤数。
 
+## RuntimeService 编排
+
+`RuntimeService::run` 固定执行 Observe、Recall、Model、Policy/Approval、Execute、Commit 和 Completed。模型只产生严格解析后的最终响应或工具请求；高风险工具先进入 `AwaitingApproval`，不会执行副作用。每个阶段都写入 Runtime Transition，保存 Scope、步骤、截止时间、Trace 和输入/输出证据引用。
+
+`RuntimeBackend` 负责把 Observe、Recall 和 Commit 映射到具体 Core 或远程服务的权威记录。服务本身不会把 `Prediction`、`Inference`、`Plan` 或 `ToolResult` 自动升级为 Fact。
+
 ## 当前边界
 
-Runtime 状态机、持久化、Provider、Capability、Policy、Approval、Tool、MCP Client 和 Completion 均已有 Rust 实现与测试。当前仍缺将 Observe、Recall、Model、Policy、Approval、Tool、Commit 和恢复串成同一真实运行的完整 E2E，因此不能把这些独立组件描述为完整 Agent 产品闭环。
+Runtime 状态机、持久化、Provider、Capability、Policy、Approval、Tool、MCP Client、Completion 和 `RuntimeService` 均已有 Rust 实现与测试；Embedded Fixture 已验证完整编排。把 `RuntimeBackend` 接入具体远程部署进程，以及 Windows、容器和集群环境的运行验证，仍需要对应平台证据。
