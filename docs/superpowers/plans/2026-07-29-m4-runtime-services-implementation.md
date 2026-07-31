@@ -139,6 +139,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - 已接入文件型 gRPC TLS：启动入口只读取证书链和私钥文件内容构造 `ServerTlsConfig`，不记录私钥；配置解析使用纯查找器测试，避免修改进程环境。
 - 已修正 gRPC 适配器绕过并发门禁的问题；HTTP 与 gRPC 现在共同使用 `max_in_flight` permit，超限统一返回资源耗尽语义。
 - 已接入按 API Key 隔离的固定窗口速率限制；`JC_MEMORY_MAX_REQUESTS_PER_SECOND` 默认 128，HTTP 与 gRPC 共享配额，配置为零时拒绝启动。
+- 已增加 YAML 配置文件加载；`JC_MEMORY_CONFIG_FILE` 指定文件，环境变量逐字段覆盖 YAML，API Key 仍只允许从环境变量或部署 Secret 注入。
 - 本记录不代表 Task 7 或 M4 完成；Commit、Recall/Mutation/Explain 的完整 Protobuf 消息扩展、KeyProvider、请求超时和完整跨协议验收仍未实现。
 
 ## Task 8：实现本地 Sidecar

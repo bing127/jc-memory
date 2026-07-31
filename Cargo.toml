@@ -54,6 +54,7 @@ tonic-prost-build = "0.14"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 uuid = { version = "1", features = ["serde", "v7"] }
+yaml_serde = "0.10"
 zeroize = { version = "1", features = ["derive"] }
 zstd = "0.13"
 

@@ -17,11 +17,11 @@
 - 修改：`services/memory-server/src/config.rs`
 - 测试：`services/memory-server/src/config.rs` 内单元测试
 
-- [ ] **步骤 1：写 YAML 配置解析失败测试**
+- [x] **步骤 1：写 YAML 配置解析失败测试**
 
 新增测试使用内存字符串验证：合法 YAML 能解析 `bind`、`grpc_bind`、`data_dir`、`max_in_flight`、`max_requests_per_second` 和 TLS 路径；未知字段与类型错误分别返回带字段上下文的 `ConfigError`。
 
-- [ ] **步骤 2：运行测试确认 RED**
+- [x] **步骤 2：运行测试确认 RED**
 
 运行：
 
@@ -31,7 +31,7 @@ CARGO_INCREMENTAL=0 cargo test -p jc-memory-server config::tests::yaml
 
 预期：因 `ServerConfig::from_yaml_str` 和 YAML 依赖尚不存在而失败。
 
-- [ ] **步骤 3：加入 `yaml_serde` 并实现无副作用 YAML 解析**
+- [x] **步骤 3：加入 `yaml_serde` 并实现无副作用 YAML 解析**
 
 在 `services/memory-server/Cargo.toml` 增加 `yaml_serde.workspace = true`，根 `Cargo.toml` 增加 `yaml_serde = "0.10"`。在 `config.rs` 增加私有可选字段结构和：
 
@@ -41,11 +41,11 @@ fn from_yaml_str(input: &str) -> Result<PartialConfig, ConfigError>;
 
 YAML 反序列化使用 `#[serde(deny_unknown_fields)]`；解析错误不得输出私钥内容。
 
-- [ ] **步骤 4：运行 YAML 测试确认 GREEN**
+- [x] **步骤 4：运行 YAML 测试确认 GREEN**
 
 运行同一聚焦命令，预期合法配置、未知字段和类型错误测试全部通过。
 
-- [ ] **步骤 5：提交配置模型**
+- [x] **步骤 5：提交配置模型**
 
 ```bash
 git add Cargo.toml Cargo.lock services/memory-server/Cargo.toml services/memory-server/src/config.rs
@@ -58,17 +58,17 @@ git commit -m "feat(config): 增加 YAML 配置模型"
 - 修改：`services/memory-server/src/config.rs`
 - 测试：`services/memory-server/src/config.rs` 内单元测试
 
-- [ ] **步骤 1：写来源优先级 RED 测试**
+- [x] **步骤 1：写来源优先级 RED 测试**
 
 测试传入 YAML 部分配置和内存环境变量查找器，验证优先级为环境变量 > YAML > 默认值；空白环境变量不覆盖 YAML；`JC_MEMORY_CONFIG_FILE` 缺失、读取失败、TLS 只配置一半、并发或速率为零均返回稳定错误。
 
-- [ ] **步骤 2：运行测试确认 RED**
+- [x] **步骤 2：运行测试确认 RED**
 
 ```bash
 CARGO_INCREMENTAL=0 cargo test -p jc-memory-server config::tests::merge
 ```
 
-- [ ] **步骤 3：实现合并入口**
+- [x] **步骤 3：实现合并入口**
 
 增加：
 
@@ -79,13 +79,13 @@ pub fn from_sources(path: Option<&Path>, lookup: impl Fn(&str) -> Option<String>
 
 `JC_MEMORY_CONFIG_FILE` 只负责指定 YAML 路径；文件字段先生成 `PartialConfig`，再逐字段应用非空环境变量，最后填默认值并统一校验。现有 `from_env` 委托到 `from_sources`，保持旧环境变量调用不变。
 
-- [ ] **步骤 4：运行配置全测**
+- [x] **步骤 4：运行配置全测**
 
 ```bash
 CARGO_INCREMENTAL=0 cargo test -p jc-memory-server config::tests
 ```
 
-- [ ] **步骤 5：提交合并逻辑**
+- [x] **步骤 5：提交合并逻辑**
 
 ```bash
 git add services/memory-server/src/config.rs
@@ -99,19 +99,19 @@ git commit -m "feat(config): 支持 YAML 与环境变量合并"
 - 修改：`docs/superpowers/plans/2026-07-29-m4-runtime-services-implementation.md`
 - 创建：`docs/configuration.zh-CN.md`
 
-- [ ] **步骤 1：写启动入口契约测试**
+- [x] **步骤 1：写启动入口契约测试**
 
 通过纯配置函数验证 `JC_MEMORY_CONFIG_FILE` 指向的 YAML 能生成与旧环境变量模式相同的 `ServerConfig`；不在 Rust 测试中调用 `std::env::set_var`。
 
-- [ ] **步骤 2：实现启动接线**
+- [x] **步骤 2：实现启动接线**
 
 `main.rs` 使用 `ServerConfig::from_env()`，把解析后的速率、并发、TLS 和数据目录传入现有 ServerState；错误只显示变量名/文件路径，不显示 API Key 或私钥内容。
 
-- [ ] **步骤 3：编写中文配置参考**
+- [x] **步骤 3：编写中文配置参考**
 
 `docs/configuration.zh-CN.md` 列出 YAML 字段、环境变量映射、优先级、默认值、TLS 文件权限和 Secret 注入示例；示例 API Key 使用明确的占位文本，不可直接作为凭据。
 
-- [ ] **步骤 4：运行 Server 测试、文档和差异门禁**
+- [x] **步骤 4：运行 Server 测试、文档和差异门禁**
 
 ```bash
 CARGO_INCREMENTAL=0 cargo test -p jc-memory-server
@@ -119,7 +119,7 @@ RUSTDOCFLAGS='-D warnings' cargo doc -p jc-memory-server --no-deps
 git diff --check
 ```
 
-- [ ] **步骤 5：提交启动接线和配置文档**
+- [x] **步骤 5：提交启动接线和配置文档**
 
 ```bash
 git add services/memory-server/src/main.rs docs/configuration.zh-CN.md docs/superpowers/plans/2026-07-29-m4-runtime-services-implementation.md
