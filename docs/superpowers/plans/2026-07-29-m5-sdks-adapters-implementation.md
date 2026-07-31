@@ -26,7 +26,7 @@
 - [x] **步骤 2：运行 `cargo test -p jc-memory-protocol --test sdk_contract_fixtures`**，先确认缺少 Validator 的红灯，再完成绿灯。
 - [x] **步骤 3：每个 Fixture 固定 request、response、canonical_sha256、protocol_version、required_features；敏感字段使用合成值，不提交真实 Token。**
 - [x] **步骤 4：加入 `buf lint`、`buf breaking --against` 和 SDK 契约脚本；当前仓库尚无 OpenAPI schema，保留为后续远程 SDK 门禁。生成代码未改动且 `git diff --check` 通过。**
-- [ ] **步骤 5：提交 `test(sdk): add canonical cross-language contracts`**。
+- [x] **步骤 5：提交 `test(sdk): add canonical cross-language contracts`。已完成提交 `8dbcd05 test(sdk): 增加跨语言规范契约`；Rust、Buf 兼容性、Clippy、格式和差异检查均已通过。**
 
 ## Task 2：实现 Node/TypeScript SDK 与 napi-rs
 
