@@ -20,6 +20,16 @@ models/.venv/bin/python -m models.training.smoke \
 
 Smoke 输出只证明当前主机 CPU 路径可重复运行两 epoch；它不代表生产模型质量、GPU/ONNX Runtime 或其他平台已经验证。
 
+## ONNX Fixture
+
+```bash
+models/.venv/bin/python -m models.export.fixture
+models/.venv/bin/python -m pytest models/tests/test_export.py -q
+cargo test -p jc-memory-neural --test onnx
+```
+
+`models/manifests/test-model.json` 与 `models/onnx/fixtures/test-model.onnx` 是允许私有分发的最小 Fixture。Rust `OnnxProvider` 在加载时校验 Manifest、文件 SHA-256、输入输出名称和 Shape；推理超时、运行时错误或熔断时返回确定性 Fallback，并保留原因。
+
 ## Checkpoint 约束
 
 Checkpoint 保存模型状态、优化器状态、配置、schema version、git commit、指标和文件内 SHA-256 尾标记。加载时先校验完整序列化内容，再校验配置和模型结构；篡改、截断、未知敏感字段、绝对路径和结构不一致都会 fail closed。

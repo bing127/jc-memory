@@ -8,6 +8,8 @@ license-file.workspace = true
 [dependencies]
 async-trait.workspace = true
 hex.workspace = true
+ndarray.workspace = true
+ort.workspace = true
 jc-memory-activation = { path = "../memory-activation" }
 jc-memory-graph = { path = "../memory-graph" }
 jc-memory-protocol = { path = "../memory-protocol" }
@@ -20,6 +22,7 @@ tokio.workspace = true
 
 [dev-dependencies]
 chrono.workspace = true
+tempfile.workspace = true
 
 [lints]
 workspace = true

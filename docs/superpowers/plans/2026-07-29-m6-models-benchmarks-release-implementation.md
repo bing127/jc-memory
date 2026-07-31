@@ -35,11 +35,11 @@
 
 **文件：** `models/export/{export.py,verify.py}`、`models/manifests/test-model.json`、`models/onnx/fixtures/test-model.onnx`、`memory-neural/src/onnx/{session,provider}.rs`。
 
-- [ ] **步骤 1：写 PyTorch/ONNX 输出容差、Checksum、错误 Shape、Circuit Breaker Fallback 失败测试。**
-- [ ] **步骤 2：运行 Python 与 Rust 聚焦测试**，预期导出器和 OnnxProvider 缺失。
-- [ ] **步骤 3：导出使用固定 opset、dynamic batch axis 和明确 input/output names；Manifest 包含 model_id、version、license、sha256、schema、opset、训练数据说明、设备支持。**
-- [ ] **步骤 4：Rust `OnnxProvider` 校验 Manifest/文件 checksum/Shape，支持 CPU 和可用 Provider 探测、批处理、超时、熔断；加载或推理失败自动返回确定性 Fallback 并记录原因。**
-- [ ] **步骤 5：运行一致性测试并提交 `feat(neural): add verified ONNX deployment`**。测试模型必须体积小且许可证允许私有分发。
+- [x] **步骤 1：写 PyTorch/ONNX 输出容差、Checksum、错误 Shape、Circuit Breaker Fallback 失败测试。** 已覆盖 Python 输出容差、Manifest/Checksum/Shape 拒绝和 Rust 确定性 Fallback 契约。
+- [x] **步骤 2：运行 Python 与 Rust 聚焦测试**，先确认导出器和 `OnnxProvider` 缺失红灯，再完成 Python 6 个测试和 Rust 5 个测试通过。
+- [x] **步骤 3：导出使用固定 opset、dynamic batch axis 和明确 input/output names；Manifest 包含 model_id、version、license、sha256、schema、opset、训练数据说明、设备支持。** 已生成并提交最小私有 Fixture 与 Manifest。
+- [x] **步骤 4：Rust `OnnxProvider` 校验 Manifest/文件 checksum/Shape，支持 CPU Provider、批处理、超时、熔断；加载或推理失败自动返回确定性 Fallback 并记录原因。** 当前主机 CPU Session 已通过真实 Fixture 验证。
+- [x] **步骤 5：运行一致性测试并提交 `feat(neural): add verified ONNX deployment`**。Python 6 个测试、Rust neural 全部测试、严格 Clippy、Rustfmt、Ruff 和当前主机 CPU Fixture 均已通过；测试模型体积小且许可证为 PRIVATE。
 
 ## Task 3：建立统一 Benchmark Harness 与指标
 

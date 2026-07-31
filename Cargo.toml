@@ -44,6 +44,7 @@ chrono = { version = "0.4", features = ["serde"] }
 fs2 = "0.4"
 futures = "0.3"
 hex = "0.4"
+ndarray = "0.17"
 getrandom = "0.4"
 napi = { version = "3.12", features = ["tokio_rt"] }
 napi-derive = "3.6"
@@ -72,6 +73,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 uuid = { version = "1", features = ["serde", "v7"] }
 yaml_serde = "0.10"
 zeroize = { version = "1", features = ["derive"] }
+ort = { version = "2.0.0-rc.13", default-features = false, features = ["std", "ndarray", "download-binaries", "tls-rustls", "api-27"] }
 zstd = "0.13"
 
 [workspace.lints.rust]

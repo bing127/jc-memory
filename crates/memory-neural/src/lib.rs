@@ -6,6 +6,8 @@ pub mod circuit_breaker;
 pub mod fallback;
 /// 模型身份与执行契约清单。
 pub mod manifest;
+/// ONNX Manifest 校验、CPU Session 和确定性 Fallback。
+pub mod onnx;
 /// 神经能力接口及派生输出类型。
 pub mod traits;
 

@@ -1,0 +1,42 @@
+{
+  "device_support": [
+    "cpu"
+  ],
+  "input_name": "features",
+  "input_shape": [
+    -1,
+    4
+  ],
+  "license": "PRIVATE",
+  "max_batch_size": 256,
+  "model_id": "jc-memory-fixture",
+  "opset": 17,
+  "outputs": [
+    {
+      "name": "router_logits",
+      "shape": [
+        -1,
+        3
+      ]
+    },
+    {
+      "name": "importance",
+      "shape": [
+        -1,
+        1
+      ]
+    },
+    {
+      "name": "contradiction_logits",
+      "shape": [
+        -1,
+        2
+      ]
+    }
+  ],
+  "schema": "jc-memory://neural/multitask/v1",
+  "sha256": "aeb1862a6abe3f131c7979528394bb33ecf092c8699073d11456106a05cdf7d0",
+  "timeout_ms": 250,
+  "training_data_digest": "synthetic-fixture-v1",
+  "version": "0.1.0"
+}
