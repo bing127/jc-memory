@@ -182,7 +182,7 @@ where
         .bus
         .execute(&access, request)
         .await
-        .map_err(ServerError::Command)?;
+        .map_err(|error| ServerError::command(&access.request_id, error))?;
     Ok(Json(response))
 }
 
@@ -258,11 +258,12 @@ where
         request: MemoryRequest,
     ) -> Result<ResponseEnvelope, ServerError> {
         let access = self.state.access(key, &request.request_id)?;
+        let request_id = access.request_id.clone();
         self.state
             .bus
             .execute(&access, request)
             .await
-            .map_err(ServerError::Command)
+            .map_err(|error| ServerError::command(&request_id, error))
     }
 }
 
@@ -279,14 +280,30 @@ pub enum ServerError {
     #[error("server transport failure: {0}")]
     Transport(String),
     /// Core 命令错误。
-    #[error(transparent)]
-    Command(#[from] CommandError),
+    #[error("command failed for request {request_id}: {source}")]
+    Command {
+        /// 请求标识。
+        request_id: String,
+        /// Core 原始错误。
+        #[source]
+        source: CommandError,
+    },
+}
+
+impl ServerError {
+    fn command(request_id: &str, source: CommandError) -> Self {
+        Self::Command {
+            request_id: request_id.to_owned(),
+            source,
+        }
+    }
 }
 
 #[derive(Serialize)]
 struct ErrorBody {
     code: String,
     message: String,
+    request_id: Option<String>,
 }
 
 impl IntoResponse for ServerError {
@@ -295,7 +312,7 @@ impl IntoResponse for ServerError {
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::RateLimited => StatusCode::TOO_MANY_REQUESTS,
             Self::Transport(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::Command(error) => match error.code() {
+            Self::Command { source, .. } => match source.code() {
                 jc_memory_protocol::CommandErrorCode::InvalidArgument => StatusCode::BAD_REQUEST,
                 jc_memory_protocol::CommandErrorCode::PermissionDenied => StatusCode::FORBIDDEN,
                 jc_memory_protocol::CommandErrorCode::NotFound => StatusCode::NOT_FOUND,
@@ -310,7 +327,7 @@ impl IntoResponse for ServerError {
             Self::Unauthorized => "unauthorized".into(),
             Self::RateLimited => "resource_exhausted".into(),
             Self::Transport(_) => "internal".into(),
-            Self::Command(error) => serde_json::to_value(error.code())
+            Self::Command { source, .. } => serde_json::to_value(source.code())
                 .unwrap_or(json!("internal"))
                 .as_str()
                 .unwrap_or("internal")
@@ -321,6 +338,10 @@ impl IntoResponse for ServerError {
             Json(ErrorBody {
                 code,
                 message: self.to_string(),
+                request_id: match &self {
+                    Self::Command { request_id, .. } => Some(request_id.clone()),
+                    Self::Unauthorized | Self::RateLimited | Self::Transport(_) => None,
+                },
             }),
         )
             .into_response()

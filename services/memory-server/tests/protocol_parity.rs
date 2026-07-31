@@ -151,6 +151,44 @@ async fn missing_api_key_is_rejected_without_calling_bus() {
 }
 
 #[tokio::test]
+async fn core_error_keeps_request_id_in_the_stable_error_body() {
+    #[derive(Clone)]
+    struct FailingBus;
+    #[async_trait]
+    impl CommandBus for FailingBus {
+        async fn execute(
+            &self,
+            _access: &AccessContext,
+            _request: MemoryRequest,
+        ) -> Result<ResponseEnvelope, CommandError> {
+            Err(CommandError::RequestIdMismatch)
+        }
+    }
+    let request = request();
+    let key = ApiKey::new(
+        "test-key",
+        AccessContext::new("principal", request.access_scope.clone().into()),
+    );
+    let response = router(ServerState::new(FailingBus, vec![key]))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/memory/command")
+                .header("content-type", "application/json")
+                .header("x-api-key", "test-key")
+                .body(Body::from(serde_json::to_vec(&request).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(body["code"], "invalid_argument");
+    assert_eq!(body["request_id"], "request-1");
+}
+
+#[tokio::test]
 async fn metrics_is_public_and_concurrency_limit_is_stable() {
     let metrics_response = router(ServerState::new(FixtureBus, Vec::new()))
         .oneshot(
