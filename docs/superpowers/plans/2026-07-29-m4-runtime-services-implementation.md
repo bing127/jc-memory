@@ -122,7 +122,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - [x] **步骤 4：Tonic 实现同一 CommandBus；REST/gRPC 共享错误分类和 request_id；TLS 从文件加载且不记录密钥；HTTP/gRPC 统一请求超时、并发和按 API Key 速率限制。**
 - [x] **步骤 5：运行协议测试、TCP gRPC 测试和全仓门禁；按命令能力独立提交并推送。**
 
-> 当前已落地 Server 基础边界：`/healthz`、`/readyz`、Observe/Recall/Stats/Correct/Forget/Explain REST 路由、API Key 到服务端 `AccessContext` 的映射，以及共享 `CommandBus` 的适配器。真实 Tonic `Execute` 网络门面已接入；gRPC 文件型 TLS 已接入 `JC_MEMORY_TLS_CERT_FILE` 与 `JC_MEMORY_TLS_KEY_FILE`，并要求证书和私钥成对配置。未配置 TLS 时仍保留本机明文开发模式。Protobuf 尚未扩展的命令、KeyProvider、速率限制和 Task 7 的完整协议验收仍待完成。
+> 当前已落地 Server 基础边界：`/healthz`、`/readyz`、Observe/Recall/Stats/Correct/Forget/Explain REST 路由、API Key 到服务端 `AccessContext` 的映射，以及共享 `CommandBus` 的适配器。真实 Tonic `Execute` 网络门面已接入；gRPC 文件型 TLS 已接入 `JC_MEMORY_TLS_CERT_FILE` 与 `JC_MEMORY_TLS_KEY_FILE`，并要求证书和私钥成对配置。未配置 TLS 时仍保留本机明文开发模式。当前七类 Memory 命令、请求超时、并发门禁和速率限制已有协议实现；KeyProvider 生产实现和 M4 总体验收仍待完成。
 
 ### 2026-07-31 进度记录
 
@@ -152,11 +152,14 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 
 **文件：** `services/memory-sidecar/src/{main,config,transport,lock,token,lifecycle}.rs`、`src/bin/{jcmem,jcmemd}.rs`、集成测试。
 
-- [ ] **步骤 1：写第二实例被锁拒绝、Token 错误、崩溃重启和 shutdown 失败测试。**
-- [ ] **步骤 2：运行测试**，预期 Sidecar crate 缺失。
-- [ ] **步骤 3：实现 Transport Trait；Unix 使用权限 0600 的 UDS，Windows 使用随机 Loopback 端口；Named Pipe 只保留 Trait 扩展点，不宣称已实现。`jcmemd` 运行守护进程；`jcmem` 提供 start/status/stop/doctor/observe/recall 子命令并使用同一协议 Client。**
-- [ ] **步骤 4：Token 使用 256-bit 随机值、权限受限文件和常量时间比较；文件锁记录 PID/启动标识并检测陈旧锁；信号触发停止接收、等待 in-flight、checkpoint、关闭 DB。**
-- [ ] **步骤 5：运行测试并提交 `feat(sidecar): add authenticated local daemon`**。
+- [x] **步骤 1：写第二实例被锁拒绝、Token 错误、崩溃重启和 shutdown 失败测试。** 已覆盖锁拒绝、错误 Token、重启、在途 Execute 和优雅停止。
+- [x] **步骤 2：运行聚焦 Sidecar 契约测试。**
+- [ ] **步骤 3a：实现 Transport Trait；Unix 使用权限 0600 的 UDS，非 Unix 使用随机 Loopback 端点文件；Named Pipe 只保留 Trait 扩展点，不宣称已实现。`jcmemd` 运行守护进程；`jcmem` 提供 status/stop/doctor/observe/recall/commit/correct/forget/explain/stats 子命令并使用同一协议 Client。**
+- [ ] **步骤 3b：补充 `jcmem start` 以及 Windows 实机传输验证。**
+- [x] **步骤 4a：Token 使用 256-bit 随机值、权限受限文件和常量时间比较；停止流程等待已认证在途请求。**
+- [ ] **步骤 4b：文件锁记录 PID/启动标识并检测陈旧锁；checkpoint 恢复并显式关闭 DB。**
+- [x] **步骤 5a：运行 Sidecar 测试、Clippy、rustdoc、fmt 和 `git diff --check`。**
+- [ ] **步骤 5b：完成 Sidecar 全部边界后创建阶段总提交。**
 
 ### 2026-07-31 进度记录
 
@@ -171,11 +174,11 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 
 **文件：** `services/memory-mcp/src/{main,server,tools,schema}.rs`、`tests/mcp_contract.rs`。
 
-- [ ] **步骤 1：写 initialize、tools/list 和七个 tools/call 的 Schema/结果失败测试。**
-- [ ] **步骤 2：运行测试**，预期 MCP Server 缺失。
-- [ ] **步骤 3：实现 memory_observe、memory_recall、memory_commit、memory_correct、memory_explain、memory_forget、memory_stats；每个 inputSchema 禁止额外未知字段并要求 Access Scope。**
-- [ ] **步骤 4：结果使用 MCP structuredContent 包含协议对象；错误返回稳定 code/data，不把自然语言当唯一结果。**
-- [ ] **步骤 5：运行测试并提交 `feat(mcp): expose structured memory tools`**。
+- [x] **步骤 1：写 initialize、tools/list 和七个 tools/call 的 Schema/结果失败测试。**
+- [x] **步骤 2：运行 MCP 聚焦契约测试。**
+- [x] **步骤 3：实现 memory_observe、memory_recall、memory_commit、memory_correct、memory_explain、memory_forget、memory_stats；每个 inputSchema 禁止额外未知字段并要求 Access Scope。**
+- [x] **步骤 4：结果使用 MCP structuredContent 包含协议对象；错误返回稳定 code/data，不把自然语言当唯一结果。**
+- [x] **步骤 5：运行 MCP 测试、Clippy、rustdoc、fmt 和差异门禁，并按中文提交规范提交。**
 
 ### 2026-07-31 进度记录
 
@@ -192,7 +195,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - [ ] **步骤 1：确定性 Model/Tool 完成完整循环，实际失败否定“测试会通过”的 Prediction。**
 - [x] **步骤 2：同一 Fixture 经 Embedded、REST、gRPC、MCP 调用，canonical Memory Packet 和 Evidence 集合一致。**
 - [ ] **步骤 3：编写 Runtime、Capability、Server、Sidecar、MCP、故障恢复和配置文档。**
-- [ ] **步骤 4：运行全仓 Rust 门禁、服务 E2E 和 `git diff --check`。**
+- [x] **步骤 4：运行全仓 Rust 门禁、服务 E2E 和 `git diff --check`。**
 - [ ] **步骤 5：提交 `docs: complete M4 runtime and services milestone`**。
 
 ### 2026-07-31 进度记录
