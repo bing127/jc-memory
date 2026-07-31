@@ -68,6 +68,15 @@ fn second_sidecar_instance_is_rejected_and_lock_is_released_after_drop() {
     InstanceLock::acquire(&path).expect("实例退出后重新取得锁");
 }
 
+#[test]
+fn stale_lock_metadata_is_detected_when_the_os_lock_is_available() {
+    let directory = tempfile::tempdir().expect("创建锁目录");
+    let path = directory.path().join("sidecar.lock");
+    std::fs::write(&path, "pid=424242\nstarted_at=1\n").expect("写入旧锁元数据");
+    let lock = InstanceLock::acquire(&path).expect("取得可用锁");
+    assert!(lock.recovered_stale_metadata());
+}
+
 #[tokio::test]
 async fn daemon_rejects_wrong_token_supports_status_and_stops_cleanly() {
     let directory = tempfile::tempdir().expect("创建 Sidecar 目录");

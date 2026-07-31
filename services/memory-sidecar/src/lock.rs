@@ -1,4 +1,10 @@
-use std::{fs::OpenOptions, io, path::Path, process};
+use std::{
+    fs::OpenOptions,
+    io::{self, Read as _, Seek as _, SeekFrom, Write as _},
+    path::Path,
+    process,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use fs2::FileExt as _;
 
@@ -16,10 +22,11 @@ pub enum LockError {
 /// 持有期间保证一个数据目录只运行一个 Sidecar。
 pub struct InstanceLock {
     file: std::fs::File,
+    stale_metadata: bool,
 }
 
 impl InstanceLock {
-    /// 创建并尝试取得排他锁；锁文件只记录诊断信息，不作为认证材料。
+    /// 创建并尝试取得排他锁；锁文件记录 PID 和启动标识用于诊断陈旧元数据。
     ///
     /// # Errors
     ///
@@ -27,23 +34,41 @@ impl InstanceLock {
     pub fn acquire(path: &Path) -> Result<Self, LockError> {
         let file = OpenOptions::new()
             .create(true)
+            .read(true)
             .write(true)
             .truncate(false)
             .open(path)?;
+        let mut previous = String::new();
+        (&file).read_to_string(&mut previous)?;
         match file.try_lock_exclusive() {
             Ok(()) => {
                 file.set_len(0)?;
-                let _ = std::io::Write::write_all(
-                    &mut &file,
-                    format!("pid={}\n", process::id()).as_bytes(),
-                );
-                Ok(Self { file })
+                (&file).seek(SeekFrom::Start(0))?;
+                let started_at = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+                let mut writer = &file;
+                writer.write_all(
+                    format!("pid={}\nstarted_at={started_at}\n", process::id()).as_bytes(),
+                )?;
+                file.sync_all()?;
+                Ok(Self {
+                    file,
+                    stale_metadata: !previous.trim().is_empty(),
+                })
             }
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
                 Err(LockError::AlreadyRunning)
             }
             Err(error) => Err(LockError::Io(error)),
         }
+    }
+
+    /// 返回本次取得锁时是否发现了上一个实例留下的元数据。
+    #[must_use]
+    pub const fn recovered_stale_metadata(&self) -> bool {
+        self.stale_metadata
     }
 }
 

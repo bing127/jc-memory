@@ -158,7 +158,8 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - [x] **步骤 3b-1：补充 `jcmem start`，并通过本机启动、状态和停止探针。**
 - [ ] **步骤 3b-2：补充 Windows 实机传输验证。** 当前环境为 macOS，未宣称 Windows 实机验证。
 - [x] **步骤 4a：Token 使用 256-bit 随机值、权限受限文件和常量时间比较；停止流程等待已认证在途请求。**
-- [ ] **步骤 4b：文件锁记录 PID/启动标识并检测陈旧锁；checkpoint 恢复并显式关闭 DB。**
+- [x] **步骤 4b-1：文件锁记录 PID/启动标识，并在 OS 锁可取得但存在旧元数据时标记陈旧锁。**
+- [ ] **步骤 4b-2：checkpoint 恢复并显式关闭 DB。**
 - [x] **步骤 5a：运行 Sidecar 测试、Clippy、rustdoc、fmt 和 `git diff --check`。**
 - [ ] **步骤 5b：完成 Sidecar 全部边界后创建阶段总提交。**
 
@@ -171,6 +172,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - 已将 Sidecar 连接改为并发任务处理；`stop` 会停止接收新连接并等待已认证的在途连接完成后再退出，新增阻塞 CommandBus 契约测试。
 - 非 Unix Loopback 已通过端点文件保存随机端口并由客户端读取连接；Named Pipe、完整 checkpoint 恢复和跨协议身份链尚未实现。因此 Task 8 不标记为完成。
 - 已增加 `jcmemd` 守护进程别名和 `jcmem start`；本机临时目录启动、状态、停止探针通过。Windows 实机传输仍待专用环境验证。
+- 锁文件现在记录 PID/启动标识，并在旧元数据残留但 OS 锁已释放时报告陈旧恢复；checkpoint 恢复和显式 DB 关闭仍待实现。
 
 ## Task 9：实现 MCP Server
 

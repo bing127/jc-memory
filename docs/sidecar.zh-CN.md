@@ -6,7 +6,7 @@
 
 - 数据目录下生成 32 字节随机 Token，文件权限为 Unix `0600`。
 - 使用固定长度逐字节比较验证控制请求，不把 Token 写入日志或响应。
-- 使用文件排他锁保证一个数据目录只运行一个 Sidecar；进程退出或崩溃后由操作系统释放锁。
+- 使用文件排他锁保证一个数据目录只运行一个 Sidecar；锁文件记录 PID/启动标识，进程退出或崩溃后由操作系统释放锁，并在下次取得可用锁时识别残留元数据。
 - Unix 使用权限为 `0600` 的 Unix Domain Socket。
 - 非 Unix 平台使用随机端口的本地 Loopback，并将地址写入受数据目录保护的端点文件；Named Pipe 尚未实现。
 - 控制命令支持 `status`、`stop`、`doctor`，以及 `observe`、`commit`、`recall`、`correct`、`forget`、`explain`、`stats` 七个业务子命令。
