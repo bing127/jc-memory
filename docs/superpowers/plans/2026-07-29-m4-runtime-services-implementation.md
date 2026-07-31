@@ -122,6 +122,8 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - [ ] **步骤 4：Tonic 实现同一 CommandBus；REST/gRPC 共享 ErrorCode、request_id、trace_id；TLS 仅从文件/KeyProvider 加载，不记录密钥；Tower 加入超时、并发和速率限制。**
 - [ ] **步骤 5：运行协议测试并提交 `feat(server): expose secured HTTP and gRPC APIs`**。
 
+> 当前已落地 Server 基础边界：`/healthz`、`/readyz`、Observe REST 路由、API Key 到服务端 `AccessContext` 的映射，以及共享 `CommandBus` 的 gRPC/SDK 适配器。完整 REST 命令集合、真实 Tonic gRPC、限流和优雅关闭仍待本 Task 后续步骤完成。
+
 ## Task 8：实现本地 Sidecar
 
 **文件：** `services/memory-sidecar/src/{main,config,transport,lock,token,lifecycle}.rs`、`src/bin/{jcmem,jcmemd}.rs`、集成测试。
