@@ -163,7 +163,8 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - 已建立 `jc-memory-sidecar` crate，完成 32 字节随机 Token、Unix `0600` 文件权限、恒时比较和文件排他锁。
 - 已完成 Unix Domain Socket 控制行协议、`status`/`stop`/`doctor` 控制命令，以及错误 Token、第二实例、停止和重启契约测试。
 - 已增加带共享 `CommandBus` 的 `execute` 控制消息和 Commit 转发契约测试；请求仍由本地 Token、精确 Scope 和 Core ACL 共同保护。
-- 当前仍未提供完整专用 CLI 子命令；非 Unix Loopback 仅保留传输抽象，Named Pipe 尚未实现。因此 Task 8 不标记为完成。
+- 已增加 `jcmem observe/commit/recall/correct/forget/explain/stats` 专用子命令；每个子命令接收 `--request-file` 或 `--request-json`，并在发送前校验命令类型与 Envelope。
+- 非 Unix Loopback 仅保留传输抽象，Named Pipe、完整 checkpoint 恢复和跨协议身份链尚未实现。因此 Task 8 不标记为完成。
 
 ## Task 9：实现 MCP Server
 

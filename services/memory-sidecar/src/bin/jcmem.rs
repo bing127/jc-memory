@@ -1,16 +1,25 @@
 //! `jcmem` 本地 Sidecar 控制命令。
 
-use jc_memory_sidecar::{DaemonCommand, SidecarConfig, TokenStore, send_command};
+use jc_memory_sidecar::{
+    CliCommand, DaemonCommand, RequestInput, SidecarConfig, TokenStore, decode_request, parse_args,
+    send_command,
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut arguments = std::env::args().skip(1);
-    let command = match arguments.next().as_deref() {
-        Some("status") => DaemonCommand::Status,
-        Some("stop") => DaemonCommand::Stop,
-        Some("doctor") => DaemonCommand::Doctor,
-        Some(other) => return Err(format!("不支持的 Sidecar 命令: {other}").into()),
-        None => return Err("用法: jcmem <status|stop|doctor>".into()),
+    let command = match parse_args(std::env::args().skip(1))? {
+        CliCommand::Status => DaemonCommand::Status,
+        CliCommand::Stop => DaemonCommand::Stop,
+        CliCommand::Doctor => DaemonCommand::Doctor,
+        CliCommand::Execute { kind, input } => {
+            let raw = match input {
+                RequestInput::File(path) => tokio::fs::read_to_string(path).await?,
+                RequestInput::Json(value) => value,
+            };
+            DaemonCommand::Execute {
+                request: Box::new(decode_request(kind, &raw)?),
+            }
+        }
     };
     let data_dir = std::env::var_os("JC_MEMORY_SIDECAR_DATA_DIR").map_or_else(
         || std::env::temp_dir().join("jc-memory"),

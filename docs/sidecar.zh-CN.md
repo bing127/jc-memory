@@ -9,7 +9,7 @@
 - 使用文件排他锁保证一个数据目录只运行一个 Sidecar；进程退出或崩溃后由操作系统释放锁。
 - Unix 使用权限为 `0600` 的 Unix Domain Socket。
 - 非 Unix 平台保留本地 Loopback 传输抽象；Named Pipe 尚未实现。
-- 控制命令支持 `status`、`stop` 和 `doctor`。
+- 控制命令支持 `status`、`stop`、`doctor`，以及 `observe`、`commit`、`recall`、`correct`、`forget`、`explain`、`stats` 七个业务子命令。
 - 绑定 Core 的守护进程支持 `execute` 控制消息，将 `MemoryRequest` 转发到共享 `CommandBus` 并返回 `ResponseEnvelope`；Commit 已覆盖该转发路径。
 
 ## 启动与控制
@@ -20,10 +20,22 @@ JC_MEMORY_SIDECAR_DATA_DIR=/var/lib/jc-memory-sidecar \
 
 JC_MEMORY_SIDECAR_DATA_DIR=/var/lib/jc-memory-sidecar \
   cargo run --locked -p jc-memory-sidecar --bin jcmem -- status
+
+# 业务子命令从文件读取完整的 MemoryRequest JSON。
+JC_MEMORY_SIDECAR_DATA_DIR=/var/lib/jc-memory-sidecar \
+  cargo run --locked -p jc-memory-sidecar --bin jcmem -- stats \
+  --request-file ./fixtures/stats-request.json
+
+# 也可以直接传入 JSON；命令名称必须与请求中的 command 一致。
+JC_MEMORY_SIDECAR_DATA_DIR=/var/lib/jc-memory-sidecar \
+  cargo run --locked -p jc-memory-sidecar --bin jcmem -- stats \
+  --request-json '{"api_version":"v1","request_id":"stats-1","access_scope":{"namespace_id":"00000000-0000-7000-8000-000000000001"},"command":{"command":"stats","payload":null}}'
 ```
 
 `jcmem stop` 会请求守护进程停止接收新连接并退出；`doctor` 只检查本地控制端点和数据目录，不执行记忆读写。
 
+业务子命令只负责读取和校验请求 Envelope，实际授权仍由 Sidecar 生成精确 Scope Grant 后交给 Core `CommandBus`。`--request-file` 与 `--request-json` 不能同时使用；请求文件不应包含服务端 Token。
+
 ## 尚未实现
 
-Sidecar 当前仍未提供完整 Observe/Recall/Correct/Forget/Explain/Stats 的专用 CLI 子命令，也尚未接入服务端 API Key、TLS 或独立 MCP Server。`execute` 转发复用本地 Token 和 Core ACL；Commit 的权威 Fragment 批次已在 SQLite 单事务中追加，自动 Quarantine 治理事件仍沿用既有治理路径。生产部署不能把当前 Sidecar 控制接口当作完整 Memory API；这些能力完成前不会创建 M4 总 Tag。
+Sidecar 尚未实现非 Unix Named Pipe、服务端 API Key/TLS 转发和崩溃后的 checkpoint 恢复；`execute` 转发复用本地 Token 和 Core ACL。Commit 的权威 Fragment 批次已在 SQLite 单事务中追加，自动 Quarantine 治理事件仍沿用既有治理路径。生产部署不能把当前 Sidecar 控制接口当作完整远程 Memory API；这些能力和跨协议 E2E 完成前不会创建 M4 总 Tag。
