@@ -104,7 +104,7 @@ it("returns the canonical recall packet", async () => {
 - [x] **步骤 2：运行 `cargo test -p jc-memory-adapter-hermes`，先确认 workspace 中 crate 缺失，再确认公开契约缺失的编译红灯。**
 - [x] **步骤 3：实现 MemoryProvider；sync_turn 通过 Core Commit 映射 Observation/ModelOutput/ToolResult，prefetch 原样返回 MemoryPacket，shutdown 等待 in-flight 后调用 CommandBus flush；source_id 和 metadata 保存 Hermes 版本、observer 接口版本与 turn ID。**
 - [x] **步骤 4：Fixture 仅声明 Hermes 0.19.0 / `hermes.observer.v1` 契约；测试已使用真实 EmbeddedCommandBus 验证 Core 边界，但未把 Fixture 描述为 Hermes Python 运行时实机验证。**
-- [ ] **步骤 5：提交 `feat(adapter-hermes): add provenance-preserving memory provider`**。
+- [x] **步骤 5：已提交 `2ce819b feat(adapter-hermes): 增加来源保真的记忆适配器`；聚焦测试 6 个通过，fmt、严格 Clippy、rustdoc 和 `git diff --check` 均通过。**
 
 ## Task 9：实现 OpenClaw 与 Mem0 Adapter
 
