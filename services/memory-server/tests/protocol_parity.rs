@@ -1,6 +1,6 @@
 //! REST 与共享服务适配器的一致性测试。
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use axum::{
@@ -9,7 +9,7 @@ use axum::{
 };
 use http_body_util::BodyExt as _;
 use jc_memory_core::{CommandBus, CommandError, EmbeddedCommandBus, MemoryConfig, MemoryEngine};
-use jc_memory_mcp::McpServer;
+use jc_memory_mcp::{McpServer, SidecarCommandBus};
 use jc_memory_protocol::{
     API_VERSION_V1, AccessContext, AccessScope, CommitCommand, CommitResult, ExplainResult,
     MemoryCommand, MemoryPacket, MemoryRequest, MemoryResponse, MemoryScope, MutationAction,
@@ -17,6 +17,7 @@ use jc_memory_protocol::{
     RecallLimits, RecallMode, ResponseEnvelope, StatsCommand, StatsResult,
 };
 use jc_memory_server::{ApiKey, GrpcAdapter, ServerError, ServerState, router, serve_grpc};
+use jc_memory_sidecar::{DaemonCommand, SidecarConfig, SidecarDaemon, send_command};
 use serde_json::{Value, json};
 use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt as _},
@@ -132,9 +133,9 @@ async fn rest_and_grpc_adapter_return_the_same_canonical_envelope() {
 }
 
 #[tokio::test]
-// 四种协议在同一个真实 Fixture 上比较，保持测试步骤线性便于审查。
+// 五种协议在同一个真实 Fixture 上比较，保持测试步骤线性便于审查。
 #[allow(clippy::too_many_lines)]
-async fn real_engine_recall_matches_across_embedded_rest_grpc_and_mcp() {
+async fn real_engine_recall_matches_across_embedded_rest_grpc_sidecar_and_mcp() {
     use jc_memory_protocol::{Grant, Operation};
 
     let directory = tempfile::tempdir().unwrap();
@@ -239,13 +240,44 @@ async fn real_engine_recall_matches_across_embedded_rest_grpc_and_mcp() {
         }))
         .await;
 
+    let sidecar_config = SidecarConfig::local(directory.path().join("sidecar"));
+    let sidecar_engine = MemoryEngine::open(MemoryConfig::local(directory.path()))
+        .await
+        .unwrap();
+    let sidecar_daemon = SidecarDaemon::bind_with_bus(
+        sidecar_config.clone(),
+        Arc::new(EmbeddedCommandBus::new(sidecar_engine)),
+    )
+    .await
+    .unwrap();
+    let sidecar_token = sidecar_daemon.token().clone();
+    let sidecar_task = tokio::spawn(sidecar_daemon.run());
+    let sidecar_mcp = McpServer::new(SidecarCommandBus::new(
+        sidecar_config.clone(),
+        sidecar_token.clone(),
+    ));
+    let sidecar_mcp_response = sidecar_mcp
+        .handle(json!({
+            "jsonrpc":"2.0",
+            "id":2,
+            "method":"tools/call",
+            "params":{"name":"memory_recall","arguments":{"request":recall}}
+        }))
+        .await;
+    send_command(&sidecar_config, &sidecar_token, DaemonCommand::Stop)
+        .await
+        .unwrap();
+    sidecar_task.await.unwrap().unwrap();
+
     let embedded = canonical_packet(serde_json::to_value(embedded).unwrap());
     let rest = canonical_packet(rest);
     let grpc = canonical_packet(serde_json::to_value(grpc).unwrap());
     let mcp = canonical_packet(mcp_response["result"]["structuredContent"].clone());
+    let sidecar_mcp = canonical_packet(sidecar_mcp_response["result"]["structuredContent"].clone());
     assert_eq!(embedded, rest);
     assert_eq!(embedded, grpc);
     assert_eq!(embedded, mcp);
+    assert_eq!(embedded, sidecar_mcp);
 }
 
 fn canonical_packet(mut envelope: Value) -> Value {

@@ -24,6 +24,7 @@ yaml_serde.workspace = true
 
 [dev-dependencies]
 jc-memory-mcp = { path = "../memory-mcp" }
+jc-memory-sidecar = { path = "../memory-sidecar" }
 http-body-util = "0.1"
 tempfile.workspace = true
 

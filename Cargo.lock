@@ -1356,6 +1356,7 @@ dependencies = [
  "jc-memory-core",
  "jc-memory-mcp",
  "jc-memory-protocol",
+ "jc-memory-sidecar",
  "serde",
  "serde_json",
  "tempfile",
