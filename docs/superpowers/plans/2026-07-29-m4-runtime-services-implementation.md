@@ -216,6 +216,18 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - 已补齐 Runtime、Capability、Server、Sidecar、MCP、故障恢复、配置和部署中文文档，并在 README 中文入口中列出。
 - Sidecar 完整身份转发、Runtime 完整闭环和部署级跨协议 E2E 仍待实现，因此不创建 M4 总 Tag。
 
+## Task 11：实现生产文件型 KeyProvider
+
+**文件：** `crates/memory-security/src/key.rs`、`crates/memory-security/src/lib.rs`、`docs/security/key-provider.zh-CN.md`、KeyProvider 契约测试。
+
+- [x] **步骤 1：补充中文设计与边界说明。** 明确文件型 Provider 只覆盖单机/单写者、固定 32 字节材料、严格权限、稳定 ID、轮换元数据、原子发布和错误脱敏；系统 Keychain、KMS/HSM、Windows 实机和自动 Blob 接线继续保持未完成。
+- [x] **步骤 2：写文件型 Provider 契约失败测试。** 覆盖创建与读取、轮换版本、路径穿越拒绝、重复 ID 不覆盖、损坏/截断记录拒绝、权限拒绝、符号链接拒绝、Debug/错误不泄露材料和原子发布行为。
+- [x] **步骤 3：实现最小 `FileKeyProvider`。** 使用锁文件串行化写入；同目录临时文件写入、文件同步、不覆盖原子发布；读取时校验魔数、版本、ID、长度和元数据；所有返回材料使用 `Zeroizing`。
+- [x] **步骤 4：运行 `memory-security` 聚焦测试、严格 Clippy、rustdoc、fmt 和 `git diff --check`，并更新安全文档中的剩余风险。** 已通过 9 个文件 Provider 契约测试、包测试、严格 Clippy、rustdoc、fmt 和差异检查；仅声明当前 Unix/macOS 本机验证。
+- [x] **步骤 5：提交 `feat(security): 增加文件型生产密钥提供者` 并推送当前分支。** 已创建中文提交并准备推送；M4 总提交和阶段 Tag 仍按未完成边界保持不创建。
+
+Task 11 完成前，M4 总提交和阶段 Tag 仍不得创建。
+
 ## M4 完成定义
 
 - Agent 循环、审批、工具、提交和恢复真实运行；

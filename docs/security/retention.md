@@ -37,6 +37,6 @@ Hard Delete 会清空目标 Scope 的派生层并排队重建，以避免残留�
 
 ## 4. 密钥边界
 
-`KeyProvider` 返回 `Zeroizing<[u8; 32]>`，并把轮换版本、来源和时间与密钥材料分离。M3 提供的是进程内 `InMemoryKeyProvider` 及接口契约，没有接入系统 Keychain、KMS 或 HSM。调用方不得把进程内测试实现当作生产密钥托管。
+`KeyProvider` 返回 `Zeroizing<[u8; 32]>`，并把轮换版本、来源和时间与密钥材料分离。当前提供进程内 `InMemoryKeyProvider`（仅测试/临时嵌入式）和受严格权限保护的本地 `FileKeyProvider`（单机/单写者）。两者都没有接入系统 Keychain、KMS 或 HSM；调用方不得把本地文件 Provider 当作硬件或远程密钥托管，也不得把进程内实现用于生产。
 
 `crates/memory-security/tests/hard_delete.rs` 覆盖授权拒绝、无正文审计、Export、Retention 计划恢复、Blob 清理失败、Hard Delete 全引用清理和重建排队。

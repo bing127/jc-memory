@@ -31,7 +31,7 @@
 | Snapshot 篡改或错 Scope Restore | Manifest 与文件 SHA-256、Schema/Scope/Blob 清单、SQLite quick/integrity check、隔离校验和目录切换回滚 | SHA-256 提供完整性检测但 Manifest 未签名；拥有文件写权限者可整体替换自洽 Snapshot |
 | 未授权执行或干扰 Retention | 计划与执行均要求精确 Scope 的 `Delete` Grant，执行在读取或改变计划状态前重新授权 | 调用方仍需保护计划对象和本地数据库访问 |
 | Hard Delete 留下引用或正文审计 | 排他锁、事务清理、Blob 暂存、派生层全 Scope 清理、无正文摘要凭证、重建排队 | 文件系统安全擦除、外部备份和副本清理未实现 |
-| 密钥泄露 | `KeyProvider` 抽象、`Zeroizing`、Debug 脱敏、轮换元数据与材料分离 | 当前仅进程内 Provider；交换区、崩溃转储、KMS/HSM 不在 M3 验证范围 |
+| 密钥泄露 | `KeyProvider` 抽象、`Zeroizing`、文件权限、原子发布、Debug 脱敏、轮换元数据与材料分离 | 文件型 Provider 仍依赖本机文件系统和进程内存；交换区、崩溃转储、Keychain、KMS/HSM 和跨主机共享不在验证范围 |
 | Neural Provider 不可用或不确定 | 八个 Trait 的本地确定性 Fallback、Manifest 校验和、批量限制、超时与三态熔断 | M3 未接入外部 Provider，也未验证模型质量或对抗鲁棒性 |
 
 ## 3. 安全不变量
