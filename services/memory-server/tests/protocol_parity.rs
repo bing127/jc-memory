@@ -518,6 +518,88 @@ async fn tonic_execute_reuses_the_shared_adapter_over_tcp() {
 }
 
 #[tokio::test]
+async fn tonic_execute_supports_recall_over_tcp() {
+    use jc_memory_protocol::generated::jiangcheng::memory::v1::memory_service_client::MemoryServiceClient;
+
+    #[derive(Clone)]
+    struct RecallBus;
+
+    #[async_trait]
+    impl CommandBus for RecallBus {
+        async fn execute(
+            &self,
+            _access: &AccessContext,
+            request: MemoryRequest,
+        ) -> Result<ResponseEnvelope, CommandError> {
+            let mode = match &request.command {
+                MemoryCommand::Recall(command) => command.mode,
+                MemoryCommand::Observe(_)
+                | MemoryCommand::Stats(_)
+                | MemoryCommand::Correct(_)
+                | MemoryCommand::Forget(_)
+                | MemoryCommand::Explain(_) => panic!("测试只接受 Recall 命令"),
+            };
+            Ok(ResponseEnvelope::for_request(
+                &request,
+                MemoryResponse::Recall(MemoryPacket::empty(RecallId::new(), mode)),
+            ))
+        }
+    }
+
+    let mut request = request();
+    request.request_id = "request-recall-grpc".into();
+    request.command = MemoryCommand::Recall(RecallCommand {
+        mode: RecallMode::HistoricalState,
+        text: "部署策略".into(),
+        entities: vec!["疆诚记忆".into()],
+        at_time: Some("2026-07-31T00:00:00Z".parse().unwrap()),
+        limits: RecallLimits {
+            max_seeds: 4,
+            max_neighbors: 4,
+            max_hops: 2,
+            max_nodes: 8,
+            timeout_ms: 100,
+        },
+    });
+    let key = ApiKey::new(
+        "test-key",
+        AccessContext::new("principal", request.access_scope.clone().into()),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let shutdown = CancellationToken::new();
+    let task = tokio::spawn(serve_grpc(
+        listener,
+        ServerState::new(RecallBus, vec![key]),
+        shutdown.clone().cancelled_owned(),
+    ));
+
+    let endpoint = tonic::transport::Endpoint::from_shared(format!("http://{address}"))
+        .unwrap()
+        .connect_timeout(Duration::from_secs(2));
+    let mut client = MemoryServiceClient::connect(endpoint).await.unwrap();
+    let wire_request = request.clone().try_into().unwrap();
+    let mut grpc_request = tonic::Request::new(wire_request);
+    grpc_request
+        .metadata_mut()
+        .insert("x-api-key", "test-key".parse().unwrap());
+    let response = client.execute(grpc_request).await.unwrap();
+    let domain: ResponseEnvelope = response.into_inner().try_into().unwrap();
+
+    assert_eq!(domain.request_id, request.request_id);
+    assert!(matches!(
+        domain.response,
+        MemoryResponse::Recall(MemoryPacket {
+            intent: RecallMode::HistoricalState,
+            ..
+        })
+    ));
+
+    shutdown.cancel();
+    task.await.unwrap().unwrap();
+}
+
+#[tokio::test]
 async fn missing_api_key_is_rejected_without_calling_bus() {
     let state = ServerState::new(FixtureBus, Vec::new());
     let response = router(state)
