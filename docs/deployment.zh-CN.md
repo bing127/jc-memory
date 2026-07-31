@@ -94,4 +94,6 @@ Kubernetes 模板为 gRPC 配置文件型 TLS。HTTP 健康端口当前仍为集
 
 ## 当前验证范围
 
-部署 YAML 可在本地做结构解析，Rust Server 可做编译和协议测试。只有在实际安装了 Docker/Kubectl 并连接目标运行时后，才能声称镜像构建或 Kubernetes 实机部署通过。
+部署 YAML 可在本地做结构解析，Rust Server 可做编译和协议测试。当前 macOS 验收还会启动真实 `jc-memory-server` 二进制，执行 HTTP Observe，发送 `SIGINT` 干净退出，并以同一数据目录重启后通过 Stats 验证权威 Fragment/Event 持久化。
+
+该测试不等同于 Docker 镜像、Compose、Kubernetes、Linux 或 Windows 实机验证，也不代表五协议已在独立部署进程组合中完成同一 Fixture 验收。只有在实际安装了 Docker/Kubectl 并连接目标运行时后，才能声称镜像构建或 Kubernetes 实机部署通过。

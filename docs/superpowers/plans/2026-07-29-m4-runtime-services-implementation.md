@@ -129,6 +129,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - 已增加真实 `memory-server` 二进制入口：从环境变量读取监听地址、数据目录、API Key、Namespace 和并发上限。
 - 已将 `MemoryEngine`、`EmbeddedCommandBus`、精确 `Observe` Scope Grant 和 HTTP Listener 接通。
 - 已接入 Ctrl-C 优雅关闭，并完成本机临时目录启动探针：`/healthz` 返回成功，进程收到 `SIGINT` 后以 0 退出。
+- 已增加真实 Server 二进制重启 E2E：启动后经 HTTP Observe 写入权威记录，`SIGINT` 干净退出，以同一数据目录重启后 Stats 返回 1 个 Fragment 和 1 个 Event。
 - 已补齐共享 `RecallCommand`、硬预算和 `MemoryPacket` 响应，并接入 `/v1/memory/recall`；REST 路由与共享 `CommandBus` Envelope 契约测试通过。
 - 已补齐 `StatsCommand`、Scope 统计响应并接入 `/v1/memory/stats`；统计只读取授权 Scope 的权威 Fragment/Event 数量。
 - 已将服务端 API Key 授权集中到精确 Scope 构造器，入口现在授予已公开的 `Observe`、`Recall` 与 `Mutate` 操作；真实二进制 `/v1/memory/stats` 探针通过 Core ACL 并返回零计数。
@@ -209,6 +210,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - 已完成协议包、Server、Sidecar、MCP 和 Workspace 的 fmt、严格 Clippy、测试、rustdoc 与 `git diff --check` 门禁。
 - 已有 REST/gRPC Adapter 一致性、TCP gRPC Recall、MCP structuredContent 和 Runtime Fixture 契约测试。
 - 已补充真实临时 SQLite Fixture：同一 Fragment 的 Recall 经 Embedded、REST、TCP gRPC、Sidecar 转发 MCP 后，规范化去除每次请求随机的 `query_id` 后，完整 Memory Packet 保持一致。
+- 已补充本地真实 Server 二进制启动、Observe、`SIGINT`、同目录重启和 Stats 持久化验收；这不等同于五协议独立部署进程组合 E2E。
 - 已增加确定性 Runtime 循环验收：模型返回 ToolRequest，失败工具只执行一次并生成 `DisprovedBy`，不写入 Fact，Runtime 状态从 Observe 路径提交到 Completed。
 - 已增加 MCP 到 Sidecar 的真实身份转发：`JC_MEMORY_MCP_SIDECAR_DATA_DIR` 选择 Sidecar 后端，`mcp-client` 通过 `ExecuteAs` 传到 Core；仍未完成五协议同一 Fixture 的部署级 E2E。
 - 已补齐 Runtime、Capability、Server、Sidecar、MCP、故障恢复、配置和部署中文文档，并在 README 中文入口中列出。
