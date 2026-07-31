@@ -1,0 +1,10 @@
+# 当前只验证 Mem0 v1 Fixture，不代表远程 Mem0 API 实机验证。
+source_version: "v1"
+default_importance: 0.5
+security_label: "internal"
+recall_limits:
+  max_seeds: 8
+  max_neighbors: 8
+  max_hops: 2
+  max_nodes: 32
+  timeout_ms: 250

@@ -110,10 +110,10 @@ it("returns the canonical recall packet", async () => {
 
 **文件：** `adapters/openclaw/`、`adapters/mem0/` 的 config/mapping/import/export/tests/README。
 
-- [ ] **步骤 1：写 Markdown/Memory 导入、Hook/MCP、Mem0 Add/Search、历史迁移和 round-trip 失败测试。**
-- [ ] **步骤 2：运行两个 Adapter 测试**，预期 crate 缺失。
-- [ ] **步骤 3：OpenClaw 按文件路径、内容哈希、heading 和行范围生成 Provenance；Hook/MCP 只调用 Core API；重复导入幂等但不覆盖历史。**
-- [ ] **步骤 4：Mem0 Add 映射 Fragment，Search 映射 Recall；旧数据默认 Unverified 并保存 legacy_confidence；Export 保留 ID mapping manifest。**
+- [x] **步骤 1：写 Markdown/Memory 导入、Hook/MCP、Mem0 Add/Search、历史迁移和 round-trip 失败测试；OpenClaw 3 项、Mem0 4 项契约测试已覆盖。**
+- [x] **步骤 2：运行两个 Adapter 测试，先确认两个 crate 缺失，再完成公开契约红灯到绿灯。**
+- [x] **步骤 3：OpenClaw 使用 CommonMark 解析 heading，按文件路径、内容哈希、heading 和行范围生成 Provenance；Hook/MCP 只调用 Core API；重复导入幂等，内容变化追加新历史。**
+- [x] **步骤 4：Mem0 Add 映射 `Fact + Unverified` Fragment，Search 映射有界 Recall；旧数据默认 `Unverified` 并保留 `legacy_confidence`；Export 保留可 round-trip 的 ID mapping manifest。**
 - [ ] **步骤 5：运行契约测试并提交 `feat(adapters): add OpenClaw and Mem0 migration bridges`**。
 
 ## Task 10：实现 Graphiti 与 Dify Adapter

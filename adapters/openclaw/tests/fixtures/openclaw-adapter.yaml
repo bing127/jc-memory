@@ -1,0 +1,9 @@
+source_version: "memory.md/v1"
+default_importance: 0.5
+security_label: "internal"
+recall_limits:
+  max_seeds: 4
+  max_neighbors: 4
+  max_hops: 2
+  max_nodes: 16
+  timeout_ms: 150

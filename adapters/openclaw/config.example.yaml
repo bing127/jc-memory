@@ -1,0 +1,10 @@
+# 当前只验证 Memory.md 文件契约，不代表 OpenClaw 运行时实机验证。
+source_version: "memory.md/v1"
+default_importance: 0.5
+security_label: "internal"
+recall_limits:
+  max_seeds: 8
+  max_neighbors: 8
+  max_hops: 2
+  max_nodes: 32
+  timeout_ms: 250

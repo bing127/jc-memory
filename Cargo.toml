@@ -19,6 +19,8 @@ members = [
   "crates/memory-uniffi",
   "crates/memory-python",
   "adapters/hermes",
+  "adapters/openclaw",
+  "adapters/mem0",
   "services/memory-server",
   "services/memory-sidecar",
   "services/memory-mcp",
@@ -48,6 +50,7 @@ pyo3-async-runtimes = { version = "0.29", features = ["tokio-runtime"] }
 proptest = "1"
 prost = "0.14"
 prost-types = "0.14"
+pulldown-cmark = "0.13"
 reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls"] }
 semver = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
