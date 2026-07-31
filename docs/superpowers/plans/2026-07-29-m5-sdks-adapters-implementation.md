@@ -60,11 +60,11 @@ it("returns the canonical recall packet", async () => {
 
 **文件：** `sdk/go/{go.mod,memory/client.go,memory/types.go,memory/errors.go,memory/client_test.go}`、`crates/memory-ffi/{src/lib.rs,include/jcmemory.h}`、`examples/go-agent/`。
 
-- [ ] **步骤 1：写 `go test` 的 Context 取消、Fixture 和错误码失败测试。**
-- [ ] **步骤 2：运行 `go test ./sdk/go/...`**，预期 package 缺失。
-- [ ] **步骤 3：分别实现 HTTP 和 gRPC Transport；远程 Client 方法全部接收 `context.Context`，JSON/Proto 类型保留 optional 区别，错误实现 `Code() string` 和 `RequestID()`。**
-- [ ] **步骤 4：C ABI 仅暴露 create/destroy/execute/cancel/free_buffer；Handle 使用 generation 防止 use-after-free，所有 panic 在边界捕获；`unsafe` 只存在 `memory-ffi` 且每个块说明长度、所有权和生命周期不变量。**
-- [ ] **步骤 5：运行 cargo FFI 测试、Go race test 和契约测试，提交 `feat(sdk-go): add remote client and embedded C ABI`**。
+- [x] **步骤 1：写 `go test` 的 Context 取消、Fixture 和错误码失败测试。**
+- [x] **步骤 2：运行嵌套 module 的 `go test ./...`，先确认 `memory` 包缺失红灯，再完成绿灯。**
+- [x] **步骤 3：实现标准库 HTTP Transport；所有远程方法接收 `context.Context`，Envelope 使用 `json.RawMessage` 保留 optional 区别，错误提供 `Code(err)` 和 `RequestID(err)`。当前服务未提供 Go 生成 gRPC Stub，因此未伪造 gRPC 实现。**
+- [x] **步骤 4：`memory-ffi` 仅暴露 create/destroy/execute/cancel/free_buffer 及带 token 的执行变体；generation 绑定取消 token，所有 panic 在边界捕获，boxed slice 保证返回缓冲区容量不依赖隐藏值；`unsafe` 仅存在该 crate 并逐块说明指针、长度、所有权和生命周期不变量。**
+- [x] **步骤 5：运行 `cargo test/clippy -p jc-memory-ffi`、Go 普通和 race test、示例编译、格式和差异检查；提交 `feat(sdk-go): 增加远程客户端与受控 C ABI`。**
 
 ## Task 5：实现 Kotlin/Android SDK
 

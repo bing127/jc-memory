@@ -1242,6 +1242,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "jc-memory-ffi"
+version = "0.1.0"
+dependencies = [
+ "jc-memory-core",
+ "jc-memory-protocol",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "jc-memory-graph"
 version = "0.1.0"
 dependencies = [
