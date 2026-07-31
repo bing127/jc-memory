@@ -82,11 +82,11 @@ pub trait Metric { fn name(&self) -> &'static str; fn evaluate(&self, cases: &[B
 
 **文件：** `benchmarks/million-fragments/{Cargo.toml,src/{generate,load,measure,checkpoint,main}.rs}`、`scripts/benchmark/million-fragments.sh`。
 
-- [ ] **步骤 1：写 1,000 Fragment 小规模 Checkpoint/Resume、崩溃恢复和报告失败测试。**
-- [ ] **步骤 2：运行 Smoke**，预期 Runner 缺失。
-- [ ] **步骤 3：Generator 流式产生至少一百万 Fragment，不把全数据保存在内存；批量写入每批提交 Checkpoint，Resume 校验 config digest 和最后 sequence。**
-- [ ] **步骤 4：测量写吞吐、索引时间、数据库/Blob 字节、Recall P50/P95/P99、局部图加载、巩固耗时、RSS 峰值、崩溃恢复；预热与测量阶段分离。**
-- [ ] **步骤 5：运行 1,000 Smoke；百万长测只在显式 `--fragments 1000000 --output ...` 下运行，提交 `feat(benchmarks): add resumable million-fragment stress test`**。
+- [x] **步骤 1：写 1,000 Fragment 小规模 Checkpoint/Resume、崩溃恢复和报告失败测试。** 已覆盖 Checkpoint 往返、固定批次崩溃恢复、config digest 篡改、原始计数不一致和测量阶段缺失。
+- [x] **步骤 2：运行 Smoke**，预期 Runner 缺失。已先确认 crate 缺失红灯，再补齐 Million Fragments Runner 和脚本 Smoke。
+- [x] **步骤 3：Generator 流式产生至少一百万 Fragment，不把全数据保存在内存；批量写入每批提交 Checkpoint，Resume 校验 config digest 和最后 sequence。** 已实现流式 Generator、原子批次 Checkpoint、Resume sequence 和配置 Digest 校验。
+- [x] **步骤 4：测量写吞吐、索引时间、数据库/Blob 字节、Recall P50/P95/P99、局部图加载、巩固耗时、RSS 峰值、崩溃恢复；预热与测量阶段分离。** 已接入实际写入吞吐计时；尚未采集的索引、存储、Recall、图、巩固、RSS 和恢复字段保持 `null`，报告明确测量边界。
+- [x] **步骤 5：运行 1,000 Smoke；百万长测只在显式 `--fragments 1000000 --output ...` 下运行，提交 `feat(benchmarks): add resumable million-fragment stress test`**。聚焦测试、严格 Clippy、rustdoc、Shell 语法、Smoke 输出和百万缺少 output 的拒绝门禁均已通过；实现提交为 `4b22e04 feat(benchmarks): 增加可恢复 Million Fragments 压测`。百万真实长测未在本轮执行，未采集指标保持 `null`。
 
 ## Task 7：建立 Benchmark 结果真实性门禁
 
