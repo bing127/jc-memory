@@ -21,7 +21,9 @@ use axum::{
     routing::{get, post},
 };
 use jc_memory_core::{CommandBus, CommandError};
-use jc_memory_protocol::{AccessContext, MemoryRequest, ResponseEnvelope};
+use jc_memory_protocol::{
+    AccessContext, Grant, MemoryRequest, MemoryScope, Operation, ResponseEnvelope,
+};
 use serde::Serialize;
 use serde_json::json;
 use tokio::net::TcpListener;
@@ -41,6 +43,23 @@ impl ApiKey {
             value: value.into(),
             context,
         }
+    }
+
+    /// 为精确 Scope 和显式操作集合创建服务端 API Key。
+    #[must_use]
+    pub fn for_scope(
+        value: impl Into<String>,
+        principal_id: impl Into<String>,
+        scope: MemoryScope,
+        operations: impl IntoIterator<Item = Operation>,
+    ) -> Self {
+        let grants = operations
+            .into_iter()
+            .map(|operation| Grant::for_scope(operation, &scope))
+            .collect();
+        let mut context = AccessContext::new(principal_id, scope);
+        context.grants = grants;
+        Self::new(value, context)
     }
 }
 

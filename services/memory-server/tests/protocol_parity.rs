@@ -9,7 +9,7 @@ use http_body_util::BodyExt as _;
 use jc_memory_core::{CommandBus, CommandError};
 use jc_memory_protocol::{
     API_VERSION_V1, AccessContext, AccessScope, MemoryCommand, MemoryPacket, MemoryRequest,
-    MemoryResponse, ObserveResult, RecallCommand, RecallId, RecallLimits, RecallMode,
+    MemoryResponse, ObserveResult, Operation, RecallCommand, RecallId, RecallLimits, RecallMode,
     ResponseEnvelope, StatsCommand, StatsResult,
 };
 use jc_memory_server::{ApiKey, GrpcAdapter, ServerState, router};
@@ -244,6 +244,66 @@ async fn stats_route_returns_scope_counts_from_the_shared_envelope() {
     let envelope: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(envelope["response"]["response"], "stats");
     assert_eq!(envelope["response"]["payload"]["fragment_count"], 2);
+}
+
+#[tokio::test]
+async fn scoped_api_key_builds_grants_only_on_the_server() {
+    #[derive(Clone)]
+    struct GrantCheckingBus;
+    #[async_trait]
+    impl CommandBus for GrantCheckingBus {
+        async fn execute(
+            &self,
+            access: &AccessContext,
+            request: MemoryRequest,
+        ) -> Result<ResponseEnvelope, CommandError> {
+            assert!(
+                access
+                    .grants
+                    .iter()
+                    .any(|grant| grant.operation == Operation::Observe)
+            );
+            assert!(
+                access
+                    .grants
+                    .iter()
+                    .any(|grant| grant.operation == Operation::Recall)
+            );
+            Ok(ResponseEnvelope::for_request(
+                &request,
+                MemoryResponse::Observe(ObserveResult {
+                    fragment_id: "00000000-0000-7000-8000-000000000001".parse().unwrap(),
+                    event_id: "00000000-0000-7000-8000-000000000002".parse().unwrap(),
+                    sequence: 1,
+                    content_hash: "a".repeat(64).parse().unwrap(),
+                    created: true,
+                    quarantined: false,
+                }),
+            ))
+        }
+    }
+
+    let request = request();
+    let scope = request.access_scope.clone().into();
+    let key = ApiKey::for_scope(
+        "test-key",
+        "principal",
+        scope,
+        [Operation::Observe, Operation::Recall],
+    );
+    let response = router(ServerState::new(GrantCheckingBus, vec![key]))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/memory/observe")
+                .header("content-type", "application/json")
+                .header("x-api-key", "test-key")
+                .body(Body::from(serde_json::to_vec(&request).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]
