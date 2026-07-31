@@ -78,9 +78,9 @@ pub enum ModelOutput { Hypothesis(Hypothesis), Prediction(Prediction), Plan(Plan
 
 **文件：** `memory-runtime/src/capability/{model,registry,stats}.rs`、`tests/capabilities.rs`。
 
-- [ ] **步骤 1：写版本解析、权限、风险和成功率失败测试。**
-- [ ] **步骤 2：运行测试**，预期 CapabilityRegistry 缺失。
-- [ ] **步骤 3：实现：**
+- [x] **步骤 1：写版本解析、权限、风险和成功率失败测试。**
+- [x] **步骤 2：运行测试**，预期 CapabilityRegistry 缺失。
+- [x] **步骤 3：实现：**
 
 ```rust
 pub enum CapabilityKind { Prompt, Skill, Tool, McpTool, Workflow, Policy }
@@ -88,8 +88,8 @@ pub struct CapabilityDescriptor { pub id: String, pub version: Version, pub kind
 pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescriptor, executor: Arc<dyn CapabilityExecutor>) -> Result<(), RegistryError>; fn resolve(&self, request: &CapabilityRequest, access: &AccessContext) -> Result<ResolvedCapability, RegistryError>; }
 ```
 
-- [ ] **步骤 4：统计只保存 runs/successes/failures/failure_modes/evidence；排序使用有最小样本数的贝叶斯平滑，不生成 Fact。**
-- [ ] **步骤 5：运行测试并提交 `feat(runtime): add versioned capability registry`**。
+- [x] **步骤 4：统计只保存 runs/successes/failures/failure_modes/evidence；排序使用有最小样本数的贝叶斯平滑，不生成 Fact。**
+- [x] **步骤 5：运行测试并提交 `feat(runtime): add versioned capability registry`**。
 
 ## Task 5：实现 Policy、Approval、Tool 与 Commit 闭环
 

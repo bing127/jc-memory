@@ -1,5 +1,6 @@
 //! 可恢复的 Agent Runtime 状态机。
 
+mod capability;
 mod model;
 mod parser;
 mod providers;
@@ -7,6 +8,11 @@ mod recovery;
 mod runner;
 mod state;
 
+pub use capability::{
+    CapabilityDescriptor, CapabilityError, CapabilityExecutor, CapabilityKind, CapabilityRanking,
+    CapabilityRegistry, CapabilityRequest, CapabilityStats, CapabilityStatsStore, Permission,
+    ResolvedCapability, RiskLevel,
+};
 pub use model::{
     DecisionCandidate, FinalResponse, Hypothesis, ModelDescriptor, ModelError, ModelMessage,
     ModelOutput, ModelProvider, ModelRequest, ModelResponse, ModelRole, Plan, Prediction,
