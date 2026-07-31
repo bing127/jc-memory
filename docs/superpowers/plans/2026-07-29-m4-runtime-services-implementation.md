@@ -190,7 +190,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - Observe、Recall、Commit、Correct、Forget、Explain、Stats 通过共享 `CommandBus` 执行并返回 MCP `structuredContent`；Commit 批次要求所有 Fragment 属于请求 Scope，并保留各自原始 Kind。
 - 已增加可选 `JC_MEMORY_MCP_TOKEN` 身份校验；配置后 `tools/call` 必须携带 `authToken`，缺失或错误统一返回 `-32001`，并通过固定长度比较避免 Token 提前退出比较。
 - 已收紧 `tools/list` 的请求 Schema，并在执行前校验工具名与 `MemoryCommand` 一致，避免通过错误工具路由获得不同操作 Grant。
-- 当前仍未完成 Sidecar 转发身份链和完整跨协议 E2E，因此 Task 9 不标记为完成。
+- MCP 到 Sidecar 的 `ExecuteAs` 主体转发链已有真实临时 SQLite 契约测试；完整部署级跨协议 E2E 仍待实现，因此 Task 9 只表示 MCP 协议边界完成，不表示 M4 完成。
 
 ## Task 10：端到端一致性、文档与门禁
 
@@ -208,6 +208,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - 已有 REST/gRPC Adapter 一致性、TCP gRPC Recall、MCP structuredContent 和 Runtime Fixture 契约测试。
 - 已补充真实临时 SQLite Fixture：同一 Fragment 的 Recall 经 Embedded、REST、TCP gRPC 与 MCP 后，规范化去除每次请求随机的 `query_id` 后，完整 Memory Packet 保持一致。
 - 已增加确定性 Runtime 循环验收：模型返回 ToolRequest，失败工具只执行一次并生成 `DisprovedBy`，不写入 Fact，Runtime 状态从 Observe 路径提交到 Completed。
+- 已增加 MCP 到 Sidecar 的真实身份转发：`JC_MEMORY_MCP_SIDECAR_DATA_DIR` 选择 Sidecar 后端，`mcp-client` 通过 `ExecuteAs` 传到 Core；仍未完成五协议同一 Fixture 的部署级 E2E。
 - 已补齐 Runtime、Capability、Server、Sidecar、MCP、故障恢复、配置和部署中文文档，并在 README 中文入口中列出。
 - Sidecar 完整身份转发、Runtime 完整闭环和部署级跨协议 E2E 仍待实现，因此不创建 M4 总 Tag。
 

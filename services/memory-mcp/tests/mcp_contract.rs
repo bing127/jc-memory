@@ -1,12 +1,15 @@
 //! MCP initialize、工具清单和结构化调用契约测试。
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
-use jc_memory_core::{CommandBus, CommandError};
-use jc_memory_mcp::McpServer;
+use jc_memory_core::{CommandBus, CommandError, EmbeddedCommandBus, MemoryConfig, MemoryEngine};
+use jc_memory_mcp::{McpServer, SidecarCommandBus};
 use jc_memory_protocol::{
     AccessContext, CommitResult, MemoryCommand, MemoryRequest, MemoryResponse, ObserveResult,
     ResponseEnvelope,
 };
+use jc_memory_sidecar::{DaemonCommand, SidecarConfig, SidecarDaemon, TokenStore, send_command};
 use serde_json::{Value, json};
 
 #[derive(Clone)]
@@ -171,4 +174,51 @@ async fn configured_auth_token_is_required_for_tool_calls() {
         }))
         .await;
     assert_eq!(accepted["result"]["isError"], false);
+}
+
+#[tokio::test]
+async fn mcp_can_forward_a_call_through_the_authenticated_sidecar() {
+    let directory = tempfile::tempdir().expect("创建 MCP Sidecar 目录");
+    let config = SidecarConfig::local(directory.path());
+    let engine = MemoryEngine::open(MemoryConfig::local(directory.path()))
+        .await
+        .expect("打开 MCP Sidecar 引擎");
+    let daemon =
+        SidecarDaemon::bind_with_bus(config.clone(), Arc::new(EmbeddedCommandBus::new(engine)))
+            .await
+            .expect("绑定 MCP Sidecar");
+    let token = daemon.token().clone();
+    let task = tokio::spawn(daemon.run());
+    let server = McpServer::new(SidecarCommandBus::new(config.clone(), token));
+    let request = json!({
+        "api_version":"v1",
+        "request_id":"mcp-sidecar-stats",
+        "access_scope":{"namespace_id":"00000000-0000-7000-8000-000000000003"},
+        "command":{"command":"stats","payload":null}
+    });
+    let response = server
+        .handle(json!({
+            "jsonrpc":"2.0",
+            "id":10,
+            "method":"tools/call",
+            "params":{"name":"memory_stats","arguments":{"request":request}}
+        }))
+        .await;
+    assert_eq!(response["result"]["isError"], false);
+    assert_eq!(
+        response["result"]["structuredContent"]["response"]["response"],
+        "stats"
+    );
+    send_command(
+        &config,
+        &TokenStore::load_or_create(&config.token_file)
+            .await
+            .unwrap(),
+        DaemonCommand::Stop,
+    )
+    .await
+    .expect("停止 MCP Sidecar");
+    task.await
+        .expect("等待 MCP Sidecar")
+        .expect("MCP Sidecar 正常退出");
 }

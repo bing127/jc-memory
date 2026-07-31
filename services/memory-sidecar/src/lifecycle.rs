@@ -31,6 +31,13 @@ pub enum DaemonCommand {
         /// 需要转发到共享 `CommandBus` 的业务请求。
         request: Box<MemoryRequest>,
     },
+    /// 通过本地认证转发一个带调用方主体的共享请求。
+    ExecuteAs {
+        /// 经过本地认证的调用方主体标识。
+        principal_id: String,
+        /// 需要转发到共享 `CommandBus` 的业务请求。
+        request: Box<MemoryRequest>,
+    },
 }
 
 /// Sidecar 控制响应。
@@ -260,6 +267,31 @@ async fn handle_connection_inner(
                 response: None,
             },
         },
+        DaemonCommand::ExecuteAs {
+            principal_id,
+            request,
+        } => match bus {
+            Some(bus) => match execute_request_as(bus.as_ref(), *request, &principal_id).await {
+                Ok(response) => DaemonResponse {
+                    ok: true,
+                    status: "executed".into(),
+                    detail: None,
+                    response: Some(response),
+                },
+                Err(error) => DaemonResponse {
+                    ok: false,
+                    status: "error".into(),
+                    detail: Some(error.to_string()),
+                    response: None,
+                },
+            },
+            None => DaemonResponse {
+                ok: false,
+                status: "unsupported".into(),
+                detail: Some("Sidecar 未绑定 CommandBus".into()),
+                response: None,
+            },
+        },
     };
     write_response(&mut writer, response).await
 }
@@ -288,6 +320,14 @@ async fn execute_request(
     bus: &dyn CommandBus,
     request: MemoryRequest,
 ) -> Result<ResponseEnvelope, CommandError> {
+    execute_request_as(bus, request, "sidecar-local").await
+}
+
+async fn execute_request_as(
+    bus: &dyn CommandBus,
+    request: MemoryRequest,
+    principal_id: &str,
+) -> Result<ResponseEnvelope, CommandError> {
     let operation = match &request.command {
         MemoryCommand::Observe(_) => Operation::Observe,
         MemoryCommand::Commit(_) | MemoryCommand::Correct(_) | MemoryCommand::Forget(_) => {
@@ -297,7 +337,12 @@ async fn execute_request(
         MemoryCommand::Explain(_) => Operation::Explain,
     };
     let scope: jc_memory_protocol::MemoryScope = request.access_scope.clone().into();
-    let mut access = AccessContext::new("sidecar-local", scope.clone());
+    let principal_id = if principal_id.trim().is_empty() {
+        "sidecar-local"
+    } else {
+        principal_id
+    };
+    let mut access = AccessContext::new(principal_id, scope.clone());
     access.request_id.clone_from(&request.request_id);
     access.grants.insert(Grant::for_scope(operation, &scope));
     bus.execute(&access, request).await

@@ -11,6 +11,7 @@
 - 非 Unix 平台使用随机端口的本地 Loopback，并将地址写入受数据目录保护的端点文件；Named Pipe 尚未实现。
 - 控制命令支持 `status`、`stop`、`doctor`，以及 `observe`、`commit`、`recall`、`correct`、`forget`、`explain`、`stats` 七个业务子命令。
 - 绑定 Core 的守护进程支持 `execute` 控制消息，将 `MemoryRequest` 转发到共享 `CommandBus` 并返回 `ResponseEnvelope`；Commit 已覆盖该转发路径。
+- 绑定 Core 的守护进程还支持 `execute_as` 控制消息；经过本地 Token 认证的 MCP 主体可以通过该消息传到 Core，默认 `execute` 仍使用 `sidecar-local` 主体。
 - 连接按任务并发处理；收到 `stop` 后停止接收新连接，并等待已经通过认证的在途请求完成响应后退出。
 - `jcmem start` 会在当前数据目录启动 `jcmemd`；如果已有可认证的守护进程则返回 `already_running`。
 

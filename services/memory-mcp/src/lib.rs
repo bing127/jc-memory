@@ -2,8 +2,9 @@
 
 use std::sync::Arc;
 
-use jc_memory_core::{CommandBus, CommandError};
-use jc_memory_protocol::{AccessContext, MemoryRequest, Operation};
+use jc_memory_core::{CommandBus, CommandError, EmbeddedCommandBus};
+use jc_memory_protocol::{AccessContext, CommandErrorCode, MemoryRequest, Operation};
+use jc_memory_sidecar::{DaemonCommand, SidecarConfig, TokenStore, send_command};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -82,6 +83,79 @@ impl McpAuth {
 pub struct McpServer<B> {
     bus: Arc<B>,
     auth: Option<McpAuth>,
+}
+
+/// 通过本地认证 Sidecar 转发 MCP 请求的 `CommandBus`。
+#[derive(Clone)]
+pub struct SidecarCommandBus {
+    config: SidecarConfig,
+    token: TokenStore,
+}
+
+/// MCP 可选的本地执行后端。
+#[derive(Clone)]
+pub enum McpBackend {
+    /// 直接使用 Embedded Core。
+    Embedded(EmbeddedCommandBus),
+    /// 通过本地认证 Sidecar 执行。
+    Sidecar(SidecarCommandBus),
+}
+
+#[async_trait::async_trait]
+impl CommandBus for McpBackend {
+    async fn execute(
+        &self,
+        access: &AccessContext,
+        request: MemoryRequest,
+    ) -> Result<jc_memory_protocol::ResponseEnvelope, CommandError> {
+        match self {
+            Self::Embedded(bus) => bus.execute(access, request).await,
+            Self::Sidecar(bus) => bus.execute(access, request).await,
+        }
+    }
+}
+
+impl SidecarCommandBus {
+    /// 创建一个使用既有 Sidecar 配置和 Token 的转发 Bus。
+    #[must_use]
+    pub const fn new(config: SidecarConfig, token: TokenStore) -> Self {
+        Self { config, token }
+    }
+}
+
+#[async_trait::async_trait]
+impl CommandBus for SidecarCommandBus {
+    async fn execute(
+        &self,
+        access: &AccessContext,
+        request: MemoryRequest,
+    ) -> Result<jc_memory_protocol::ResponseEnvelope, CommandError> {
+        if access.request_id != request.request_id {
+            return Err(CommandError::RequestIdMismatch);
+        }
+        if access.scope != request.access_scope.clone().into() {
+            return Err(CommandError::AccessScopeMismatch);
+        }
+        let response = send_command(
+            &self.config,
+            &self.token,
+            DaemonCommand::ExecuteAs {
+                principal_id: access.principal_id.clone(),
+                request: Box::new(request),
+            },
+        )
+        .await
+        .map_err(|error| CommandError::transport(CommandErrorCode::Internal, error.to_string()))?;
+        if !response.ok {
+            return Err(CommandError::transport(
+                CommandErrorCode::Internal,
+                response.detail.unwrap_or_else(|| "Sidecar 执行失败".into()),
+            ));
+        }
+        response.response.ok_or_else(|| {
+            CommandError::transport(CommandErrorCode::Internal, "Sidecar 返回缺少业务响应")
+        })
+    }
 }
 
 impl<B> Clone for McpServer<B> {

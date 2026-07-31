@@ -11,16 +11,22 @@
 - 工具调用失败返回稳定 JSON-RPC 错误分类，并在工具结果中保留结构化错误对象。
 - 设置 `JC_MEMORY_MCP_TOKEN` 后，`tools/call` 必须在参数中携带 `authToken`；Token 使用固定长度循环比较，错误返回 `-32001`，不会把 Token 写入响应。
 - `tools/list` 为每个工具声明 `v1`、`request_id`、`access_scope` 和对应 `command` 的必填结构；服务端会拒绝工具名与请求命令不一致的调用。
+- 设置 `JC_MEMORY_MCP_SIDECAR_DATA_DIR` 后，MCP 使用该目录的 Token 通过 `SidecarCommandBus` 转发到 `jcmemd`；MCP 生成的 `mcp-client` 主体会通过 `ExecuteAs` 传到 Core。
 
 ## 尚未实现
 
-当前 Commit 已接入领域协议和共享 `CommandBus`，权威 Fragment 批次在 SQLite 单事务中追加；自动 Quarantine 治理事件仍沿用既有治理路径。真实临时 SQLite Fixture 已覆盖 Embedded、REST、TCP gRPC 与 MCP 的 Recall Packet 一致性；Sidecar 转发、完整 Runtime 闭环和部署级跨协议 E2E 仍待后续阶段完成。未配置 `JC_MEMORY_MCP_TOKEN` 时仅适合由外层已认证进程托管的本地 stdio 模式；远程部署必须配置该变量。
+当前 Commit 已接入领域协议和共享 `CommandBus`，权威 Fragment 批次在 SQLite 单事务中追加；自动 Quarantine 治理事件仍沿用既有治理路径。MCP 到 Sidecar 的真实 `ExecuteAs` 转发已有契约测试；完整 Runtime 闭环和部署级跨协议 E2E 仍待后续阶段完成。未配置 `JC_MEMORY_MCP_TOKEN` 时仅适合由外层已认证进程托管的本地 stdio 模式；远程部署必须配置该变量。
 
 ## 本地运行
 
 ```bash
 JC_MEMORY_DATA_DIR=/var/lib/jc-memory \
 JC_MEMORY_MCP_TOKEN='替换为部署平台注入的随机 Token' \
+  cargo run --locked -p jc-memory-mcp
+
+# 也可以让 MCP 通过已启动的本地 jcmemd 转发到共享 Core。
+JC_MEMORY_MCP_SIDECAR_DATA_DIR=/var/lib/jc-memory-sidecar \
+JC_MEMORY_MCP_TOKEN='替换为 MCP 调用方 Token' \
   cargo run --locked -p jc-memory-mcp
 ```
 

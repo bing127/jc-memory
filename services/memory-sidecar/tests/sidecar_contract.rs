@@ -23,6 +23,23 @@ struct BlockingBus {
     release: Arc<Notify>,
 }
 
+#[derive(Clone)]
+struct RecordingBus {
+    principal: Arc<tokio::sync::Mutex<Option<String>>>,
+}
+
+#[async_trait]
+impl CommandBus for RecordingBus {
+    async fn execute(
+        &self,
+        access: &jc_memory_protocol::AccessContext,
+        _request: MemoryRequest,
+    ) -> Result<jc_memory_protocol::ResponseEnvelope, CommandError> {
+        *self.principal.lock().await = Some(access.principal_id.clone());
+        Err(CommandError::RequestIdMismatch)
+    }
+}
+
 #[async_trait]
 impl CommandBus for BlockingBus {
     async fn execute(
@@ -219,6 +236,46 @@ async fn authenticated_execute_forwards_commit_to_shared_command_bus() {
     task.await
         .expect("等待 Sidecar 任务")
         .expect("Sidecar 正常退出");
+}
+
+#[tokio::test]
+async fn execute_as_forwards_the_authenticated_principal_to_core() {
+    let directory = tempfile::tempdir().expect("创建身份转发目录");
+    let config = SidecarConfig::local(directory.path());
+    let principal = Arc::new(tokio::sync::Mutex::new(None));
+    let daemon = SidecarDaemon::bind_with_bus(
+        config.clone(),
+        Arc::new(RecordingBus {
+            principal: Arc::clone(&principal),
+        }),
+    )
+    .await
+    .expect("绑定身份转发 Sidecar");
+    let token = daemon.token().clone();
+    let scope = MemoryScope::new(NamespaceId::new());
+    let request = MemoryRequest {
+        api_version: API_VERSION_V1.into(),
+        request_id: "sidecar-principal-forwarding".into(),
+        access_scope: AccessScope::from(scope),
+        command: MemoryCommand::Stats(StatsCommand),
+    };
+    let task = tokio::spawn(daemon.run());
+    let response = send_command(
+        &config,
+        &token,
+        DaemonCommand::ExecuteAs {
+            principal_id: "mcp-client".into(),
+            request: Box::new(request),
+        },
+    )
+    .await
+    .expect("发送身份转发请求");
+    assert_eq!(response.status, "error");
+    assert_eq!(principal.lock().await.as_deref(), Some("mcp-client"));
+    send_command(&config, &token, DaemonCommand::Stop)
+        .await
+        .expect("停止身份转发 Sidecar");
+    task.await.expect("等待 Sidecar").expect("Sidecar 正常退出");
 }
 
 #[tokio::test]

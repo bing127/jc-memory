@@ -287,6 +287,14 @@ pub enum CommandError {
         #[source]
         source: MemoryError,
     },
+    /// 共享 `CommandBus` 下游传输失败。
+    #[error("command transport failed ({code:?}): {detail}")]
+    Transport {
+        /// 稳定公开错误码。
+        code: CommandErrorCode,
+        /// 不包含秘密的诊断细节。
+        detail: String,
+    },
 }
 
 impl CommandError {
@@ -294,10 +302,21 @@ impl CommandError {
     #[must_use]
     pub const fn code(&self) -> CommandErrorCode {
         match self {
-            Self::InvalidRequest { code, .. } | Self::Engine { code, .. } => *code,
+            Self::InvalidRequest { code, .. }
+            | Self::Engine { code, .. }
+            | Self::Transport { code, .. } => *code,
             Self::RequestIdMismatch | Self::AccessScopeMismatch => {
                 CommandErrorCode::InvalidArgument
             }
+        }
+    }
+
+    /// 创建一个带稳定分类的下游传输错误。
+    #[must_use]
+    pub fn transport(code: CommandErrorCode, detail: impl Into<String>) -> Self {
+        Self::Transport {
+            code,
+            detail: detail.into(),
         }
     }
 
