@@ -610,6 +610,57 @@ async fn grpc_adapter_obeys_the_same_concurrency_limit_as_http() {
 }
 
 #[tokio::test]
+async fn http_rejects_requests_above_the_api_key_rate_limit() {
+    let request = request();
+    let key = ApiKey::new(
+        "test-key",
+        AccessContext::new("principal", request.access_scope.clone().into()),
+    );
+    let state = ServerState::with_request_limits(FixtureBus, vec![key], 64, 1);
+
+    for expected in [StatusCode::OK, StatusCode::TOO_MANY_REQUESTS] {
+        let response = router(state.clone())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/memory/observe")
+                    .header("content-type", "application/json")
+                    .header("x-api-key", "test-key")
+                    .body(Body::from(serde_json::to_vec(&request).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), expected);
+    }
+}
+
+#[tokio::test]
+async fn grpc_rate_limit_is_isolated_by_api_key() {
+    let request = request();
+    let scope: jc_memory_protocol::MemoryScope = request.access_scope.clone().into();
+    let state = ServerState::with_request_limits(
+        FixtureBus,
+        [
+            ApiKey::new("first-key", AccessContext::new("first", scope.clone())),
+            ApiKey::new("second-key", AccessContext::new("second", scope)),
+        ],
+        64,
+        1,
+    );
+    let adapter = GrpcAdapter::new(state);
+
+    adapter.execute("first-key", request.clone()).await.unwrap();
+    let error = adapter
+        .execute("first-key", request.clone())
+        .await
+        .unwrap_err();
+    adapter.execute("second-key", request).await.unwrap();
+
+    assert!(matches!(error, ServerError::RateLimited));
+}
+
+#[tokio::test]
 async fn serve_stops_accepting_after_graceful_shutdown_signal() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();

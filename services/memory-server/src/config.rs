@@ -21,6 +21,8 @@ pub struct ServerConfig {
     pub namespace_id: NamespaceId,
     /// 最大并发请求数。
     pub max_in_flight: usize,
+    /// 每个 API Key 每秒允许的最大请求数。
+    pub max_requests_per_second: u64,
 }
 
 impl ServerConfig {
@@ -28,7 +30,8 @@ impl ServerConfig {
     ///
     /// 使用 `JC_MEMORY_BIND`、`JC_MEMORY_GRPC_BIND`、`JC_MEMORY_TLS_CERT_FILE`、
     /// `JC_MEMORY_TLS_KEY_FILE`、`JC_MEMORY_DATA_DIR`、`JC_MEMORY_API_KEY`、
-    /// `JC_MEMORY_NAMESPACE_ID` 和 `JC_MEMORY_MAX_IN_FLIGHT`。
+    /// `JC_MEMORY_NAMESPACE_ID`、`JC_MEMORY_MAX_IN_FLIGHT` 和
+    /// `JC_MEMORY_MAX_REQUESTS_PER_SECOND`。
     ///
     /// # Errors
     ///
@@ -84,6 +87,18 @@ impl ServerConfig {
                 "value must be greater than zero".into(),
             ));
         }
+        let max_requests_per_second = lookup("JC_MEMORY_MAX_REQUESTS_PER_SECOND")
+            .unwrap_or_else(|| "128".into())
+            .parse::<u64>()
+            .map_err(|error| {
+                ConfigError::Invalid("JC_MEMORY_MAX_REQUESTS_PER_SECOND", error.to_string())
+            })?;
+        if max_requests_per_second == 0 {
+            return Err(ConfigError::Invalid(
+                "JC_MEMORY_MAX_REQUESTS_PER_SECOND",
+                "value must be greater than zero".into(),
+            ));
+        }
         Ok(Self {
             bind,
             grpc_bind,
@@ -92,6 +107,7 @@ impl ServerConfig {
             api_key,
             namespace_id,
             max_in_flight,
+            max_requests_per_second,
         })
     }
 }
@@ -187,5 +203,43 @@ mod tests {
         let config = ServerConfig::from_lookup(|name| settings.get(name).cloned()).unwrap();
 
         assert_eq!(config.tls, None);
+    }
+
+    #[test]
+    fn request_rate_limit_is_positive_and_configurable() {
+        let settings = values(&[
+            ("JC_MEMORY_API_KEY", "test-key"),
+            (
+                "JC_MEMORY_NAMESPACE_ID",
+                "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37001",
+            ),
+            ("JC_MEMORY_MAX_REQUESTS_PER_SECOND", "7"),
+        ]);
+
+        let config = ServerConfig::from_lookup(|name| settings.get(name).cloned()).unwrap();
+
+        assert_eq!(config.max_requests_per_second, 7);
+    }
+
+    #[test]
+    fn zero_request_rate_limit_is_rejected() {
+        let settings = values(&[
+            ("JC_MEMORY_API_KEY", "test-key"),
+            (
+                "JC_MEMORY_NAMESPACE_ID",
+                "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37001",
+            ),
+            ("JC_MEMORY_MAX_REQUESTS_PER_SECOND", "0"),
+        ]);
+
+        let error = ServerConfig::from_lookup(|name| settings.get(name).cloned()).unwrap_err();
+
+        assert_eq!(
+            error,
+            ConfigError::Invalid(
+                "JC_MEMORY_MAX_REQUESTS_PER_SECOND",
+                "value must be greater than zero".into(),
+            )
+        );
     }
 }

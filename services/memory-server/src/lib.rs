@@ -8,9 +8,10 @@ use std::{
     collections::BTreeMap,
     future::Future,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     },
+    time::{Duration, Instant},
 };
 
 use axum::{
@@ -73,6 +74,7 @@ pub struct ServerState<B> {
     keys: Arc<BTreeMap<String, AccessContext>>,
     in_flight: Arc<AtomicUsize>,
     max_in_flight: usize,
+    rate_limiter: Option<Arc<ApiKeyRateLimiter>>,
 }
 
 impl<B> Clone for ServerState<B> {
@@ -82,6 +84,7 @@ impl<B> Clone for ServerState<B> {
             keys: Arc::clone(&self.keys),
             in_flight: Arc::clone(&self.in_flight),
             max_in_flight: self.max_in_flight,
+            rate_limiter: self.rate_limiter.clone(),
         }
     }
 }
@@ -100,6 +103,26 @@ impl<B> ServerState<B> {
         keys: impl IntoIterator<Item = ApiKey>,
         max_in_flight: usize,
     ) -> Self {
+        Self::build(bus, keys, max_in_flight, None)
+    }
+
+    /// 创建带有界并发和每 API Key 每秒速率限制的服务状态。
+    #[must_use]
+    pub fn with_request_limits(
+        bus: B,
+        keys: impl IntoIterator<Item = ApiKey>,
+        max_in_flight: usize,
+        max_requests_per_second: u64,
+    ) -> Self {
+        Self::build(bus, keys, max_in_flight, Some(max_requests_per_second))
+    }
+
+    fn build(
+        bus: B,
+        keys: impl IntoIterator<Item = ApiKey>,
+        max_in_flight: usize,
+        max_requests_per_second: Option<u64>,
+    ) -> Self {
         let keys = keys
             .into_iter()
             .map(|key| (key.value, key.context))
@@ -109,6 +132,8 @@ impl<B> ServerState<B> {
             keys: Arc::new(keys),
             in_flight: Arc::new(AtomicUsize::new(0)),
             max_in_flight,
+            rate_limiter: max_requests_per_second
+                .map(|limit| Arc::new(ApiKeyRateLimiter::new(limit))),
         }
     }
 
@@ -121,6 +146,53 @@ impl<B> ServerState<B> {
         request_id.clone_into(&mut context.request_id);
         Ok(context)
     }
+
+    fn acquire_rate_limit(&self, key: &str) -> Result<(), ServerError> {
+        if let Some(limiter) = &self.rate_limiter {
+            limiter.acquire(key)?;
+        }
+        Ok(())
+    }
+}
+
+struct ApiKeyRateLimiter {
+    max_requests: u64,
+    windows: Mutex<BTreeMap<String, RateWindow>>,
+}
+
+impl ApiKeyRateLimiter {
+    fn new(max_requests: u64) -> Self {
+        Self {
+            max_requests,
+            windows: Mutex::new(BTreeMap::new()),
+        }
+    }
+
+    fn acquire(&self, key: &str) -> Result<(), ServerError> {
+        let now = Instant::now();
+        let mut windows = self
+            .windows
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let window = windows.entry(key.to_owned()).or_insert(RateWindow {
+            started_at: now,
+            accepted: 0,
+        });
+        if now.duration_since(window.started_at) >= Duration::from_secs(1) {
+            window.started_at = now;
+            window.accepted = 0;
+        }
+        if window.accepted >= self.max_requests {
+            return Err(ServerError::RateLimited);
+        }
+        window.accepted += 1;
+        Ok(())
+    }
+}
+
+struct RateWindow {
+    started_at: Instant,
+    accepted: u64,
 }
 
 /// 构造 HTTP 路由。
@@ -353,9 +425,10 @@ async fn command_inner<B>(
 where
     B: CommandBus + Send + Sync + 'static,
 {
-    let _permit = InFlightPermit::acquire(&state)?;
     let key = extract_api_key(&headers).ok_or(ServerError::Unauthorized)?;
     let access = state.access(&key, &request.request_id)?;
+    state.acquire_rate_limit(&key)?;
+    let _permit = InFlightPermit::acquire(&state)?;
     let response = state
         .bus
         .execute(&access, request)
@@ -446,8 +519,9 @@ where
         key: &str,
         request: MemoryRequest,
     ) -> Result<ResponseEnvelope, ServerError> {
-        let _permit = InFlightPermit::acquire(&self.state)?;
         let access = self.state.access(key, &request.request_id)?;
+        self.state.acquire_rate_limit(key)?;
+        let _permit = InFlightPermit::acquire(&self.state)?;
         let request_id = access.request_id.clone();
         self.state
             .bus
@@ -463,8 +537,8 @@ pub enum ServerError {
     /// API Key 缺失或无效。
     #[error("unauthorized")]
     Unauthorized,
-    /// 当前并发资源已耗尽。
-    #[error("request concurrency limit exceeded")]
+    /// 当前请求资源已耗尽。
+    #[error("request limit exceeded")]
     RateLimited,
     /// HTTP Listener 或连接循环失败。
     #[error("server transport failure: {0}")]
