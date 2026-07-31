@@ -90,11 +90,11 @@ it("returns the canonical recall packet", async () => {
 
 **文件：** `sdk/java/{settings.gradle.kts,build.gradle.kts,src/main/java,src/test/java}`。
 
-- [ ] **步骤 1：写 CompletableFuture、gRPC Deadline、Fixture 和错误码失败测试。**
-- [ ] **步骤 2：运行 `./gradlew -p sdk/java test`**，预期类缺失。
-- [ ] **步骤 3：实现 `JiangchengMemoryClient` AutoCloseable，异步方法返回 CompletableFuture，同步 facade 明确阻塞；复用 Proto 生成类型并提供不可变 Java domain wrapper。**
+- [x] **步骤 1：写 CompletableFuture、HTTP `Duration` deadline、Fixture、取消和错误码失败测试。当前服务未提供 Java gRPC Stub，因此不伪造 gRPC 实现。**
+- [x] **步骤 2：运行 `gradle -p sdk/java test --no-daemon`，先确认超时异常导入和 JUnit Launcher 配置缺失的红灯，再完成绿灯。**
+- [x] **步骤 3：实现 `JiangchengMemoryClient` AutoCloseable，异步方法返回 CompletableFuture，`*Blocking` 同步 facade 明确阻塞；使用不可变 `MemoryResponse` wrapper 保留原始 JSON。**
 - [ ] **步骤 4：嵌入模式复用 Kotlin/UniFFI 生成的 JVM native loader，不复制第二套 JNI；校验平台库 checksum 和 classloader 生命周期。**
-- [ ] **步骤 5：运行 Gradle 测试并提交 `feat(sdk-java): add JVM gRPC and embedded facade`**。
+- [x] **步骤 5：运行 Gradle 测试并提交 `feat(sdk-java): 增加 JVM CompletableFuture 客户端`；UniFFI/JVM Embedded 继续留待后续绑定任务。**
 
 ## Task 8：实现 Hermes Adapter
 
