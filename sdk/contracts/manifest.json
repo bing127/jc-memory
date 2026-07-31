@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "protocol_version": "v1",
+  "canonicalization": "sorted-json-sha256",
+  "fixtures": [
+    {"id":"observe-basic","file":"fixtures/observe-basic.json","kind":"observe","required_features":["observe"]},
+    {"id":"recall-exact","file":"fixtures/recall-exact.json","kind":"recall_exact","required_features":["recall","recall_exact"]},
+    {"id":"recall-semantic","file":"fixtures/recall-semantic.json","kind":"recall_semantic","required_features":["recall","recall_semantic"]},
+    {"id":"recall-temporal","file":"fixtures/recall-temporal.json","kind":"recall_temporal","required_features":["recall","recall_temporal"]},
+    {"id":"recall-causal","file":"fixtures/recall-causal.json","kind":"recall_causal","required_features":["recall","recall_causal"]},
+    {"id":"recall-entity","file":"fixtures/recall-entity.json","kind":"recall_entity","required_features":["recall","recall_entity"]},
+    {"id":"recall-associative","file":"fixtures/recall-associative.json","kind":"recall_associative","required_features":["recall","recall_associative"]},
+    {"id":"recall-procedural","file":"fixtures/recall-procedural.json","kind":"recall_procedural","required_features":["recall","recall_procedural"]},
+    {"id":"recall-current-state","file":"fixtures/recall-current-state.json","kind":"recall_current_state","required_features":["recall","recall_current_state"]},
+    {"id":"recall-historical-state","file":"fixtures/recall-historical-state.json","kind":"recall_historical_state","required_features":["recall","recall_historical_state"]},
+    {"id":"recall-deep-reconstruction","file":"fixtures/recall-deep-reconstruction.json","kind":"recall_deep_reconstruction","required_features":["recall","recall_deep_reconstruction"]},
+    {"id":"commit-basic","file":"fixtures/commit-basic.json","kind":"commit","required_features":["commit"]},
+    {"id":"correct-basic","file":"fixtures/correct-basic.json","kind":"correct","required_features":["correct"]},
+    {"id":"explain-basic","file":"fixtures/explain-basic.json","kind":"explain","required_features":["explain"]},
+    {"id":"forget-basic","file":"fixtures/forget-basic.json","kind":"forget","required_features":["forget"]},
+    {"id":"stats-basic","file":"fixtures/stats-basic.json","kind":"stats","required_features":["stats"]},
+    {"id":"error-invalid-argument","file":"fixtures/error-invalid-argument.json","kind":"error_invalid_argument","required_features":["errors","invalid_argument"]}
+  ]
+}

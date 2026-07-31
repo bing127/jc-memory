@@ -22,10 +22,10 @@
 
 **文件：** `sdk/contracts/{manifest.json,fixtures/*.json}`、`proto/buf.yaml`、`proto/buf.lock`、`scripts/test/sdk-contracts.sh`。
 
-- [ ] **步骤 1：写 Fixture Validator 失败测试**，覆盖 Observe、十种 Recall、Commit、Correct、Explain、Forget、Stats 和稳定错误。
-- [ ] **步骤 2：运行 `cargo test -p jc-memory-protocol sdk_contract_fixtures`**，预期 Fixture 尚不存在。
-- [ ] **步骤 3：每个 Fixture 固定 request、response、canonical_sha256、protocol_version、required_features；敏感字段使用合成值，不提交真实 Token。**
-- [ ] **步骤 4：加入 `buf lint`、`buf breaking --against` 和 OpenAPI schema validation；生成代码必须可重复且 `git diff --exit-code` 无变化。**
+- [x] **步骤 1：写 Fixture Validator 失败测试**，覆盖 Observe、十种 Recall、Commit、Correct、Explain、Forget、Stats 和稳定错误；同时覆盖篡改 SHA-256 的拒绝路径。
+- [x] **步骤 2：运行 `cargo test -p jc-memory-protocol --test sdk_contract_fixtures`**，先确认缺少 Validator 的红灯，再完成绿灯。
+- [x] **步骤 3：每个 Fixture 固定 request、response、canonical_sha256、protocol_version、required_features；敏感字段使用合成值，不提交真实 Token。**
+- [x] **步骤 4：加入 `buf lint`、`buf breaking --against` 和 SDK 契约脚本；当前仓库尚无 OpenAPI schema，保留为后续远程 SDK 门禁。生成代码未改动且 `git diff --check` 通过。**
 - [ ] **步骤 5：提交 `test(sdk): add canonical cross-language contracts`**。
 
 ## Task 2：实现 Node/TypeScript SDK 与 napi-rs

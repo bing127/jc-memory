@@ -4,6 +4,12 @@ modules:
 lint:
   use:
     - STANDARD
+  # 保留现有稳定 RPC Envelope 名称，避免破坏已发布的 v1 客户端字段。
+  ignore_only:
+    RPC_REQUEST_STANDARD_NAME:
+      - jiangcheng/memory/v1/memory.proto
+    RPC_RESPONSE_STANDARD_NAME:
+      - jiangcheng/memory/v1/memory.proto
 breaking:
   use:
     - FILE

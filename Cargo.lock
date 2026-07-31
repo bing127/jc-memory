@@ -1277,10 +1277,12 @@ name = "jc-memory-protocol"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "hex",
  "prost",
  "prost-types",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "tempfile",
  "thiserror",
  "tonic",

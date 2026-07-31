@@ -18,6 +18,8 @@ pub mod protobuf;
 pub mod recall;
 /// Hierarchical memory ownership scope.
 pub mod scope;
+/// 跨语言 SDK 共享的版本化契约 Fixture 校验器。
+pub mod sdk_contract;
 /// 访问控制协议类型。
 pub mod security;
 /// Cognitive surface protocol types.
@@ -62,5 +64,6 @@ pub use packet::{
 pub use protobuf::ProtoConversionError;
 pub use recall::{RecallLimits, RecallMode};
 pub use scope::MemoryScope;
+pub use sdk_contract::{SdkContractError, validate_sdk_contracts};
 pub use security::{AccessContext, Decision, DenyReason, Grant, Operation};
 pub use surface::{SurfaceKind, SurfaceStatus};

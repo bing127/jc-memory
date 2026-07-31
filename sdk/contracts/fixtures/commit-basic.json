@@ -1,0 +1,71 @@
+{
+  "id": "commit-basic",
+  "kind": "commit",
+  "protocol_version": "v1",
+  "required_features": [
+    "commit"
+  ],
+  "request": {
+    "api_version": "v1",
+    "request_id": "fixture-commit-001",
+    "access_scope": {
+      "namespace_id": "00000000-0000-0000-0000-000000000001",
+      "tenant_id": null,
+      "user_id": null,
+      "agent_id": null,
+      "project_id": null
+    },
+    "command": {
+      "command": "commit",
+      "payload": {
+        "fragments": [
+          {
+            "id": "00000000-0000-0000-0000-000000000101",
+            "scope": {
+              "namespace_id": "00000000-0000-0000-0000-000000000001",
+              "tenant_id": null,
+              "user_id": null,
+              "agent_id": null,
+              "project_id": null
+            },
+            "session_id": null,
+            "trace_id": null,
+            "kind": "observation",
+            "content": {
+              "type": "text",
+              "text": "sdk fixture observation"
+            },
+            "source": {
+              "source_type": "user",
+              "source_id": "sdk-fixture",
+              "actor_id": null,
+              "observer_id": null,
+              "tool_id": null,
+              "uri": null
+            },
+            "perspective": "first_person",
+            "occurred_at": "2026-01-01T00:00:00Z",
+            "observed_at": "2026-01-01T00:00:00Z",
+            "confidence": 1.0,
+            "importance": 0.5,
+            "validity": "unverified",
+            "security_label": "internal",
+            "evidence": [],
+            "metadata": {}
+          }
+        ]
+      }
+    }
+  },
+  "response": {
+    "api_version": "v1",
+    "request_id": "fixture-commit-001",
+    "response": {
+      "response": "commit",
+      "payload": {
+        "receipts": []
+      }
+    }
+  },
+  "canonical_sha256": "2520df37deec5bda48bdb0f8c63d965de94c1f06d41d1f0f6dd1466f578458cc"
+}
