@@ -4,8 +4,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AgentId, BlobId, CognitiveFragment, EventId, FragmentId, MemoryPacket, MemoryScope,
-    NamespaceId, ProjectId, RecallLimits, RecallMode, TenantId, UserId,
+    AgentId, BlobId, CognitiveFragment, EdgeKind, EventId, FragmentContent, FragmentId,
+    FragmentSource, MemoryPacket, MemoryScope, NamespaceId, Perspective, ProjectId, RecallLimits,
+    RecallMode, TenantId, UserId, VerificationMethod,
 };
 
 /// 当前稳定服务协议版本。
@@ -87,6 +88,52 @@ pub struct StatsResult {
     pub event_count: u64,
 }
 
+/// 纠正或失效一条权威 Fragment 所需的变更输入。
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct MutationCommand {
+    /// 被引用但不被覆盖的目标 Fragment。
+    pub target_fragment_id: FragmentId,
+    /// 新变更 Fragment 的内容。
+    pub content: FragmentContent,
+    /// 发起变更的来源信息。
+    pub source: FragmentSource,
+    /// 变更内容的来源视角。
+    pub perspective: Perspective,
+    /// 变更在来源系统中的发生时间。
+    pub occurred_at: DateTime<Utc>,
+    /// 验证目标引用使用的方法。
+    pub verification_method: VerificationMethod,
+    /// 可审计的变更原因。
+    pub reason: String,
+}
+
+/// 变更命令的公开动作类型。
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MutationAction {
+    /// 追加纠正记录。
+    Correct,
+    /// 追加失效记录。
+    Forget,
+}
+
+/// 一次已持久化变更的稳定结果。
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MutationResult {
+    /// 实际执行的变更动作。
+    pub action: MutationAction,
+    /// 被引用的原始 Fragment。
+    pub target_fragment_id: FragmentId,
+    /// 新追加的变更 Fragment。
+    pub fragment_id: FragmentId,
+    /// 承载新 Fragment 的 Event。
+    pub event_id: EventId,
+    /// 精确 Scope 内的 Event 序号。
+    pub sequence: u64,
+    /// 派生图重建时应建立的关系。
+    pub relation: Option<EdgeKind>,
+}
+
 /// 当前 `CommandBus` 可执行的命令集合。
 // Observe 和 Recall 都需要在协议边界保持完整值语义，装箱会改变现有调用方类型。
 #[allow(clippy::large_enum_variant)]
@@ -99,6 +146,10 @@ pub enum MemoryCommand {
     Recall(RecallCommand),
     /// 读取当前授权 Scope 的权威记录统计。
     Stats(StatsCommand),
+    /// 追加纠正记录。
+    Correct(MutationCommand),
+    /// 追加失效记录而不删除原始记录。
+    Forget(MutationCommand),
 }
 
 /// 所有 Embedded 与远程协议请求共享的 Envelope。
@@ -176,6 +227,8 @@ pub enum MemoryResponse {
     Recall(MemoryPacket),
     /// Scope 内权威记录统计结果。
     Stats(StatsResult),
+    /// 纠正或失效操作的持久化结果。
+    Mutation(MutationResult),
 }
 
 /// 与请求元数据关联的成功响应 Envelope。

@@ -4,9 +4,9 @@ mod common;
 
 use jc_memory_core::{CommandBus, CommandError, EmbeddedCommandBus, MemoryConfig, MemoryEngine};
 use jc_memory_protocol::{
-    API_VERSION_V1, AccessContext, AccessScope, CommandErrorCode, Grant, MemoryCommand,
-    MemoryRequest, MemoryResponse, ObserveCommand, ObserveResult, Operation, ResponseEnvelope,
-    TenantId,
+    API_VERSION_V1, AccessContext, AccessScope, CommandErrorCode, FragmentContent, Grant,
+    MemoryCommand, MemoryRequest, MemoryResponse, MutationAction, MutationCommand, ObserveCommand,
+    ObserveResult, Operation, Perspective, ResponseEnvelope, TenantId, VerificationMethod,
 };
 
 #[tokio::test]
@@ -159,6 +159,79 @@ async fn envelope_scope_cannot_carry_fragment_from_administered_foreign_scope() 
         .expect_err("拒绝 Envelope 内部替换 Fragment Scope");
 
     assert!(matches!(error, CommandError::AccessScopeMismatch));
+}
+
+#[tokio::test]
+async fn command_bus_appends_correct_and_forget_mutations() {
+    let data_dir = tempfile::tempdir().expect("创建引擎数据目录");
+    let engine = MemoryEngine::open(MemoryConfig::local(data_dir.path()))
+        .await
+        .expect("打开记忆引擎");
+    let original = common::observation("CommandBus 变更闭环原始记录");
+    let scope = original.scope.clone();
+    let target_fragment_id = original.id;
+    let mut access = common::access_context(&scope);
+    let bus = EmbeddedCommandBus::new(engine);
+
+    access.request_id = "req-command-bus-observe".to_owned();
+    bus.execute(
+        &access,
+        MemoryRequest {
+            api_version: API_VERSION_V1.to_owned(),
+            request_id: access.request_id.clone(),
+            access_scope: AccessScope::from(scope.clone()),
+            command: MemoryCommand::Observe(ObserveCommand { fragment: original }),
+        },
+    )
+    .await
+    .expect("通过 CommandBus 写入原始记录");
+
+    let mutation = MutationCommand {
+        target_fragment_id,
+        content: FragmentContent::Text {
+            text: "CommandBus 追加式纠正记录".to_owned(),
+        },
+        source: common::observation("source").source,
+        perspective: Perspective::System,
+        occurred_at: chrono::Utc::now(),
+        verification_method: VerificationMethod::Manual,
+        reason: "CommandBus 变更测试".to_owned(),
+    };
+    access.request_id = "req-command-bus-correct".to_owned();
+    let correct = bus
+        .execute(
+            &access,
+            MemoryRequest {
+                api_version: API_VERSION_V1.to_owned(),
+                request_id: access.request_id.clone(),
+                access_scope: AccessScope::from(scope.clone()),
+                command: MemoryCommand::Correct(mutation.clone()),
+            },
+        )
+        .await
+        .expect("通过 CommandBus 追加纠正");
+    assert!(matches!(
+        correct.response,
+        MemoryResponse::Mutation(ref result) if result.action == MutationAction::Correct
+    ));
+
+    access.request_id = "req-command-bus-forget".to_owned();
+    let forget = bus
+        .execute(
+            &access,
+            MemoryRequest {
+                api_version: API_VERSION_V1.to_owned(),
+                request_id: access.request_id.clone(),
+                access_scope: AccessScope::from(scope),
+                command: MemoryCommand::Forget(mutation),
+            },
+        )
+        .await
+        .expect("通过 CommandBus 追加遗忘");
+    assert!(matches!(
+        forget.response,
+        MemoryResponse::Mutation(ref result) if result.action == MutationAction::Forget
+    ));
 }
 
 fn request(

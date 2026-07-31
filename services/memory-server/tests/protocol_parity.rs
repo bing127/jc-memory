@@ -9,8 +9,8 @@ use http_body_util::BodyExt as _;
 use jc_memory_core::{CommandBus, CommandError};
 use jc_memory_protocol::{
     API_VERSION_V1, AccessContext, AccessScope, MemoryCommand, MemoryPacket, MemoryRequest,
-    MemoryResponse, ObserveResult, Operation, RecallCommand, RecallId, RecallLimits, RecallMode,
-    ResponseEnvelope, StatsCommand, StatsResult,
+    MemoryResponse, MutationAction, MutationCommand, MutationResult, ObserveResult, Operation,
+    RecallCommand, RecallId, RecallLimits, RecallMode, ResponseEnvelope, StatsCommand, StatsResult,
 };
 use jc_memory_server::{ApiKey, GrpcAdapter, ServerState, router};
 use serde_json::{Value, json};
@@ -147,7 +147,10 @@ async fn recall_route_returns_the_shared_recall_envelope() {
         ) -> Result<ResponseEnvelope, CommandError> {
             let query_id = match request.command {
                 MemoryCommand::Recall(_) => RecallId::new(),
-                MemoryCommand::Observe(_) | MemoryCommand::Stats(_) => {
+                MemoryCommand::Observe(_)
+                | MemoryCommand::Stats(_)
+                | MemoryCommand::Correct(_)
+                | MemoryCommand::Forget(_) => {
                     panic!("测试只接受 Recall 命令")
                 }
             };
@@ -214,7 +217,10 @@ async fn stats_route_returns_scope_counts_from_the_shared_envelope() {
                         event_count: 3,
                     }),
                 )),
-                MemoryCommand::Observe(_) | MemoryCommand::Recall(_) => {
+                MemoryCommand::Observe(_)
+                | MemoryCommand::Recall(_)
+                | MemoryCommand::Correct(_)
+                | MemoryCommand::Forget(_) => {
                     panic!("测试只接受 Stats 命令")
                 }
             }
@@ -304,6 +310,89 @@ async fn scoped_api_key_builds_grants_only_on_the_server() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn mutation_routes_return_correct_and_forget_results() {
+    #[derive(Clone)]
+    struct MutationBus;
+    #[async_trait]
+    impl CommandBus for MutationBus {
+        async fn execute(
+            &self,
+            _access: &AccessContext,
+            request: MemoryRequest,
+        ) -> Result<ResponseEnvelope, CommandError> {
+            let action = match request.command {
+                MemoryCommand::Correct(_) => MutationAction::Correct,
+                MemoryCommand::Forget(_) => MutationAction::Forget,
+                MemoryCommand::Observe(_) | MemoryCommand::Recall(_) | MemoryCommand::Stats(_) => {
+                    panic!("测试只接受变更命令")
+                }
+            };
+            Ok(ResponseEnvelope::for_request(
+                &request,
+                MemoryResponse::Mutation(MutationResult {
+                    action,
+                    target_fragment_id: "00000000-0000-7000-8000-000000000004".parse().unwrap(),
+                    fragment_id: "00000000-0000-7000-8000-000000000005".parse().unwrap(),
+                    event_id: "00000000-0000-7000-8000-000000000006".parse().unwrap(),
+                    sequence: 2,
+                    relation: None,
+                }),
+            ))
+        }
+    }
+
+    let command = serde_json::from_value::<MutationCommand>(json!({
+        "target_fragment_id": "00000000-0000-7000-8000-000000000004",
+        "content": {"type": "text", "text": "fixture correction"},
+        "source": {
+            "source_type": "user",
+            "source_id": "fixture",
+            "actor_id": null,
+            "observer_id": null,
+            "tool_id": null,
+            "uri": null
+        },
+        "perspective": "first_person",
+        "occurred_at": "2026-07-31T00:00:00Z",
+        "verification_method": "manual",
+        "reason": "fixture mutation"
+    }))
+    .unwrap();
+    for (path, command_name, expected_action) in [
+        ("/v1/memory/correct", "correct", "correct"),
+        ("/v1/memory/forget", "forget", "forget"),
+    ] {
+        let mut request = request();
+        request.command = match command_name {
+            "correct" => MemoryCommand::Correct(command.clone()),
+            "forget" => MemoryCommand::Forget(command.clone()),
+            _ => unreachable!(),
+        };
+        let key = ApiKey::new(
+            "test-key",
+            AccessContext::new("principal", request.access_scope.clone().into()),
+        );
+        let response = router(ServerState::new(MutationBus, vec![key]))
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(path)
+                    .header("content-type", "application/json")
+                    .header("x-api-key", "test-key")
+                    .body(Body::from(serde_json::to_vec(&request).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let envelope: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(envelope["response"]["response"], "mutation");
+        assert_eq!(envelope["response"]["payload"]["action"], expected_action);
+    }
 }
 
 #[tokio::test]

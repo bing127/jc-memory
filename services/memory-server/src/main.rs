@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             config.api_key,
             "server-api-key",
             scope,
-            [Operation::Observe, Operation::Recall],
+            [Operation::Observe, Operation::Recall, Operation::Mutate],
         )],
         config.max_in_flight,
     );

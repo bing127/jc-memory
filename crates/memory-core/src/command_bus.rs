@@ -3,8 +3,8 @@
 use async_trait::async_trait;
 use jc_memory_activation::{RecallLimits as ActivationRecallLimits, RecallQuery};
 use jc_memory_protocol::{
-    AccessContext, CommandErrorCode, MemoryCommand, MemoryRequest, MemoryResponse, ObserveResult,
-    RequestValidationError, ResponseEnvelope, StatsResult,
+    AccessContext, CommandErrorCode, MemoryCommand, MemoryRequest, MemoryResponse, MutationAction,
+    MutationResult, ObserveResult, RequestValidationError, ResponseEnvelope, StatsResult,
 };
 
 use crate::{MemoryEngine, MemoryError};
@@ -57,7 +57,11 @@ impl CommandBus for EmbeddedCommandBus {
             MemoryCommand::Observe(command) if command.fragment.scope != request_scope => {
                 return Err(CommandError::AccessScopeMismatch);
             }
-            MemoryCommand::Observe(_) | MemoryCommand::Recall(_) | MemoryCommand::Stats(_) => {}
+            MemoryCommand::Observe(_)
+            | MemoryCommand::Recall(_)
+            | MemoryCommand::Stats(_)
+            | MemoryCommand::Correct(_)
+            | MemoryCommand::Forget(_) => {}
         }
 
         let response = match request.command.clone() {
@@ -110,8 +114,47 @@ impl CommandBus for EmbeddedCommandBus {
                     event_count: stats.event_count,
                 })
             }
+            MemoryCommand::Correct(command) => {
+                let receipt = self
+                    .engine
+                    .correct(access, core_mutation(command))
+                    .await
+                    .map_err(CommandError::engine)?;
+                MemoryResponse::Mutation(mutation_result(&receipt, MutationAction::Correct))
+            }
+            MemoryCommand::Forget(command) => {
+                let receipt = self
+                    .engine
+                    .forget(access, core_mutation(command))
+                    .await
+                    .map_err(CommandError::engine)?;
+                MemoryResponse::Mutation(mutation_result(&receipt, MutationAction::Forget))
+            }
         };
         Ok(ResponseEnvelope::for_request(&request, response))
+    }
+}
+
+fn core_mutation(command: jc_memory_protocol::MutationCommand) -> crate::MutationCommand {
+    crate::MutationCommand {
+        target_fragment_id: command.target_fragment_id,
+        content: command.content,
+        source: command.source,
+        perspective: command.perspective,
+        occurred_at: command.occurred_at,
+        verification_method: command.verification_method,
+        reason: command.reason,
+    }
+}
+
+fn mutation_result(receipt: &crate::MutationReceipt, action: MutationAction) -> MutationResult {
+    MutationResult {
+        action,
+        target_fragment_id: receipt.target_fragment_id,
+        fragment_id: receipt.fragment_id,
+        event_id: receipt.event_id,
+        sequence: receipt.sequence,
+        relation: receipt.relation,
     }
 }
 

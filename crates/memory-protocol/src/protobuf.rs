@@ -88,6 +88,11 @@ impl TryFrom<MemoryRequest> for proto::RequestEnvelope {
                     kind: "stats command",
                 });
             }
+            MemoryCommand::Correct(_) | MemoryCommand::Forget(_) => {
+                return Err(ProtoConversionError::Unsupported {
+                    kind: "mutation command",
+                });
+            }
         };
         Ok(Self {
             api_version: request.api_version,
@@ -136,6 +141,11 @@ impl TryFrom<ResponseEnvelope> for proto::ResponseEnvelope {
             MemoryResponse::Stats(_) => {
                 return Err(ProtoConversionError::Unsupported {
                     kind: "stats response",
+                });
+            }
+            MemoryResponse::Mutation(_) => {
+                return Err(ProtoConversionError::Unsupported {
+                    kind: "mutation response",
                 });
             }
         };

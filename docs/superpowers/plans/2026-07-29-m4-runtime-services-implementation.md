@@ -122,7 +122,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - [ ] **步骤 4：Tonic 实现同一 CommandBus；REST/gRPC 共享 ErrorCode、request_id、trace_id；TLS 仅从文件/KeyProvider 加载，不记录密钥；Tower 加入超时、并发和速率限制。**
 - [ ] **步骤 5：运行协议测试并提交 `feat(server): expose secured HTTP and gRPC APIs`**。
 
-> 当前已落地 Server 基础边界：`/healthz`、`/readyz`、Observe REST 路由、API Key 到服务端 `AccessContext` 的映射，以及共享 `CommandBus` 的 gRPC/SDK 适配器。完整 REST 命令集合、真实 Tonic gRPC、限流和优雅关闭仍待本 Task 后续步骤完成。
+> 当前已落地 Server 基础边界：`/healthz`、`/readyz`、Observe/Recall/Stats/Correct/Forget REST 路由、API Key 到服务端 `AccessContext` 的映射，以及共享 `CommandBus` 的适配器。Commit、Explain、真实 Tonic gRPC、TLS 文件/KeyProvider 和速率限制仍待本 Task 后续步骤完成。
 
 ### 2026-07-31 进度记录
 
@@ -131,8 +131,9 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - 已接入 Ctrl-C 优雅关闭，并完成本机临时目录启动探针：`/healthz` 返回成功，进程收到 `SIGINT` 后以 0 退出。
 - 已补齐共享 `RecallCommand`、硬预算和 `MemoryPacket` 响应，并接入 `/v1/memory/recall`；REST 路由与共享 `CommandBus` Envelope 契约测试通过。
 - 已补齐 `StatsCommand`、Scope 统计响应并接入 `/v1/memory/stats`；统计只读取授权 Scope 的权威 Fragment/Event 数量。
-- 已将服务端 API Key 授权集中到精确 Scope 构造器，入口现在授予已公开的 `Observe` 与 `Recall` 操作；真实二进制 `/v1/memory/stats` 探针通过 Core ACL 并返回零计数。
-- 本记录不代表 Task 7 或 M4 完成；Recall、Commit、Correct、Forget、Explain、Stats 协议、真实 Tonic gRPC 网络服务和 TLS 文件/KeyProvider 仍未实现。
+- 已将服务端 API Key 授权集中到精确 Scope 构造器，入口现在授予已公开的 `Observe`、`Recall` 与 `Mutate` 操作；真实二进制 `/v1/memory/stats` 探针通过 Core ACL 并返回零计数。
+- 已补齐 `MutationCommand`、`Correct`/`Forget` 动作和追加式 `MutationResult`，接入 `/v1/memory/correct` 与 `/v1/memory/forget`；Embedded CommandBus 临时 SQLite 闭环验证通过，入口同时授予 `Mutate`。
+- 本记录不代表 Task 7 或 M4 完成；Commit、Explain、真实 Tonic gRPC 网络服务、TLS 文件/KeyProvider 和速率限制仍未实现。
 
 ## Task 8：实现本地 Sidecar
 
