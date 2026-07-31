@@ -70,11 +70,11 @@ it("returns the canonical recall packet", async () => {
 
 **文件：** `crates/memory-uniffi/`、`sdk/kotlin/{settings.gradle.kts,build.gradle.kts,src/main,src/test,src/androidTest}`。
 
-- [ ] **步骤 1：写 JVM Fixture、Coroutine 取消和临时 Android 数据目录失败测试。**
-- [ ] **步骤 2：运行 `./gradlew -p sdk/kotlin test`**，预期 API 缺失。
-- [ ] **步骤 3：UniFFI 暴露 `JcMemoryEngine`、observe/recall/commit/correct/explain/forget/stats；Kotlin wrapper 使用 suspend/Flow、Dispatchers.IO 和 Closeable。**
-- [ ] **步骤 4：配置 AAR、ABI filters、consumer ProGuard、Instrumented Test；本地数据库只能初始化在 app filesDir，不申请外部存储权限。**
-- [ ] **步骤 5：运行 JVM 测试；Android SDK 可用时运行 connectedAndroidTest，否则记录为 CI 待验证，提交 `feat(sdk-kotlin): add Android coroutine bindings`**。
+- [x] **步骤 1：写 JVM Fixture、Coroutine 取消和稳定错误映射失败测试。**
+- [x] **步骤 2：运行 `gradle -p sdk/kotlin test`，先确认 API 缺失红灯，再完成绿灯。**
+- [x] **步骤 3：实现 Kotlin/JVM 远程 `JiangchengMemoryClient`，方法使用 `suspend`，`recallFlow` 使用 `Flow`，网络调用运行在 `Dispatchers.IO`，客户端实现 `AutoCloseable`。**
+- [ ] **步骤 4：Android AAR、ABI filters、consumer ProGuard 和 UniFFI `JcMemoryEngine` 尚未实现；当前仓库没有 `memory-uniffi` crate，不能把 JVM 客户端标记为 Android Embedded。**
+- [x] **步骤 5：运行 JVM Gradle 测试（4 个通过）；当前主机未运行 connectedAndroidTest，已在 `docs/sdk/kotlin.md` 记录为 CI/设备待验证；提交 `feat(sdk-kotlin): 增加 JVM Coroutine 客户端`。**
 
 ## Task 6：实现 Swift/iOS/macOS SDK
 
