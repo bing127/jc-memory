@@ -14,27 +14,27 @@ use jc_memory_protocol::{
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum JcMemoryError {
     /// 请求 JSON 无法解析或不符合协议。
-    #[error("invalid_argument: {message}")]
+    #[error("invalid_argument: {detail}")]
     InvalidArgument {
         /// 供调用方诊断的校验信息。
-        message: String,
+        detail: String,
     },
     /// Core 命令执行失败。
-    #[error("{code}: {message}")]
+    #[error("{code}: {detail}")]
     Core {
         /// 稳定错误码。
         code: String,
         /// Core 返回的诊断信息。
-        message: String,
+        detail: String,
     },
     /// 引擎已经关闭。
     #[error("internal: 引擎已经关闭")]
     Closed,
     /// 本地引擎无法打开或关闭。
-    #[error("internal: {message}")]
+    #[error("internal: {detail}")]
     Internal {
         /// 绑定边界的诊断信息。
-        message: String,
+        detail: String,
     },
 }
 
@@ -60,12 +60,12 @@ impl JcMemoryEngine {
     #[uniffi::constructor]
     pub fn new(data_dir: String, principal_id: String) -> Result<Self, JcMemoryError> {
         let runtime = tokio::runtime::Runtime::new().map_err(|error| JcMemoryError::Internal {
-            message: format!("无法创建 Tokio runtime: {error}"),
+            detail: format!("无法创建 Tokio runtime: {error}"),
         })?;
         let engine = runtime
             .block_on(MemoryEngine::open(MemoryConfig::local(data_dir)))
             .map_err(|error| JcMemoryError::Internal {
-                message: error.to_string(),
+                detail: error.to_string(),
             })?;
         Ok(Self {
             state: Mutex::new(Some(EngineState {
@@ -84,12 +84,12 @@ impl JcMemoryEngine {
     #[allow(clippy::needless_pass_by_value)]
     pub fn execute(&self, request_json: String) -> Result<String, JcMemoryError> {
         let state = self.state.lock().map_err(|_| JcMemoryError::Internal {
-            message: "引擎状态锁损坏".to_owned(),
+            detail: "引擎状态锁损坏".to_owned(),
         })?;
         let state = state.as_ref().ok_or(JcMemoryError::Closed)?;
         let request: MemoryRequest = serde_json::from_str(&request_json).map_err(|error| {
             JcMemoryError::InvalidArgument {
-                message: format!("请求 Envelope 无效: {error}"),
+                detail: format!("请求 Envelope 无效: {error}"),
             }
         })?;
         let scope: MemoryScope = request.access_scope.clone().into();
@@ -103,7 +103,7 @@ impl JcMemoryEngine {
             .block_on(state.bus.execute(&access, request))
             .map_err(|error| core_error(&error))?;
         serde_json::to_string(&response).map_err(|error| JcMemoryError::Internal {
-            message: format!("响应 Envelope 序列化失败: {error}"),
+            detail: format!("响应 Envelope 序列化失败: {error}"),
         })
     }
 
@@ -112,9 +112,9 @@ impl JcMemoryEngine {
     /// # Errors
     ///
     /// Core 无法释放持久化资源时返回稳定错误。
-    pub fn close(&self) -> Result<(), JcMemoryError> {
+    pub fn shutdown(&self) -> Result<(), JcMemoryError> {
         let mut state = self.state.lock().map_err(|_| JcMemoryError::Internal {
-            message: "引擎状态锁损坏".to_owned(),
+            detail: "引擎状态锁损坏".to_owned(),
         })?;
         let Some(state_value) = state.take() else {
             return Ok(());
@@ -129,7 +129,7 @@ impl JcMemoryEngine {
 fn core_error(error: &jc_memory_core::CommandError) -> JcMemoryError {
     JcMemoryError::Core {
         code: error_code(error.code()).to_owned(),
-        message: error.to_string(),
+        detail: error.to_string(),
     }
 }
 
@@ -180,8 +180,8 @@ mod tests {
             serde_json::from_str(&engine.execute(request).expect("执行请求")).expect("解析响应");
         assert_eq!(response["request_id"], "fixture-recall-exact");
         assert_eq!(response["response"]["response"], "recall");
-        engine.close().expect("关闭引擎");
-        engine.close().expect("重复关闭保持幂等");
+        engine.shutdown().expect("关闭引擎");
+        engine.shutdown().expect("重复关闭保持幂等");
         assert!(matches!(
             engine.execute("{}".to_owned()),
             Err(super::JcMemoryError::Closed)

@@ -14,13 +14,10 @@ jc-memory-protocol = { path = "../memory-protocol" }
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-uniffi = "0.32"
+uniffi = { version = "0.32", features = ["cli"] }
 
 [dev-dependencies]
 tempfile.workspace = true
-
-[build-dependencies]
-uniffi = { version = "0.32", features = ["build"] }
 
 [lints.rust]
 unsafe_code = "forbid"
