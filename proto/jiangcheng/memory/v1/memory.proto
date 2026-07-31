@@ -230,6 +230,7 @@ message RequestEnvelope {
     StatsCommand stats = 12 [json_name = "stats"];
     MutationCommand correct = 13 [json_name = "correct"];
     MutationCommand forget = 14 [json_name = "forget"];
+    RecallCommand explain = 15 [json_name = "explain"];
   }
 }
 
@@ -264,6 +265,40 @@ message MutationResult {
   string event_id = 4 [json_name = "eventId"];
   uint64 sequence = 5 [json_name = "sequence"];
   optional EdgeKind relation = 6 [json_name = "relation"];
+}
+
+// ExplainSeed 保存一次 Recall 的初始 Point 激活。
+message ExplainSeed {
+  string point_id = 1 [json_name = "pointId"];
+  float score = 2 [json_name = "score"];
+}
+
+// ExplainTraversal 保存一次有向 Edge 遍历。
+message ExplainTraversal {
+  string edge_id = 1 [json_name = "edgeId"];
+  string source_point_id = 2 [json_name = "sourcePointId"];
+  string target_point_id = 3 [json_name = "targetPointId"];
+  EdgeKind kind = 4 [json_name = "kind"];
+  float score = 5 [json_name = "score"];
+  uint64 depth = 6 [json_name = "depth"];
+}
+
+// ExplainSurface 保存一次 Surface 激活记录。
+message ExplainSurface {
+  string surface_id = 1 [json_name = "surfaceId"];
+  uint64 version = 2 [json_name = "version"];
+  float activation = 3 [json_name = "activation"];
+}
+
+// ExplainResult 返回 Recall 的结构化证据追踪。
+message ExplainResult {
+  repeated ExplainSeed seeds = 1 [json_name = "seeds"];
+  repeated ExplainTraversal traversals = 2 [json_name = "traversals"];
+  repeated ExplainSurface surfaces = 3 [json_name = "surfaces"];
+  repeated string inferred_edges = 4 [json_name = "inferredEdges"];
+  repeated string verified_fragments = 5 [json_name = "verifiedFragments"];
+  RecallLimits limits = 6 [json_name = "limits"];
+  bool truncated = 7 [json_name = "truncated"];
 }
 
 // EvidenceView 指向支撑派生结果的权威记录。
@@ -451,6 +486,7 @@ message ResponseEnvelope {
     MemoryPacket recall = 11 [json_name = "recall"];
     StatsResult stats = 12 [json_name = "stats"];
     MutationResult mutation = 13 [json_name = "mutation"];
+    ExplainResult explain = 14 [json_name = "explain"];
   }
 }
 

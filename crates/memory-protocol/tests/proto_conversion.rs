@@ -5,12 +5,13 @@ use std::str::FromStr as _;
 use chrono::{DateTime, Utc};
 use jc_memory_protocol::{
     API_VERSION_V1, AccessScope, AgentId, BlobId, CognitiveFragment, EventId, EvidenceId,
-    EvidenceRef, FragmentContent, FragmentId, FragmentKind, FragmentSource, MemoryCommand,
-    MemoryPacket, MemoryRequest, MemoryResponse, MemoryScope, MutationAction, MutationCommand,
-    MutationResult, NamespaceId, ObserveCommand, ObserveResult, Perspective, ProjectId,
-    RecallCommand, RecallLimits, RecallMode, ResponseEnvelope, SecurityLabel, SessionId,
-    SourceType, StatsCommand, StatsResult, TenantId, TraceId, UserId, ValidityStatus,
-    VerificationMethod, generated::jiangcheng::memory::v1 as proto,
+    EvidenceRef, ExplainResult, ExplainSeed, ExplainSurface, ExplainTraversal, FragmentContent,
+    FragmentId, FragmentKind, FragmentSource, MemoryCommand, MemoryPacket, MemoryRequest,
+    MemoryResponse, MemoryScope, MutationAction, MutationCommand, MutationResult, NamespaceId,
+    ObserveCommand, ObserveResult, Perspective, PointId, ProjectId, RecallCommand, RecallLimits,
+    RecallMode, ResponseEnvelope, SecurityLabel, SessionId, SourceType, StatsCommand, StatsResult,
+    SurfaceId, TenantId, TraceId, UserId, ValidityStatus, VerificationMethod,
+    generated::jiangcheng::memory::v1 as proto,
 };
 use prost::Message as _;
 
@@ -248,6 +249,81 @@ fn mutation_proto_round_trip_preserves_correct_and_forget() {
             response
         );
     }
+}
+
+#[test]
+fn explain_proto_round_trip_preserves_trace_fields() {
+    let request = MemoryRequest {
+        api_version: API_VERSION_V1.to_owned(),
+        request_id: "req-explain-round-trip".to_owned(),
+        access_scope: AccessScope::from(MemoryScope::new(NamespaceId::new())),
+        command: MemoryCommand::Explain(RecallCommand {
+            mode: RecallMode::Causal,
+            text: "故障原因".into(),
+            entities: vec!["数据库".into()],
+            at_time: None,
+            limits: RecallLimits {
+                max_seeds: 2,
+                max_neighbors: 3,
+                max_hops: 4,
+                max_nodes: 5,
+                timeout_ms: 600,
+            },
+        }),
+    };
+    let seed_point: PointId = "00000000-0000-7000-8000-000000000020".parse().unwrap();
+    let target_point: PointId = "00000000-0000-7000-8000-000000000021".parse().unwrap();
+    let surface_id: SurfaceId = "00000000-0000-7000-8000-000000000022".parse().unwrap();
+    let edge_id = "00000000-0000-7000-8000-000000000023".parse().unwrap();
+    let explain = ExplainResult {
+        seeds: vec![ExplainSeed {
+            point_id: seed_point,
+            score: 0.9,
+        }],
+        traversals: vec![ExplainTraversal {
+            edge_id,
+            source_point_id: seed_point,
+            target_point_id: target_point,
+            kind: jc_memory_protocol::EdgeKind::Causes,
+            score: 0.7,
+            depth: 1,
+        }],
+        surfaces: vec![ExplainSurface {
+            surface_id,
+            version: 3,
+            activation: 0.6,
+        }],
+        inferred_edges: vec![edge_id],
+        verified_fragments: vec!["00000000-0000-7000-8000-000000000024".parse().unwrap()],
+        limits: RecallLimits {
+            max_seeds: 2,
+            max_neighbors: 3,
+            max_hops: 4,
+            max_nodes: 5,
+            timeout_ms: 600,
+        },
+        truncated: true,
+    };
+    let response = ResponseEnvelope::for_request(&request, MemoryResponse::Explain(explain));
+
+    let request_wire =
+        proto::RequestEnvelope::try_from(request.clone()).expect("Explain 请求转 Proto");
+    let request_decoded = proto::RequestEnvelope::decode(request_wire.encode_to_vec().as_slice())
+        .expect("解码 Explain 请求");
+    assert_eq!(
+        MemoryRequest::try_from(request_decoded).expect("Explain 请求转 Rust"),
+        request
+    );
+
+    let response_wire =
+        proto::ResponseEnvelope::try_from(response.clone()).expect("Explain 响应转 Proto");
+    let response_decoded =
+        proto::ResponseEnvelope::decode(response_wire.encode_to_vec().as_slice())
+            .expect("解码 Explain 响应");
+    assert_eq!(
+        ResponseEnvelope::try_from(response_decoded).expect("Explain 响应转 Rust"),
+        response
+    );
 }
 
 fn complete_request(content: FragmentContent) -> MemoryRequest {

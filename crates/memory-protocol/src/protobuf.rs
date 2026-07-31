@@ -9,9 +9,9 @@ use chrono::{DateTime, Utc};
 
 use crate::{
     AccessScope, CognitiveFragment, ConflictView, Coverage, EdgeKind, EpisodeView, EvidenceRef,
-    EvidenceView, FragmentContent, FragmentKind, FragmentSource, IdParseError, KnowledgeKind,
-    KnowledgeView, MemoryCommand, MemoryPacket, MemoryRequest, MemoryResponse, MemoryScope,
-    MissingEvidence, MutationAction, MutationCommand, MutationResult, ObserveCommand,
+    EvidenceView, ExplainResult, FragmentContent, FragmentKind, FragmentSource, IdParseError,
+    KnowledgeKind, KnowledgeView, MemoryCommand, MemoryPacket, MemoryRequest, MemoryResponse,
+    MemoryScope, MissingEvidence, MutationAction, MutationCommand, MutationResult, ObserveCommand,
     ObserveResult, Perspective, PointKind, PointView, ProcedureView, RecallLimits, RecallMode,
     RecallPath, RequestValidationError, ResponseEnvelope, SecurityLabel, SourceType, StateView,
     StatsCommand, StatsResult, SurfaceStatus, SurfaceView, ValidityStatus, VerificationMethod,
@@ -119,10 +119,14 @@ impl TryFrom<MemoryRequest> for proto::RequestEnvelope {
             MemoryCommand::Forget(command) => {
                 proto::request_envelope::Command::Forget(mutation_command_to_proto(command))
             }
-            MemoryCommand::Explain(_) => {
-                return Err(ProtoConversionError::Unsupported {
-                    kind: "explain command",
-                });
+            MemoryCommand::Explain(command) => {
+                proto::request_envelope::Command::Explain(proto::RecallCommand {
+                    mode: recall_mode_to_proto(command.mode),
+                    text: command.text,
+                    entities: command.entities,
+                    at_time: command.at_time.map(datetime_to_proto),
+                    limits: Some(recall_limits_to_proto(command.limits)),
+                })
             }
         };
         Ok(Self {
@@ -154,6 +158,9 @@ impl TryFrom<proto::RequestEnvelope> for MemoryRequest {
             proto::request_envelope::Command::Forget(command) => {
                 MemoryCommand::Forget(mutation_command_from_proto(command)?)
             }
+            proto::request_envelope::Command::Explain(command) => {
+                MemoryCommand::Explain(recall_command_from_proto(command)?)
+            }
         };
         let request = Self {
             api_version: request.api_version,
@@ -183,10 +190,8 @@ impl TryFrom<ResponseEnvelope> for proto::ResponseEnvelope {
             MemoryResponse::Mutation(result) => {
                 proto::response_envelope::Response::Mutation(result.into())
             }
-            MemoryResponse::Explain(_) => {
-                return Err(ProtoConversionError::Unsupported {
-                    kind: "explain response",
-                });
+            MemoryResponse::Explain(result) => {
+                proto::response_envelope::Response::Explain(result.into())
             }
         };
         Ok(Self {
@@ -213,6 +218,9 @@ impl TryFrom<proto::ResponseEnvelope> for ResponseEnvelope {
             }
             proto::response_envelope::Response::Mutation(result) => {
                 MemoryResponse::Mutation(result.try_into()?)
+            }
+            proto::response_envelope::Response::Explain(result) => {
+                MemoryResponse::Explain(result.try_into()?)
             }
         };
         Ok(Self {
@@ -420,6 +428,116 @@ impl TryFrom<proto::MutationResult> for MutationResult {
             event_id: parse_id("mutation_result.event_id", &result.event_id)?,
             sequence: result.sequence,
             relation: result.relation.map(edge_kind_from_proto).transpose()?,
+        })
+    }
+}
+
+impl From<ExplainResult> for proto::ExplainResult {
+    fn from(result: ExplainResult) -> Self {
+        Self {
+            seeds: result
+                .seeds
+                .into_iter()
+                .map(|seed| proto::ExplainSeed {
+                    point_id: seed.point_id.to_string(),
+                    score: seed.score,
+                })
+                .collect(),
+            traversals: result
+                .traversals
+                .into_iter()
+                .map(|traversal| proto::ExplainTraversal {
+                    edge_id: traversal.edge_id.to_string(),
+                    source_point_id: traversal.source_point_id.to_string(),
+                    target_point_id: traversal.target_point_id.to_string(),
+                    kind: edge_kind_to_proto(traversal.kind),
+                    score: traversal.score,
+                    depth: traversal.depth as u64,
+                })
+                .collect(),
+            surfaces: result
+                .surfaces
+                .into_iter()
+                .map(|surface| proto::ExplainSurface {
+                    surface_id: surface.surface_id.to_string(),
+                    version: surface.version,
+                    activation: surface.activation,
+                })
+                .collect(),
+            inferred_edges: result
+                .inferred_edges
+                .into_iter()
+                .map(|id| id.to_string())
+                .collect(),
+            verified_fragments: result
+                .verified_fragments
+                .into_iter()
+                .map(|id| id.to_string())
+                .collect(),
+            limits: Some(recall_limits_to_proto(result.limits)),
+            truncated: result.truncated,
+        }
+    }
+}
+
+impl TryFrom<proto::ExplainResult> for ExplainResult {
+    type Error = ProtoConversionError;
+
+    fn try_from(result: proto::ExplainResult) -> Result<Self, Self::Error> {
+        Ok(Self {
+            seeds: result
+                .seeds
+                .into_iter()
+                .map(|seed| {
+                    Ok(crate::ExplainSeed {
+                        point_id: parse_id("explain.seed.point_id", &seed.point_id)?,
+                        score: seed.score,
+                    })
+                })
+                .collect::<Result<_, ProtoConversionError>>()?,
+            traversals: result
+                .traversals
+                .into_iter()
+                .map(|traversal| {
+                    Ok(crate::ExplainTraversal {
+                        edge_id: parse_id("explain.traversal.edge_id", &traversal.edge_id)?,
+                        source_point_id: parse_id(
+                            "explain.traversal.source_point_id",
+                            &traversal.source_point_id,
+                        )?,
+                        target_point_id: parse_id(
+                            "explain.traversal.target_point_id",
+                            &traversal.target_point_id,
+                        )?,
+                        kind: edge_kind_from_proto(traversal.kind)?,
+                        score: traversal.score,
+                        depth: numeric("explain.traversal.depth", traversal.depth)?,
+                    })
+                })
+                .collect::<Result<_, ProtoConversionError>>()?,
+            surfaces: result
+                .surfaces
+                .into_iter()
+                .map(|surface| {
+                    Ok(crate::ExplainSurface {
+                        surface_id: parse_id("explain.surface.surface_id", &surface.surface_id)?,
+                        version: surface.version,
+                        activation: surface.activation,
+                    })
+                })
+                .collect::<Result<_, ProtoConversionError>>()?,
+            inferred_edges: result
+                .inferred_edges
+                .into_iter()
+                .map(|id| parse_id("explain.inferred_edges", &id))
+                .collect::<Result<_, _>>()?,
+            verified_fragments: result
+                .verified_fragments
+                .into_iter()
+                .map(|id| parse_id("explain.verified_fragments", &id))
+                .collect::<Result<_, _>>()?,
+            limits: recall_limits_from_proto(required(result.limits, "explain.limits")?)?,
+            truncated: result.truncated,
         })
     }
 }
