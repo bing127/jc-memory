@@ -21,6 +21,7 @@
 - `jc-memory-runtime`：可恢复 Agent 状态机、模型 Provider、Capability、Policy、Approval、Tool、MCP Client 和完成判定；
 - `jc-memory-server`：共享 `CommandBus` 的 HTTP/gRPC 服务、API Key Scope、并发/速率限制、健康探针、文件型 TLS 和 YAML/环境变量配置。
 - `jc-memory-sidecar`：本地 Token、Unix Domain Socket、单实例锁和守护进程控制生命周期；记忆命令转发仍在 M4 后续任务中。
+- `jc-memory-mcp`：stdio JSON-RPC MCP 工具清单、共享 CommandBus 调用和结构化结果；Commit 领域命令与跨协议 E2E 仍待完成。
 
 原始 Fragment、Event 和 EvidenceRef 是权威记录。摘要、Embedding、图关系、Surface 和全文索引不得覆盖它们。Prediction 不允许设置 `ValidityStatus::Verified`；Inference 和 Plan 始终保持 FutureHypothesis 阶段，三者都不会被自动改写成 Fact。
 

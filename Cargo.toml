@@ -16,6 +16,7 @@ members = [
   "crates/memory-core",
   "services/memory-server",
   "services/memory-sidecar",
+  "services/memory-mcp",
 ]
 
 [workspace.package]
@@ -46,7 +47,7 @@ sha2 = "0.11"
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros", "chrono", "uuid", "json"] }
 tempfile = "3"
 thiserror = "2"
-tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+tokio = { version = "1", features = ["fs", "io-std", "io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-stream = { version = "0.1", features = ["net"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 tonic = { version = "0.14", features = ["tls-ring", "transport"] }

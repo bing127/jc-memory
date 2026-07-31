@@ -172,6 +172,12 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - [ ] **步骤 4：结果使用 MCP structuredContent 包含协议对象；错误返回稳定 code/data，不把自然语言当唯一结果。**
 - [ ] **步骤 5：运行测试并提交 `feat(mcp): expose structured memory tools`**。
 
+### 2026-07-31 进度记录
+
+- 已建立 `jc-memory-mcp` stdio JSON-RPC Server，完成 `initialize`、`tools/list` 和七个稳定工具名的契约测试。
+- Observe、Recall、Correct、Forget、Explain、Stats 通过共享 `CommandBus` 执行并返回 MCP `structuredContent`；`memory_commit` 因领域协议尚未定义 Commit 命令而明确返回 `unsupported`。
+- 当前仍未完成 Commit 领域命令、Sidecar 转发身份链和完整跨协议 E2E，因此 Task 9 不标记为完成。
+
 ## Task 10：端到端一致性、文档与门禁
 
 **文件：** `tests/e2e/runtime_loop.rs`、`tests/e2e/protocol_parity.rs`、部署与协议文档、README/CHANGELOG。

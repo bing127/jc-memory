@@ -1238,6 +1238,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "jc-memory-mcp"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "jc-memory-core",
+ "jc-memory-protocol",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "jc-memory-neural"
 version = "0.1.0"
 dependencies = [
