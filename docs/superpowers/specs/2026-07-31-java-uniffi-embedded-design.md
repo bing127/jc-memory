@@ -1,6 +1,6 @@
 # Java/JVM UniFFI Embedded 设计
 
-- **状态：** 已获用户确认，待实施计划
+- **状态：** 已实施，当前主机验证通过
 - **日期：** 2026-07-31
 - **范围：** M5 Task 7 Java/JVM Embedded
 
@@ -64,4 +64,4 @@ Rust 错误转换为稳定错误码和中文消息；Java loader 错误与 Core 
 
 ## 6. 发布与后续
 
-当前提交只把 macOS ARM64 JVM Embedded 标记为已验证。后续 CI 需要补充 Linux、Windows、macOS x64/ARM64 的 native library 构建、签名或校验和清单，以及 Kotlin Android AAR、consumer ProGuard 和 connected test。所有新增提交继续采用中文 Conventional Commit 标题和中文正文。
+当前已把 macOS ARM64 JVM Embedded、native loader、SHA-256 校验和 classloader 缓存标记为已验证。后续 CI 需要补充 Linux、Windows、macOS x64/ARM64 的 native library 构建、签名或校验和清单，以及 Kotlin Android AAR、consumer ProGuard 和 connected test。所有新增提交继续采用中文 Conventional Commit 标题和中文正文。

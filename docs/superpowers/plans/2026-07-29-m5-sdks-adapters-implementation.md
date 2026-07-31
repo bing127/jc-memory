@@ -93,7 +93,7 @@ it("returns the canonical recall packet", async () => {
 - [x] **步骤 1：写 CompletableFuture、HTTP `Duration` deadline、Fixture、取消和错误码失败测试。当前服务未提供 Java gRPC Stub，因此不伪造 gRPC 实现。**
 - [x] **步骤 2：运行 `gradle -p sdk/java test --no-daemon`，先确认超时异常导入和 JUnit Launcher 配置缺失的红灯，再完成绿灯。**
 - [x] **步骤 3：实现 `JiangchengMemoryClient` AutoCloseable，异步方法返回 CompletableFuture，`*Blocking` 同步 facade 明确阻塞；使用不可变 `MemoryResponse` wrapper 保留原始 JSON。**
-- [ ] **步骤 4：嵌入模式复用 Kotlin/UniFFI 生成的 JVM native loader，不复制第二套 JNI；校验平台库 checksum 和 classloader 生命周期。**
+- [x] **步骤 4：嵌入模式复用 UniFFI 0.32 生成的 Kotlin/JVM native loader，不复制第二套 JNI；当前主机已校验平台库 SHA-256、classloader/path 缓存和 Rust handle 生命周期。Android AAR、移动端 native slices 与其他平台 CI 仍待完成。**
 - [x] **步骤 5：运行 Gradle 测试并提交 `feat(sdk-java): 增加 JVM CompletableFuture 客户端`；UniFFI/JVM Embedded 继续留待后续绑定任务。**
 
 ## Task 8：实现 Hermes Adapter
