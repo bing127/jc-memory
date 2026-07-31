@@ -188,6 +188,12 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - [ ] **步骤 4：运行全仓 Rust 门禁、服务 E2E 和 `git diff --check`。**
 - [ ] **步骤 5：提交 `docs: complete M4 runtime and services milestone`**。
 
+### 2026-07-31 进度记录
+
+- 已完成协议包、Server、Sidecar、MCP 和 Workspace 的 fmt、严格 Clippy、测试、rustdoc 与 `git diff --check` 门禁。
+- 已有 REST/gRPC Adapter 一致性、TCP gRPC Recall、MCP structuredContent 和 Runtime Fixture 契约测试；尚未形成同一真实 Embedded Fixture 贯穿四种入口的端到端测试。
+- Commit 领域命令、Sidecar 记忆命令转发、真实 MCP 身份链和跨协议 canonical Packet/Evidence 对比仍待实现，因此不创建 M4 总 Tag。
+
 ## M4 完成定义
 
 - Agent 循环、审批、工具、提交和恢复真实运行；
