@@ -2,11 +2,15 @@
 
 mod approval;
 mod capability;
+mod completion;
+mod control;
+mod mcp_client;
 mod model;
 mod parser;
 mod policy;
 mod providers;
 mod recovery;
+mod retry;
 mod runner;
 mod state;
 mod tool;
@@ -18,6 +22,9 @@ pub use capability::{
     CapabilityRegistry, CapabilityRequest, CapabilityStats, CapabilityStatsStore, Permission,
     ResolvedCapability, RiskLevel,
 };
+pub use completion::{CompletionInput, CompletionJudge, CompletionStatus};
+pub use control::{ControlError, ControlState, RunControl};
+pub use mcp_client::{McpClient, McpError, McpTransport};
 pub use model::{
     DecisionCandidate, FinalResponse, Hypothesis, ModelDescriptor, ModelError, ModelMessage,
     ModelOutput, ModelProvider, ModelRequest, ModelResponse, ModelRole, Plan, Prediction,
@@ -30,6 +37,7 @@ pub use providers::{
     OpenAiCompatibleProvider,
 };
 pub use recovery::RuntimeRecovery;
+pub use retry::{RetryClass, RetryDecision, RetryPolicy};
 pub use runner::{RunId, RuntimeError, RuntimeRunner, RuntimeSnapshot, TransitionMetadata};
 pub use state::{RuntimeEvent, RuntimeState, TransitionError};
 pub use tool::{
