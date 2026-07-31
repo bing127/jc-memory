@@ -1433,6 +1433,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "jc-memory-benchmark-harness"
+version = "0.1.0"
+dependencies = [
+ "jc-memory-activation",
+ "jc-memory-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "jc-memory-consolidation"
 version = "0.1.0"
 dependencies = [

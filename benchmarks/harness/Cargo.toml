@@ -1,0 +1,16 @@
+[package]
+name = "jc-memory-benchmark-harness"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+authors.workspace = true
+
+[dependencies]
+jc-memory-activation = { path = "../../crates/memory-activation" }
+jc-memory-protocol = { path = "../../crates/memory-protocol" }
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

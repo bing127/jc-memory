@@ -45,9 +45,9 @@
 
 **文件：** `benchmarks/harness/{Cargo.toml,src/{case,runner,metrics,report,main}.rs}`、`tests/metrics.rs`。
 
-- [ ] **步骤 1：写 Recall@K、Evidence Coverage、Accuracy、Leakage、Latency Percentile 的已知输入失败测试。**
-- [ ] **步骤 2：运行 `cargo test -p jc-memory-benchmark-harness`**，预期 crate 缺失。
-- [ ] **步骤 3：实现：**
+- [x] **步骤 1：写 Recall@K、Evidence Coverage、Accuracy、Leakage、Latency Percentile 的已知输入失败测试。** 已先确认 crate 缺失红灯，再补充 5 个确定性 Fixture 测试，覆盖 Recall@K、Evidence Coverage、nearest-rank、19 个指标名称、JSON/Markdown 和 Runner 错误边界。
+- [x] **步骤 2：运行 `cargo test -p jc-memory-benchmark-harness`**，预期 crate 缺失。已在实现前确认 `package ID specification ... did not match any packages` 红灯。
+- [x] **步骤 3：实现：**
 
 ```rust
 pub struct BenchmarkCase { pub id: String, pub setup: Vec<CognitiveFragment>, pub query: RecallQuery, pub expected: ExpectedAnswer, pub tags: BTreeSet<String> }
@@ -55,8 +55,8 @@ pub struct CaseResult { pub case_id: String, pub packet: MemoryPacket, pub laten
 pub trait Metric { fn name(&self) -> &'static str; fn evaluate(&self, cases: &[BenchmarkCase], results: &[CaseResult]) -> MetricValue; }
 ```
 
-- [ ] **步骤 4：实现需求中的 19 个命名输出（把 P50/P95/P99 分别计数），百分位使用 nearest-rank 并记录样本数；报告同时输出 schema-versioned JSON 和中文 Markdown。**
-- [ ] **步骤 5：运行指标测试并提交 `feat(benchmarks): add unified harness and metrics`**。
+- [x] **步骤 4：实现需求中的 19 个命名输出（把 P50/P95/P99 分别计数），百分位使用 nearest-rank 并记录样本数；报告同时输出 schema-versioned JSON 和中文 Markdown。** 已实现 `jcmem.benchmark.v1` JSON、中文 Markdown、统一 CaseExecutor 和全部 19 个指标；当前测试只使用仓库内确定性 Fixture，不宣称外部数据集或生产负载验证。
+- [ ] **步骤 5：运行指标测试并提交 `feat(benchmarks): add unified harness and metrics`**。聚焦测试、严格 Clippy、Rustfmt、rustdoc 和 `git diff --check` 已通过；待本次中文 Conventional Commit 提交并推送后勾选。
 
 ## Task 4：实现 LongMemEval 与 LoCoMo Harness
 
