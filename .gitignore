@@ -20,6 +20,7 @@ __pycache__/
 .idea/
 .gradle/
 .swiftpm/
+.build/
 sdk/python/src/jiangcheng_memory/*.so
 sdk/python/src/jiangcheng_memory/*.dylib
 sdk/python/src/jiangcheng_memory/*.pyd

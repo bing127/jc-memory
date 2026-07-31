@@ -80,11 +80,11 @@ it("returns the canonical recall packet", async () => {
 
 **文件：** `sdk/swift/{Package.swift,Sources/JiangchengMemory/*.swift,Tests/*.swift}`、`scripts/build/build-xcframework.sh`，复用 `memory-uniffi`。
 
-- [ ] **步骤 1：写 Swift Fixture、async cancellation、Actor 并发和错误映射失败测试。**
-- [ ] **步骤 2：运行 `swift test --package-path sdk/swift`**，预期模块缺失。
-- [ ] **步骤 3：`JiangchengMemoryClient` 使用 actor 保护 Engine Handle，公开 async observe/recall/commit/correct/explain/forget/stats；Cancellation 映射 Rust Token。**
-- [ ] **步骤 4：Package.swift 声明 macOS/iOS 最低版本；XCFramework 脚本构建 device/simulator/macOS slices、合并 dSYM 并校验架构，禁止使用未解析通配输出路径。**
-- [ ] **步骤 5：运行 Swift 测试和当前主机可构建 slices，提交 `feat(sdk-swift): add async Apple bindings`**。
+- [x] **步骤 1：写 Swift Fixture、async cancellation、Actor 并发和错误映射失败测试。**
+- [x] **步骤 2：运行 `swift test --package-path sdk/swift`，先确认 target 缺失红灯，再完成绿灯。**
+- [x] **步骤 3：`JiangchengMemoryClient` 使用 actor 保护 URLSession 状态，公开 async observe/recall/commit/correct/explain/forget/stats；调用方取消保留 Swift `CancellationError`。**
+- [ ] **步骤 4：Package.swift 已声明 macOS/iOS 最低版本并加入显式输入的 XCFramework 脚本；但 `memory-uniffi`、device/simulator/macOS 原生 slices 和 dSYM 合并尚未实现，不能标记为完成。**
+- [x] **步骤 5：运行当前主机 Swift 测试（3 个通过），提交 `feat(sdk-swift): 增加异步 Apple 客户端`；Apple 原生绑定留待 UniFFI/CI。**
 
 ## Task 7：实现 Java/JVM SDK
 
