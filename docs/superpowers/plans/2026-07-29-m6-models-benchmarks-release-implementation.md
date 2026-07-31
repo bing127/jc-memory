@@ -76,7 +76,7 @@ pub trait Metric { fn name(&self) -> &'static str; fn evaluate(&self, cases: &[B
 - [x] **步骤 2：运行 Smoke**，预期 Generator 缺失。已运行 Harness Task 5 Smoke；Cross-Year、Model Swap、Poisoning 测试均通过。
 - [x] **步骤 3：Cross-Year 生成跨 1 天/1 月/1 年、状态多次变更、模糊线索、同名实体、相似事件和稀有事实；Manifest 保存 seed、case_count 和 digest。** 已实现固定 LCG、SHA-256、32 Case Smoke Manifest 和八类标签。
 - [x] **步骤 4：Model Swap 使用至少两个 DeterministicModel 表达器，比较 Fragment/Evidence/CurrentState canonical hash，只允许 FinalResponse 文本不同；Poisoning 覆盖注入、跨 Tenant、未验证推断、重复错误、恶意 ToolResult 和权限绕过。** 已实现结构化 hash 比较和六类 fail-closed 污染场景。
-- [ ] **步骤 5：运行 Smoke 并提交 `feat(benchmarks): add temporal model-swap and poisoning suites`**。聚焦测试、严格 Clippy、Rustfmt、rustdoc 和 `git diff --check` 待本次提交前最终确认。
+- [x] **步骤 5：运行 Smoke 并提交 `feat(benchmarks): add temporal model-swap and poisoning suites`**。聚焦测试、严格 Clippy、Rustfmt、rustdoc 和 `git diff --check` 均通过；实现提交为 `de36a6a feat(benchmarks): 增加 Cross-Year、Model Swap 与污染套件`。
 
 ## Task 6：实现 Million Fragments 可恢复压力测试
 
