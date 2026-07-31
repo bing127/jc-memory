@@ -12,7 +12,7 @@
 
 ## 尚未实现
 
-当前 Commit 已接入领域协议和共享 `CommandBus`，但批次目前逐条复用权威追加路径，尚未提供跨多条 Fragment 的单事务提交保证。Sidecar 转发、远程 MCP 身份认证和完整 Embedded/REST/gRPC/MCP 跨协议 E2E 仍待后续阶段完成。
+当前 Commit 已接入领域协议和共享 `CommandBus`，权威 Fragment 批次在 SQLite 单事务中追加；自动 Quarantine 治理事件仍沿用既有治理路径。Sidecar 转发、远程 MCP 身份认证和完整 Embedded/REST/gRPC/MCP 跨协议 E2E 仍待后续阶段完成。
 
 ## 本地运行
 

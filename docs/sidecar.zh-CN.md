@@ -26,4 +26,4 @@ JC_MEMORY_SIDECAR_DATA_DIR=/var/lib/jc-memory-sidecar \
 
 ## 尚未实现
 
-Sidecar 当前仍未提供完整 Observe/Recall/Correct/Forget/Explain/Stats 的专用 CLI 子命令，也尚未接入服务端 API Key、TLS 或独立 MCP Server。`execute` 转发复用本地 Token 和 Core ACL，但跨多条 Commit Fragment 仍逐条追加，未提供单事务保证。生产部署不能把当前 Sidecar 控制接口当作完整 Memory API；这些能力完成前不会创建 M4 总 Tag。
+Sidecar 当前仍未提供完整 Observe/Recall/Correct/Forget/Explain/Stats 的专用 CLI 子命令，也尚未接入服务端 API Key、TLS 或独立 MCP Server。`execute` 转发复用本地 Token 和 Core ACL；Commit 的权威 Fragment 批次已在 SQLite 单事务中追加，自动 Quarantine 治理事件仍沿用既有治理路径。生产部署不能把当前 Sidecar 控制接口当作完整 Memory API；这些能力完成前不会创建 M4 总 Tag。

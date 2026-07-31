@@ -272,9 +272,47 @@ impl MemoryEngine {
                 reason: DenyReason::SubjectScopeMismatch,
             });
         }
-        let mut receipts = Vec::with_capacity(fragments.len());
-        for fragment in fragments {
-            receipts.push(self.observe_admitted(fragment).await?);
+        let mut admitted = Vec::with_capacity(fragments.len());
+        for mut fragment in fragments {
+            jc_memory_events::validation::validate_fragment(&fragment)
+                .map_err(EventFactoryError::from)?;
+            let risk_context = self.risk_context(&fragment).await?;
+            let risk_assessment =
+                jc_memory_security::QuarantinePipeline.assess(&fragment, risk_context);
+            let admission =
+                jc_memory_security::QuarantinePipeline.admission(&fragment, &risk_assessment);
+            match admission {
+                Admission::Accept => {}
+                Admission::AcceptUnverified => fragment.validity = ValidityStatus::Unverified,
+                Admission::Quarantine { .. } => fragment.validity = ValidityStatus::Quarantined,
+            }
+            let governance_fragment = fragment.clone();
+            let draft = self.event_factory.from_fragment(fragment)?;
+            admitted.push((draft, governance_fragment, risk_assessment, admission));
+        }
+        let drafts = admitted
+            .iter()
+            .map(|(draft, _, _, _)| draft.clone())
+            .collect::<Vec<_>>();
+        let persisted = self.repository.append_batch(&drafts).await?;
+        let mut receipts = Vec::with_capacity(persisted.len());
+        for ((_, governance_fragment, risk_assessment, admission), receipt) in
+            admitted.into_iter().zip(persisted)
+        {
+            let result = ObserveReceipt {
+                fragment_id: receipt.event.draft.fragment_id,
+                event_id: receipt.event.draft.id,
+                sequence: receipt.event.sequence,
+                content_hash: receipt.event.draft.content_hash,
+                created: receipt.created,
+                quarantined: receipt.event.draft.payload.validity == ValidityStatus::Quarantined,
+                risk_assessment: risk_assessment.clone(),
+            };
+            if result.created && matches!(admission, Admission::Quarantine { .. }) {
+                self.append_automatic_quarantine(&governance_fragment, &risk_assessment, admission)
+                    .await?;
+            }
+            receipts.push(result);
         }
         Ok(receipts)
     }

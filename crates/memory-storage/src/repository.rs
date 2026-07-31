@@ -80,6 +80,10 @@ pub trait MemoryRepository: Send + Sync {
     /// Atomically persists one validated event draft and allocates its scope sequence.
     async fn append(&self, draft: &EventDraft) -> Result<AppendReceipt, StorageError>;
 
+    /// 在同一个 `SQLite` 事务中追加多个已验证 Event Draft。
+    async fn append_batch(&self, drafts: &[EventDraft])
+    -> Result<Vec<AppendReceipt>, StorageError>;
+
     /// Reconstructs a fragment from normalized authoritative rows.
     async fn get_fragment(&self, id: FragmentId) -> Result<CognitiveFragment, StorageError>;
 
@@ -163,6 +167,15 @@ pub trait RepositoryFailpoint: Send + Sync {
     ///
     /// Returning an error aborts and rolls back the write transaction.
     fn before_commit(&self) -> Result<(), StorageError>;
+
+    /// 在批量追加的全部 Draft 写入后、事务提交前运行故障钩子。
+    ///
+    /// # Errors
+    ///
+    /// 故障钩子拒绝事务时返回注入的存储错误。
+    fn before_batch_commit(&self, _written: usize) -> Result<(), StorageError> {
+        self.before_commit()
+    }
 }
 
 /// `SQLite` implementation of [`MemoryRepository`].
@@ -277,6 +290,89 @@ impl SqliteMemoryRepository {
             }
         }
     }
+
+    async fn append_batch_once(
+        &self,
+        drafts: &[EventDraft],
+    ) -> Result<Vec<AppendReceipt>, StorageError> {
+        let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        let mut pending = Vec::with_capacity(drafts.len());
+        for draft in drafts {
+            let existing_hash: Option<String> =
+                sqlx::query_scalar("SELECT content_hash FROM events WHERE id = ?1")
+                    .bind(draft.id.to_string())
+                    .fetch_optional(&mut *transaction)
+                    .await?;
+            if let Some(existing_hash) = existing_hash {
+                if existing_hash != draft.content_hash.as_str() {
+                    transaction.rollback().await?;
+                    return Err(StorageError::IdentityConflict {
+                        entity: "event",
+                        id: draft.id.to_string(),
+                    });
+                }
+                pending.push(PendingReceipt::Existing(draft.id));
+                continue;
+            }
+
+            let existing_fragment_event = sqlx::query(
+                "SELECT id, content_hash FROM events
+                 WHERE fragment_id = ?1 ORDER BY sequence LIMIT 1",
+            )
+            .bind(draft.fragment_id.to_string())
+            .fetch_optional(&mut *transaction)
+            .await?;
+            if let Some(row) = existing_fragment_event {
+                let event_id_raw: String = row.try_get("id")?;
+                let existing_hash: String = row.try_get("content_hash")?;
+                if existing_hash != draft.content_hash.as_str() {
+                    transaction.rollback().await?;
+                    return Err(StorageError::IdentityConflict {
+                        entity: "fragment",
+                        id: draft.fragment_id.to_string(),
+                    });
+                }
+                let event_id = parse_id::<EventId>(&event_id_raw, "events", &event_id_raw, "id")?;
+                pending.push(PendingReceipt::Existing(event_id));
+                continue;
+            }
+
+            let scope_key = scope_key(&draft.scope)?;
+            let sequence = insert_draft(&mut transaction, draft, &scope_key).await?;
+            pending.push(PendingReceipt::Created(Box::new(MemoryEvent {
+                draft: draft.clone(),
+                sequence,
+            })));
+        }
+
+        if let Some(failpoint) = &self.failpoint
+            && let Err(error) = failpoint.before_batch_commit(drafts.len())
+        {
+            transaction.rollback().await?;
+            return Err(error);
+        }
+        transaction.commit().await?;
+
+        let mut receipts = Vec::with_capacity(pending.len());
+        for item in pending {
+            match item {
+                PendingReceipt::Existing(event_id) => receipts.push(AppendReceipt {
+                    event: self.get_event(event_id).await?,
+                    created: false,
+                }),
+                PendingReceipt::Created(event) => receipts.push(AppendReceipt {
+                    event: *event,
+                    created: true,
+                }),
+            }
+        }
+        Ok(receipts)
+    }
+}
+
+enum PendingReceipt {
+    Existing(EventId),
+    Created(Box<MemoryEvent>),
 }
 
 #[async_trait]
@@ -292,6 +388,28 @@ impl MemoryRepository for SqliteMemoryRepository {
             }
         }
         unreachable!("bounded append loop always returns on its final attempt")
+    }
+
+    async fn append_batch(
+        &self,
+        drafts: &[EventDraft],
+    ) -> Result<Vec<AppendReceipt>, StorageError> {
+        for draft in drafts {
+            validate_draft(draft)?;
+        }
+        if drafts.is_empty() {
+            return Ok(Vec::new());
+        }
+        let retry_id = drafts[0].id;
+        for attempt in 0..MAX_BUSY_ATTEMPTS {
+            match self.append_batch_once(drafts).await {
+                Err(error) if error.is_busy_or_locked() && attempt + 1 < MAX_BUSY_ATTEMPTS => {
+                    tokio::time::sleep(busy_retry_delay(retry_id, attempt)).await;
+                }
+                result => return result,
+            }
+        }
+        unreachable!("bounded batch append loop always returns on its final attempt")
     }
 
     async fn get_fragment(&self, id: FragmentId) -> Result<CognitiveFragment, StorageError> {
