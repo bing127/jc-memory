@@ -6,7 +6,8 @@ use jc_memory_core::{CommandBus, CommandError, EmbeddedCommandBus, MemoryConfig,
 use jc_memory_protocol::{
     API_VERSION_V1, AccessContext, AccessScope, CommandErrorCode, FragmentContent, Grant,
     MemoryCommand, MemoryRequest, MemoryResponse, MutationAction, MutationCommand, ObserveCommand,
-    ObserveResult, Operation, Perspective, ResponseEnvelope, TenantId, VerificationMethod,
+    ObserveResult, Operation, Perspective, RecallCommand, RecallLimits, RecallMode,
+    ResponseEnvelope, TenantId, VerificationMethod,
 };
 
 #[tokio::test]
@@ -231,6 +232,36 @@ async fn command_bus_appends_correct_and_forget_mutations() {
     assert!(matches!(
         forget.response,
         MemoryResponse::Mutation(ref result) if result.action == MutationAction::Forget
+    ));
+
+    access.request_id = "req-command-bus-explain".to_owned();
+    let explain = bus
+        .execute(
+            &access,
+            MemoryRequest {
+                api_version: API_VERSION_V1.to_owned(),
+                request_id: access.request_id.clone(),
+                access_scope: AccessScope::from(access.scope.clone()),
+                command: MemoryCommand::Explain(RecallCommand {
+                    mode: RecallMode::Exact,
+                    text: "CommandBus 变更闭环原始记录".to_owned(),
+                    entities: Vec::new(),
+                    at_time: None,
+                    limits: RecallLimits {
+                        max_seeds: 4,
+                        max_neighbors: 4,
+                        max_hops: 2,
+                        max_nodes: 8,
+                        timeout_ms: 100,
+                    },
+                }),
+            },
+        )
+        .await
+        .expect("通过 CommandBus 返回 Explain");
+    assert!(matches!(
+        explain.response,
+        MemoryResponse::Explain(ref trace) if trace.limits.max_nodes == 8
     ));
 }
 

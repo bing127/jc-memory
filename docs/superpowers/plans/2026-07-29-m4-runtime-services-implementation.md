@@ -133,7 +133,8 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - 已补齐 `StatsCommand`、Scope 统计响应并接入 `/v1/memory/stats`；统计只读取授权 Scope 的权威 Fragment/Event 数量。
 - 已将服务端 API Key 授权集中到精确 Scope 构造器，入口现在授予已公开的 `Observe`、`Recall` 与 `Mutate` 操作；真实二进制 `/v1/memory/stats` 探针通过 Core ACL 并返回零计数。
 - 已补齐 `MutationCommand`、`Correct`/`Forget` 动作和追加式 `MutationResult`，接入 `/v1/memory/correct` 与 `/v1/memory/forget`；Embedded CommandBus 临时 SQLite 闭环验证通过，入口同时授予 `Mutate`。
-- 本记录不代表 Task 7 或 M4 完成；Commit、Explain、真实 Tonic gRPC 网络服务、TLS 文件/KeyProvider 和速率限制仍未实现。
+- 已补齐结构化 `ExplainResult`（种子、遍历、Surface、验证 Fragment、预算和截断状态），复用 Recall 查询输入并接入 `/v1/memory/explain`；入口授予 `Explain`，Embedded CommandBus 映射测试通过。
+- 本记录不代表 Task 7 或 M4 完成；Commit、真实 Tonic gRPC 网络服务、TLS 文件/KeyProvider 和速率限制仍未实现。
 
 ## Task 8：实现本地 Sidecar
 

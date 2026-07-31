@@ -29,7 +29,7 @@ pub enum RecallMode {
 }
 
 /// 每次 Recall 请求必须携带的硬预算。
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct RecallLimits {
     /// 初始种子 Point 的最大数量。
     pub max_seeds: usize,

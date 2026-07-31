@@ -1,10 +1,11 @@
 //! 所有 Embedded 与远程服务复用的 Core 命令入口。
 
 use async_trait::async_trait;
-use jc_memory_activation::{RecallLimits as ActivationRecallLimits, RecallQuery};
+use jc_memory_activation::{ExplainTrace, RecallLimits as ActivationRecallLimits, RecallQuery};
 use jc_memory_protocol::{
-    AccessContext, CommandErrorCode, MemoryCommand, MemoryRequest, MemoryResponse, MutationAction,
-    MutationResult, ObserveResult, RequestValidationError, ResponseEnvelope, StatsResult,
+    AccessContext, CommandErrorCode, ExplainResult, ExplainSeed, ExplainSurface, ExplainTraversal,
+    MemoryCommand, MemoryRequest, MemoryResponse, MutationAction, MutationResult, ObserveResult,
+    RequestValidationError, ResponseEnvelope, StatsResult,
 };
 
 use crate::{MemoryEngine, MemoryError};
@@ -61,7 +62,8 @@ impl CommandBus for EmbeddedCommandBus {
             | MemoryCommand::Recall(_)
             | MemoryCommand::Stats(_)
             | MemoryCommand::Correct(_)
-            | MemoryCommand::Forget(_) => {}
+            | MemoryCommand::Forget(_)
+            | MemoryCommand::Explain(_) => {}
         }
 
         let response = match request.command.clone() {
@@ -81,20 +83,7 @@ impl CommandBus for EmbeddedCommandBus {
                 })
             }
             MemoryCommand::Recall(command) => {
-                let query = RecallQuery {
-                    scope: request_scope,
-                    mode: command.mode,
-                    text: command.text,
-                    entities: command.entities,
-                    at_time: command.at_time,
-                    limits: ActivationRecallLimits {
-                        max_seeds: command.limits.max_seeds,
-                        max_neighbors: command.limits.max_neighbors,
-                        max_hops: command.limits.max_hops,
-                        max_nodes: command.limits.max_nodes,
-                        timeout_ms: command.limits.timeout_ms,
-                    },
-                };
+                let query = recall_query(request_scope, command);
                 MemoryResponse::Recall(
                     self.engine
                         .recall(access, query)
@@ -130,8 +119,80 @@ impl CommandBus for EmbeddedCommandBus {
                     .map_err(CommandError::engine)?;
                 MemoryResponse::Mutation(mutation_result(&receipt, MutationAction::Forget))
             }
+            MemoryCommand::Explain(command) => {
+                let trace = self
+                    .engine
+                    .explain(access, recall_query(request_scope, command))
+                    .await
+                    .map_err(CommandError::engine)?;
+                MemoryResponse::Explain(explain_result(trace))
+            }
         };
         Ok(ResponseEnvelope::for_request(&request, response))
+    }
+}
+
+fn recall_query(
+    scope: jc_memory_protocol::MemoryScope,
+    command: jc_memory_protocol::RecallCommand,
+) -> RecallQuery {
+    RecallQuery {
+        scope,
+        mode: command.mode,
+        text: command.text,
+        entities: command.entities,
+        at_time: command.at_time,
+        limits: ActivationRecallLimits {
+            max_seeds: command.limits.max_seeds,
+            max_neighbors: command.limits.max_neighbors,
+            max_hops: command.limits.max_hops,
+            max_nodes: command.limits.max_nodes,
+            timeout_ms: command.limits.timeout_ms,
+        },
+    }
+}
+
+fn explain_result(trace: ExplainTrace) -> ExplainResult {
+    ExplainResult {
+        seeds: trace
+            .seeds
+            .into_iter()
+            .map(|seed| ExplainSeed {
+                point_id: seed.point_id,
+                score: seed.score,
+            })
+            .collect(),
+        traversals: trace
+            .traversals
+            .into_iter()
+            .map(|traversal| ExplainTraversal {
+                edge_id: traversal.edge_id,
+                source_point_id: traversal.source_point_id,
+                target_point_id: traversal.target_point_id,
+                kind: traversal.kind,
+                score: traversal.score,
+                depth: traversal.depth,
+            })
+            .collect(),
+        surfaces: trace
+            .surfaces
+            .into_iter()
+            .map(|surface| ExplainSurface {
+                surface_id: surface.surface_id,
+                version: surface.version,
+                activation: surface.activation,
+            })
+            .collect(),
+        inferred_edges: trace.inferred_edges,
+        verified_fragments: trace.verified_fragments,
+        limits: jc_memory_protocol::RecallLimits {
+            max_seeds: trace.limits.max_seeds,
+            max_neighbors: trace.limits.max_neighbors,
+            max_hops: trace.limits.max_hops,
+            max_nodes: trace.limits.max_nodes,
+            timeout_ms: trace.limits.timeout_ms,
+        },
+        truncated: trace.truncated,
     }
 }
 

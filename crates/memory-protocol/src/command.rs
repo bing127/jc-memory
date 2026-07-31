@@ -4,9 +4,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AgentId, BlobId, CognitiveFragment, EdgeKind, EventId, FragmentContent, FragmentId,
-    FragmentSource, MemoryPacket, MemoryScope, NamespaceId, Perspective, ProjectId, RecallLimits,
-    RecallMode, TenantId, UserId, VerificationMethod,
+    AgentId, BlobId, CognitiveFragment, EdgeId, EdgeKind, EventId, FragmentContent, FragmentId,
+    FragmentSource, MemoryPacket, MemoryScope, NamespaceId, Perspective, PointId, ProjectId,
+    RecallLimits, RecallMode, SurfaceId, TenantId, UserId, VerificationMethod,
 };
 
 /// 当前稳定服务协议版本。
@@ -134,6 +134,62 @@ pub struct MutationResult {
     pub relation: Option<EdgeKind>,
 }
 
+/// Explain 结果中的初始种子。
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct ExplainSeed {
+    /// 被选中的 Point。
+    pub point_id: PointId,
+    /// 初始激活分数。
+    pub score: f32,
+}
+
+/// Explain 结果中的图遍历记录。
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ExplainTraversal {
+    /// 被遍历的 Edge。
+    pub edge_id: EdgeId,
+    /// 遍历起点 Point。
+    pub source_point_id: PointId,
+    /// 遍历终点 Point。
+    pub target_point_id: PointId,
+    /// 关系类型。
+    pub kind: EdgeKind,
+    /// 终点激活分数。
+    pub score: f32,
+    /// 终点相对种子深度。
+    pub depth: usize,
+}
+
+/// Explain 结果中的激活 Surface。
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct ExplainSurface {
+    /// Surface 标识。
+    pub surface_id: SurfaceId,
+    /// Surface 版本。
+    pub version: u64,
+    /// 激活分数。
+    pub activation: f32,
+}
+
+/// 一次 Recall 的结构化证据追踪结果。
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct ExplainResult {
+    /// 初始 Point 激活记录。
+    pub seeds: Vec<ExplainSeed>,
+    /// 有向图遍历记录。
+    pub traversals: Vec<ExplainTraversal>,
+    /// 被激活的 Surface 版本。
+    pub surfaces: Vec<ExplainSurface>,
+    /// 未经过人工或工具确认的关系。
+    pub inferred_edges: Vec<EdgeId>,
+    /// 已验证 Point 背后的权威 Fragment。
+    pub verified_fragments: Vec<FragmentId>,
+    /// 本次 Explain 使用的硬预算。
+    pub limits: RecallLimits,
+    /// 是否因硬预算截断候选。
+    pub truncated: bool,
+}
+
 /// 当前 `CommandBus` 可执行的命令集合。
 // Observe 和 Recall 都需要在协议边界保持完整值语义，装箱会改变现有调用方类型。
 #[allow(clippy::large_enum_variant)]
@@ -150,6 +206,8 @@ pub enum MemoryCommand {
     Correct(MutationCommand),
     /// 追加失效记录而不删除原始记录。
     Forget(MutationCommand),
+    /// 返回 Recall 的结构化证据追踪。
+    Explain(RecallCommand),
 }
 
 /// 所有 Embedded 与远程协议请求共享的 Envelope。
@@ -229,6 +287,8 @@ pub enum MemoryResponse {
     Stats(StatsResult),
     /// 纠正或失效操作的持久化结果。
     Mutation(MutationResult),
+    /// Recall 的结构化证据追踪结果。
+    Explain(ExplainResult),
 }
 
 /// 与请求元数据关联的成功响应 Envelope。

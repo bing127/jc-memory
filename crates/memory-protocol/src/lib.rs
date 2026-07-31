@@ -40,8 +40,9 @@ pub mod generated {
 }
 
 pub use command::{
-    API_VERSION_V1, AccessScope, CommandErrorCode, MemoryCommand, MemoryRequest, MemoryResponse,
-    MutationAction, MutationCommand, MutationResult, ObserveCommand, ObserveResult, RecallCommand,
+    API_VERSION_V1, AccessScope, CommandErrorCode, ExplainResult, ExplainSeed, ExplainSurface,
+    ExplainTraversal, MemoryCommand, MemoryRequest, MemoryResponse, MutationAction,
+    MutationCommand, MutationResult, ObserveCommand, ObserveResult, RecallCommand,
     RequestValidationError, ResponseEnvelope, StatsCommand, StatsResult,
 };
 pub use event::{CognitiveStage, EventDraft, MemoryEvent};
