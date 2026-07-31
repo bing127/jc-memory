@@ -13,6 +13,11 @@ use jc_memory_protocol::{
 };
 use jc_memory_server::{ApiKey, GrpcAdapter, ServerState, router};
 use serde_json::{Value, json};
+use tokio::{
+    io::{AsyncReadExt as _, AsyncWriteExt as _},
+    net::TcpListener,
+};
+use tokio_util::sync::CancellationToken;
 use tower::ServiceExt as _;
 
 #[derive(Clone)]
@@ -158,4 +163,26 @@ async fn metrics_is_public_and_concurrency_limit_is_stable() {
         .await
         .unwrap();
     assert_eq!(limited.status(), StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test]
+async fn serve_stops_accepting_after_graceful_shutdown_signal() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let shutdown = CancellationToken::new();
+    let task = tokio::spawn(jc_memory_server::serve(
+        listener,
+        ServerState::new(FixtureBus, Vec::new()),
+        shutdown.clone().cancelled_owned(),
+    ));
+    let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
+    stream
+        .write_all(b"GET /healthz HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+        .await
+        .unwrap();
+    let mut response = Vec::new();
+    stream.read_to_end(&mut response).await.unwrap();
+    assert!(String::from_utf8_lossy(&response).starts_with("HTTP/1.1 200"));
+    shutdown.cancel();
+    task.await.unwrap().unwrap();
 }

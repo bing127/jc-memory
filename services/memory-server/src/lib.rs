@@ -2,6 +2,7 @@
 
 use std::{
     collections::BTreeMap,
+    future::Future,
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -19,6 +20,7 @@ use jc_memory_core::{CommandBus, CommandError};
 use jc_memory_protocol::{AccessContext, MemoryRequest, ResponseEnvelope};
 use serde::Serialize;
 use serde_json::json;
+use tokio::net::TcpListener;
 
 /// 服务端保存的 API Key 与授权上下文模板。
 #[derive(Clone)]
@@ -105,6 +107,26 @@ where
         .route("/metrics", get(metrics))
         .route("/v1/memory/observe", post(observe::<B>))
         .with_state(state)
+}
+
+/// 在 TCP Listener 上运行 HTTP 服务，并等待外部优雅关闭信号。
+///
+/// # Errors
+///
+/// Listener 接受循环失败时返回传输错误；shutdown Future 完成后正常返回。
+pub async fn serve<B, F>(
+    listener: TcpListener,
+    state: ServerState<B>,
+    shutdown: F,
+) -> Result<(), ServerError>
+where
+    B: CommandBus + Send + Sync + 'static,
+    F: Future<Output = ()> + Send + 'static,
+{
+    axum::serve(listener, router(state))
+        .with_graceful_shutdown(shutdown)
+        .await
+        .map_err(|error| ServerError::Transport(error.to_string()))
 }
 
 async fn healthz() -> impl IntoResponse {
@@ -230,6 +252,9 @@ pub enum ServerError {
     /// 当前并发资源已耗尽。
     #[error("request concurrency limit exceeded")]
     RateLimited,
+    /// HTTP Listener 或连接循环失败。
+    #[error("server transport failure: {0}")]
+    Transport(String),
     /// Core 命令错误。
     #[error(transparent)]
     Command(#[from] CommandError),
@@ -246,6 +271,7 @@ impl IntoResponse for ServerError {
         let status = match &self {
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::RateLimited => StatusCode::TOO_MANY_REQUESTS,
+            Self::Transport(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Command(error) => match error.code() {
                 jc_memory_protocol::CommandErrorCode::InvalidArgument => StatusCode::BAD_REQUEST,
                 jc_memory_protocol::CommandErrorCode::PermissionDenied => StatusCode::FORBIDDEN,
@@ -260,6 +286,7 @@ impl IntoResponse for ServerError {
         let code = match &self {
             Self::Unauthorized => "unauthorized".into(),
             Self::RateLimited => "resource_exhausted".into(),
+            Self::Transport(_) => "internal".into(),
             Self::Command(error) => serde_json::to_value(error.code())
                 .unwrap_or(json!("internal"))
                 .as_str()
