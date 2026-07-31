@@ -1,5 +1,7 @@
 //! REST 与共享服务适配器的一致性测试。
 
+use std::time::Duration;
+
 use async_trait::async_trait;
 use axum::{
     body::Body,
@@ -43,6 +45,21 @@ impl CommandBus for FixtureBus {
                 quarantined: false,
             }),
         ))
+    }
+}
+
+#[derive(Clone)]
+struct SlowBus;
+
+#[async_trait]
+impl CommandBus for SlowBus {
+    async fn execute(
+        &self,
+        access: &AccessContext,
+        request: MemoryRequest,
+    ) -> Result<ResponseEnvelope, CommandError> {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        FixtureBus.execute(access, request).await
     }
 }
 
@@ -658,6 +675,51 @@ async fn grpc_rate_limit_is_isolated_by_api_key() {
     adapter.execute("second-key", request).await.unwrap();
 
     assert!(matches!(error, ServerError::RateLimited));
+}
+
+#[tokio::test]
+async fn http_returns_gateway_timeout_when_command_exceeds_deadline() {
+    let request = request();
+    let key = ApiKey::new(
+        "test-key",
+        AccessContext::new("principal", request.access_scope.clone().into()),
+    );
+    let state = ServerState::with_request_limits_and_timeout(SlowBus, vec![key], 64, 128, 5);
+
+    let response = router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/memory/observe")
+                .header("content-type", "application/json")
+                .header("x-api-key", "test-key")
+                .body(Body::from(serde_json::to_vec(&request).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
+}
+
+#[tokio::test]
+async fn grpc_returns_deadline_exceeded_when_command_exceeds_deadline() {
+    let request = request();
+    let key = ApiKey::new(
+        "test-key",
+        AccessContext::new("principal", request.access_scope.clone().into()),
+    );
+    let adapter = GrpcAdapter::new(ServerState::with_request_limits_and_timeout(
+        SlowBus,
+        vec![key],
+        64,
+        128,
+        5,
+    ));
+
+    let error = adapter.execute("test-key", request).await.unwrap_err();
+
+    assert!(matches!(error, ServerError::Timeout { .. }));
 }
 
 #[tokio::test]

@@ -75,6 +75,7 @@ pub struct ServerState<B> {
     in_flight: Arc<AtomicUsize>,
     max_in_flight: usize,
     rate_limiter: Option<Arc<ApiKeyRateLimiter>>,
+    request_timeout: Option<Duration>,
 }
 
 impl<B> Clone for ServerState<B> {
@@ -85,6 +86,7 @@ impl<B> Clone for ServerState<B> {
             in_flight: Arc::clone(&self.in_flight),
             max_in_flight: self.max_in_flight,
             rate_limiter: self.rate_limiter.clone(),
+            request_timeout: self.request_timeout,
         }
     }
 }
@@ -103,7 +105,7 @@ impl<B> ServerState<B> {
         keys: impl IntoIterator<Item = ApiKey>,
         max_in_flight: usize,
     ) -> Self {
-        Self::build(bus, keys, max_in_flight, None)
+        Self::build(bus, keys, max_in_flight, None, None)
     }
 
     /// 创建带有界并发和每 API Key 每秒速率限制的服务状态。
@@ -114,7 +116,31 @@ impl<B> ServerState<B> {
         max_in_flight: usize,
         max_requests_per_second: u64,
     ) -> Self {
-        Self::build(bus, keys, max_in_flight, Some(max_requests_per_second))
+        Self::build(
+            bus,
+            keys,
+            max_in_flight,
+            Some(max_requests_per_second),
+            None,
+        )
+    }
+
+    /// 创建带并发、速率和请求超时限制的服务状态。
+    #[must_use]
+    pub fn with_request_limits_and_timeout(
+        bus: B,
+        keys: impl IntoIterator<Item = ApiKey>,
+        max_in_flight: usize,
+        max_requests_per_second: u64,
+        request_timeout_ms: u64,
+    ) -> Self {
+        Self::build(
+            bus,
+            keys,
+            max_in_flight,
+            Some(max_requests_per_second),
+            Some(Duration::from_millis(request_timeout_ms)),
+        )
     }
 
     fn build(
@@ -122,6 +148,7 @@ impl<B> ServerState<B> {
         keys: impl IntoIterator<Item = ApiKey>,
         max_in_flight: usize,
         max_requests_per_second: Option<u64>,
+        request_timeout: Option<Duration>,
     ) -> Self {
         let keys = keys
             .into_iter()
@@ -134,6 +161,7 @@ impl<B> ServerState<B> {
             max_in_flight,
             rate_limiter: max_requests_per_second
                 .map(|limit| Arc::new(ApiKeyRateLimiter::new(limit))),
+            request_timeout,
         }
     }
 
@@ -429,11 +457,7 @@ where
     let access = state.access(&key, &request.request_id)?;
     state.acquire_rate_limit(&key)?;
     let _permit = InFlightPermit::acquire(&state)?;
-    let response = state
-        .bus
-        .execute(&access, request)
-        .await
-        .map_err(|error| ServerError::command(&access.request_id, error))?;
+    let response = execute_with_timeout(&state, &access, request).await?;
     Ok(Json(response))
 }
 
@@ -522,13 +546,26 @@ where
         let access = self.state.access(key, &request.request_id)?;
         self.state.acquire_rate_limit(key)?;
         let _permit = InFlightPermit::acquire(&self.state)?;
-        let request_id = access.request_id.clone();
-        self.state
-            .bus
-            .execute(&access, request)
-            .await
-            .map_err(|error| ServerError::command(&request_id, error))
+        execute_with_timeout(&self.state, &access, request).await
     }
+}
+
+async fn execute_with_timeout<B>(
+    state: &ServerState<B>,
+    access: &AccessContext,
+    request: MemoryRequest,
+) -> Result<ResponseEnvelope, ServerError>
+where
+    B: CommandBus + Send + Sync + 'static,
+{
+    let execute = state.bus.execute(access, request);
+    let result = match state.request_timeout {
+        Some(timeout) => tokio::time::timeout(timeout, execute)
+            .await
+            .map_err(|_| ServerError::timeout(&access.request_id))?,
+        None => execute.await,
+    };
+    result.map_err(|error| ServerError::command(&access.request_id, error))
 }
 
 /// 服务边界错误。
@@ -540,6 +577,12 @@ pub enum ServerError {
     /// 当前请求资源已耗尽。
     #[error("request limit exceeded")]
     RateLimited,
+    /// 请求执行超过 deadline。
+    #[error("request deadline exceeded for request {request_id}")]
+    Timeout {
+        /// 请求标识。
+        request_id: String,
+    },
     /// HTTP Listener 或连接循环失败。
     #[error("server transport failure: {0}")]
     Transport(String),
@@ -561,12 +604,21 @@ impl ServerError {
             source,
         }
     }
+
+    fn timeout(request_id: &str) -> Self {
+        Self::Timeout {
+            request_id: request_id.to_owned(),
+        }
+    }
 }
 
 fn grpc_status(error: &ServerError) -> tonic::Status {
     let (code, request_id) = match &error {
         ServerError::Unauthorized => (tonic::Code::Unauthenticated, None),
         ServerError::RateLimited => (tonic::Code::ResourceExhausted, None),
+        ServerError::Timeout { request_id } => {
+            (tonic::Code::DeadlineExceeded, Some(request_id.as_str()))
+        }
         ServerError::Transport(_) => (tonic::Code::Internal, None),
         ServerError::Command { source, request_id } => {
             let code = match source.code() {
@@ -607,6 +659,7 @@ impl IntoResponse for ServerError {
         let status = match &self {
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::RateLimited => StatusCode::TOO_MANY_REQUESTS,
+            Self::Timeout { .. } => StatusCode::GATEWAY_TIMEOUT,
             Self::Transport(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::Command { source, .. } => match source.code() {
                 jc_memory_protocol::CommandErrorCode::InvalidArgument => StatusCode::BAD_REQUEST,
@@ -622,6 +675,7 @@ impl IntoResponse for ServerError {
         let code = match &self {
             Self::Unauthorized => "unauthorized".into(),
             Self::RateLimited => "resource_exhausted".into(),
+            Self::Timeout { .. } => "deadline_exceeded".into(),
             Self::Transport(_) => "internal".into(),
             Self::Command { source, .. } => serde_json::to_value(source.code())
                 .unwrap_or(json!("internal"))
@@ -635,7 +689,9 @@ impl IntoResponse for ServerError {
                 code,
                 message: self.to_string(),
                 request_id: match &self {
-                    Self::Command { request_id, .. } => Some(request_id.clone()),
+                    Self::Command { request_id, .. } | Self::Timeout { request_id } => {
+                        Some(request_id.clone())
+                    }
                     Self::Unauthorized | Self::RateLimited | Self::Transport(_) => None,
                 },
             }),

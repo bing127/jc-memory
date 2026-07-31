@@ -29,6 +29,8 @@ pub struct ServerConfig {
     pub max_in_flight: usize,
     /// 每个 API Key 每秒允许的最大请求数。
     pub max_requests_per_second: u64,
+    /// 单个请求允许执行的最长时间（毫秒）。
+    pub request_timeout_ms: u64,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq)]
@@ -46,6 +48,8 @@ struct PartialConfig {
     max_in_flight: Option<usize>,
     /// YAML 中的每秒请求数上限。
     max_requests_per_second: Option<u64>,
+    /// YAML 中的请求超时毫秒数。
+    request_timeout_ms: Option<u64>,
     /// YAML 中的 TLS 文件路径。
     tls: Option<PartialTls>,
 }
@@ -64,8 +68,8 @@ impl ServerConfig {
     ///
     /// 使用 `JC_MEMORY_BIND`、`JC_MEMORY_GRPC_BIND`、`JC_MEMORY_TLS_CERT_FILE`、
     /// `JC_MEMORY_TLS_KEY_FILE`、`JC_MEMORY_DATA_DIR`、`JC_MEMORY_API_KEY`、
-    /// `JC_MEMORY_NAMESPACE_ID`、`JC_MEMORY_MAX_IN_FLIGHT` 和
-    /// `JC_MEMORY_MAX_REQUESTS_PER_SECOND`。
+    /// `JC_MEMORY_NAMESPACE_ID`、`JC_MEMORY_MAX_IN_FLIGHT`、
+    /// `JC_MEMORY_MAX_REQUESTS_PER_SECOND` 和 `JC_MEMORY_REQUEST_TIMEOUT_MS`。
     ///
     /// # Errors
     ///
@@ -177,6 +181,15 @@ impl ServerConfig {
                 "value must be greater than zero".into(),
             ));
         }
+        let request_timeout_ms = parsed_value(&lookup, "JC_MEMORY_REQUEST_TIMEOUT_MS")?
+            .or(partial.request_timeout_ms)
+            .unwrap_or(30_000);
+        if request_timeout_ms == 0 {
+            return Err(ConfigError::Invalid(
+                "JC_MEMORY_REQUEST_TIMEOUT_MS",
+                "value must be greater than zero".into(),
+            ));
+        }
         Ok(Self {
             bind,
             grpc_bind,
@@ -186,6 +199,7 @@ impl ServerConfig {
             namespace_id,
             max_in_flight,
             max_requests_per_second,
+            request_timeout_ms,
         })
     }
 }
@@ -352,9 +366,31 @@ mod tests {
     }
 
     #[test]
+    fn zero_request_timeout_is_rejected() {
+        let settings = values(&[
+            ("JC_MEMORY_API_KEY", "test-key"),
+            (
+                "JC_MEMORY_NAMESPACE_ID",
+                "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37001",
+            ),
+            ("JC_MEMORY_REQUEST_TIMEOUT_MS", "0"),
+        ]);
+
+        let error = ServerConfig::from_lookup(|name| settings.get(name).cloned()).unwrap_err();
+
+        assert_eq!(
+            error,
+            ConfigError::Invalid(
+                "JC_MEMORY_REQUEST_TIMEOUT_MS",
+                "value must be greater than zero".into(),
+            )
+        );
+    }
+
+    #[test]
     fn yaml_config_parses_supported_fields() {
         let partial = ServerConfig::from_yaml_str(
-            "bind: 0.0.0.0:8787\ngrpc_bind: 0.0.0.0:8788\ndata_dir: /var/lib/jc-memory\nmax_in_flight: 32\nmax_requests_per_second: 256\ntls:\n  cert_file: /etc/jc-memory/server.crt\n  key_file: /etc/jc-memory/server.key\n",
+            "bind: 0.0.0.0:8787\ngrpc_bind: 0.0.0.0:8788\ndata_dir: /var/lib/jc-memory\nmax_in_flight: 32\nmax_requests_per_second: 256\nrequest_timeout_ms: 1500\ntls:\n  cert_file: /etc/jc-memory/server.crt\n  key_file: /etc/jc-memory/server.key\n",
         )
         .unwrap();
 
@@ -363,6 +399,7 @@ mod tests {
         assert_eq!(partial.data_dir.as_deref(), Some("/var/lib/jc-memory"));
         assert_eq!(partial.max_in_flight, Some(32));
         assert_eq!(partial.max_requests_per_second, Some(256));
+        assert_eq!(partial.request_timeout_ms, Some(1500));
         assert_eq!(
             partial.tls,
             Some(PartialTls {
@@ -399,6 +436,7 @@ mod tests {
             ("JC_MEMORY_API_KEY", "test-key"),
             ("JC_MEMORY_BIND", "   "),
             ("JC_MEMORY_MAX_IN_FLIGHT", "48"),
+            ("JC_MEMORY_REQUEST_TIMEOUT_MS", "17"),
         ]);
 
         let config =
@@ -408,6 +446,7 @@ mod tests {
         assert_eq!(config.grpc_bind, "127.0.0.1:8788".parse().unwrap());
         assert_eq!(config.max_in_flight, 48);
         assert_eq!(config.max_requests_per_second, 99);
+        assert_eq!(config.request_timeout_ms, 17);
         assert_eq!(config.api_key, "test-key");
     }
 

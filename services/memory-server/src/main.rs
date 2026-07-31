@@ -13,7 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let engine = MemoryEngine::open(MemoryConfig::local(&config.data_dir)).await?;
     let bus = EmbeddedCommandBus::new(engine);
     let scope = MemoryScope::new(config.namespace_id);
-    let state = ServerState::with_request_limits(
+    let state = ServerState::with_request_limits_and_timeout(
         bus,
         [ApiKey::for_scope(
             config.api_key,
@@ -28,6 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )],
         config.max_in_flight,
         config.max_requests_per_second,
+        config.request_timeout_ms,
     );
     let listener = tokio::net::TcpListener::bind(config.bind).await?;
     let grpc_listener = tokio::net::TcpListener::bind(config.grpc_bind).await?;

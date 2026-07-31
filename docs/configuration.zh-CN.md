@@ -17,6 +17,7 @@ data_dir: /var/lib/jc-memory
 namespace_id: 018f4c8f-5f7b-7d31-9a6c-b7a0f4f37001
 max_in_flight: 64
 max_requests_per_second: 128
+request_timeout_ms: 30000
 tls:
   cert_file: /etc/jc-memory/tls/server.crt
   key_file: /etc/jc-memory/tls/server.key
@@ -34,6 +35,7 @@ YAML 禁止未知字段。API Key 不允许写入 YAML，必须由 `JC_MEMORY_AP
 | `namespace_id` | `JC_MEMORY_NAMESPACE_ID` | 无 | API Key 绑定的 Namespace UUID |
 | `max_in_flight` | `JC_MEMORY_MAX_IN_FLIGHT` | `64` | HTTP/gRPC 共享的最大并发数，必须大于 0 |
 | `max_requests_per_second` | `JC_MEMORY_MAX_REQUESTS_PER_SECOND` | `128` | 每 API Key 每秒请求上限，必须大于 0 |
+| `request_timeout_ms` | `JC_MEMORY_REQUEST_TIMEOUT_MS` | `30000` | 单个请求执行 deadline，单位毫秒，必须大于 0 |
 | `tls.cert_file` | `JC_MEMORY_TLS_CERT_FILE` | 无 | PEM 证书链文件路径 |
 | `tls.key_file` | `JC_MEMORY_TLS_KEY_FILE` | 无 | PEM 私钥文件路径 |
 | 无 | `JC_MEMORY_API_KEY` | 无 | 服务端 API Key，必须通过 Secret 注入 |
