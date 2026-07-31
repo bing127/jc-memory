@@ -120,11 +120,11 @@ it("returns the canonical recall packet", async () => {
 
 **文件：** `adapters/graphiti/`、`adapters/dify/` 的协议、mapping、Fixture、README；`examples/mcp-client/`。
 
-- [ ] **步骤 1：写 Graphiti temporal edge、推断边、Dify Scope 和工作流节点失败测试。**
-- [ ] **步骤 2：运行测试**，预期 Adapter 缺失。
-- [ ] **步骤 3：Graphiti Node -> Point/Entity，Edge -> Candidate Edge，valid_at/invalid_at -> 有效时间；Provenance 和 source version 必须保留，inferred edge 不设置 human/tool verified。**
-- [ ] **步骤 4：Dify user/conversation/app/workflow 映射 User/Session/Project/Trace Scope；HTTP/MCP 节点输出结构化 Memory Packet；示例不内置 API Key。**
-- [ ] **步骤 5：运行测试并提交 `feat(adapters): add Graphiti and Dify integrations`**。
+- [x] **步骤 1：写 Graphiti temporal edge、推断边、Dify Scope 和工作流节点失败测试。** 已覆盖时间区间、推断边验证标志、Scope typed ID、HTTP/MCP 成功输出、失败节点和不支持节点。
+- [x] **步骤 2：运行测试**，先确认 Graphiti/Dify 公开契约缺失导致红灯，再完成实现。
+- [x] **步骤 3：Graphiti Node -> Point/Entity，Edge -> Candidate Edge，valid_at/invalid_at -> 有效时间；Provenance 和 source version 必须保留，inferred edge 不设置 human/tool verified。**
+- [x] **步骤 4：Dify user/conversation/app/workflow 映射 User/Session/Project/Trace Scope；HTTP/MCP 节点输出结构化 Memory Packet；示例不内置 API Key。**
+- [x] **步骤 5：运行测试并提交 `feat(adapters): add Graphiti and Dify integrations`**。聚焦测试、全 workspace 测试、严格 Clippy、rustdoc、fmt 和 `git diff --check` 已通过。
 
 ## Task 11：跨语言契约、文档与门禁
 

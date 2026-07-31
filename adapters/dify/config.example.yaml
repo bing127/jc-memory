@@ -1,0 +1,9 @@
+# Dify 来源契约版本，不包含 API Key 或其他秘密。
+source_version: "dify/v1"
+namespace_id: "00000000-0000-7000-8000-000000000001"
+recall_limits:
+  max_seeds: 4
+  max_neighbors: 4
+  max_hops: 2
+  max_nodes: 16
+  timeout_ms: 150
