@@ -180,6 +180,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 
 - 已建立 `jc-memory-mcp` stdio JSON-RPC Server，完成 `initialize`、`tools/list` 和七个稳定工具名的契约测试。
 - Observe、Recall、Commit、Correct、Forget、Explain、Stats 通过共享 `CommandBus` 执行并返回 MCP `structuredContent`；Commit 批次要求所有 Fragment 属于请求 Scope，并保留各自原始 Kind。
+- 已增加可选 `JC_MEMORY_MCP_TOKEN` 身份校验；配置后 `tools/call` 必须携带 `authToken`，缺失或错误统一返回 `-32001`，并通过固定长度比较避免 Token 提前退出比较。
 - 当前仍未完成 Sidecar 转发身份链和完整跨协议 E2E，因此 Task 9 不标记为完成。
 
 ## Task 10：端到端一致性、文档与门禁

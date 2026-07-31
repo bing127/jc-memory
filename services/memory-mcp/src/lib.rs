@@ -19,6 +19,9 @@ pub enum McpServerError {
     /// 请求参数无法解析。
     #[error("invalid tool arguments: {0}")]
     InvalidArguments(String),
+    /// MCP 调用方 Token 缺失或无效。
+    #[error("mcp authentication failed")]
+    Unauthorized,
     /// Core `CommandBus` 执行失败。
     #[error(transparent)]
     Command(#[from] CommandError),
@@ -40,17 +43,52 @@ struct ToolCallParams {
     name: String,
     #[serde(default)]
     arguments: Value,
+    #[serde(rename = "authToken", default)]
+    auth_token: Option<String>,
+}
+
+/// MCP stdio 调用方的可选 Token 校验器。
+#[derive(Clone)]
+struct McpAuth {
+    expected: Arc<[u8]>,
+}
+
+impl McpAuth {
+    fn new(token: &str) -> Result<Self, McpServerError> {
+        if token.is_empty() {
+            return Err(McpServerError::InvalidArguments(
+                "MCP 身份 Token 不能为空".into(),
+            ));
+        }
+        Ok(Self {
+            expected: Arc::from(token.as_bytes()),
+        })
+    }
+
+    fn verify(&self, candidate: Option<&str>) -> bool {
+        let candidate = candidate.map_or(&[][..], str::as_bytes);
+        let mut difference = (self.expected.len() as u64) ^ (candidate.len() as u64);
+        let length = self.expected.len().max(candidate.len());
+        for index in 0..length {
+            let expected = self.expected.get(index).copied().unwrap_or_default();
+            let actual = candidate.get(index).copied().unwrap_or_default();
+            difference |= u64::from(expected ^ actual);
+        }
+        difference == 0
+    }
 }
 
 /// 与 MCP tools/call 对应的服务实现。
 pub struct McpServer<B> {
     bus: Arc<B>,
+    auth: Option<McpAuth>,
 }
 
 impl<B> Clone for McpServer<B> {
     fn clone(&self) -> Self {
         Self {
             bus: Arc::clone(&self.bus),
+            auth: self.auth.clone(),
         }
     }
 }
@@ -62,7 +100,22 @@ where
     /// 创建绑定共享 `CommandBus` 的 MCP Server。
     #[must_use]
     pub fn new(bus: B) -> Self {
-        Self { bus: Arc::new(bus) }
+        Self {
+            bus: Arc::new(bus),
+            auth: None,
+        }
+    }
+
+    /// 创建带调用方 Token 校验的 MCP Server。
+    ///
+    /// # Errors
+    ///
+    /// Token 为空时返回参数错误。
+    pub fn with_auth_token(bus: B, token: impl AsRef<str>) -> Result<Self, McpServerError> {
+        Ok(Self {
+            bus: Arc::new(bus),
+            auth: Some(McpAuth::new(token.as_ref())?),
+        })
     }
 
     /// 处理一条 JSON-RPC 请求并返回 JSON-RPC 响应。
@@ -95,7 +148,8 @@ where
             "tools/call" => {
                 let params: ToolCallParams = serde_json::from_value(request.params)
                     .map_err(|error| McpServerError::InvalidArguments(error.to_string()))?;
-                self.call_tool(&params.name, params.arguments).await
+                self.call_tool(&params.name, params.arguments, params.auth_token.as_deref())
+                    .await
             }
             _ => Err(McpServerError::InvalidRequest(format!(
                 "unknown method: {}",
@@ -104,7 +158,17 @@ where
         }
     }
 
-    async fn call_tool(&self, name: &str, arguments: Value) -> Result<Value, McpServerError> {
+    async fn call_tool(
+        &self,
+        name: &str,
+        arguments: Value,
+        auth_token: Option<&str>,
+    ) -> Result<Value, McpServerError> {
+        if let Some(auth) = &self.auth
+            && !auth.verify(auth_token)
+        {
+            return Err(McpServerError::Unauthorized);
+        }
         let request_value = arguments
             .get("request")
             .cloned()
@@ -149,6 +213,11 @@ fn error_response(error: &McpServerError) -> Value {
             "code": -32000,
             "message": "command failed",
             "data": {"code": format!("{:?}", command.code()), "detail": command.to_string()},
+        }),
+        McpServerError::Unauthorized => json!({
+            "code": -32001,
+            "message": "mcp authentication failed",
+            "data": {"code": "unauthorized"},
         }),
         McpServerError::InvalidRequest(detail) | McpServerError::InvalidArguments(detail) => {
             json!({"code": -32602, "message": "invalid params", "data": {"detail": detail}})

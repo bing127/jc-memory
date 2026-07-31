@@ -105,3 +105,46 @@ async fn tools_call_returns_structured_content_for_observe_and_commit() {
         .await;
     assert_eq!(invalid["error"]["code"], -32602);
 }
+
+#[tokio::test]
+async fn configured_auth_token_is_required_for_tool_calls() {
+    let server = McpServer::with_auth_token(FixtureBus, "mcp-fixture-token")
+        .expect("创建带认证的 MCP Server");
+    let request = json!({
+        "api_version":"v1",
+        "request_id":"mcp-auth-request",
+        "access_scope":{"namespace_id":"00000000-0000-7000-8000-000000000003"},
+        "command":{"command":"stats","payload":null}
+    });
+    let call = |auth_token: Option<&str>| {
+        let mut params = json!({
+            "name":"memory_stats",
+            "arguments":{"request":request.clone()}
+        });
+        if let Some(auth_token) = auth_token {
+            params["authToken"] = json!(auth_token);
+        }
+        params
+    };
+
+    let missing = server
+        .handle(json!({
+            "jsonrpc":"2.0","id":6,"method":"tools/call","params":call(None)
+        }))
+        .await;
+    assert_eq!(missing["error"]["code"], -32001);
+
+    let wrong = server
+        .handle(json!({
+            "jsonrpc":"2.0","id":7,"method":"tools/call","params":call(Some("wrong"))
+        }))
+        .await;
+    assert_eq!(wrong["error"]["code"], -32001);
+
+    let accepted = server
+        .handle(json!({
+            "jsonrpc":"2.0","id":8,"method":"tools/call","params":call(Some("mcp-fixture-token"))
+        }))
+        .await;
+    assert_eq!(accepted["result"]["isError"], false);
+}

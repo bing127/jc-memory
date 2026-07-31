@@ -11,6 +11,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::path::PathBuf::from,
     );
     let engine = MemoryEngine::open(MemoryConfig::local(data_dir)).await?;
-    serve_stdio(McpServer::new(EmbeddedCommandBus::new(engine))).await?;
+    let bus = EmbeddedCommandBus::new(engine);
+    let server = match std::env::var("JC_MEMORY_MCP_TOKEN") {
+        Ok(token) => McpServer::with_auth_token(bus, token)?,
+        Err(std::env::VarError::NotPresent) => McpServer::new(bus),
+        Err(error) => return Err(error.into()),
+    };
+    serve_stdio(server).await?;
     Ok(())
 }
