@@ -50,11 +50,11 @@ it("returns the canonical recall packet", async () => {
 
 **文件：** `sdk/python/{pyproject.toml,src/jiangcheng_memory/{__init__,models,client,async_client,errors}.py,tests/*.py}`、`crates/memory-python/`、`examples/python-agent/`。
 
-- [ ] **步骤 1：写 pytest 同步/异步/取消/错误失败测试。**
-- [ ] **步骤 2：运行 `python -m pytest sdk/python/tests -q`**，预期模块缺失。
-- [ ] **步骤 3：Pydantic/dataclass 类型与 Fixture 字段一一对应；HTTP Client 使用 httpx，gRPC Client 使用 grpcio 生成 Stub；同步接口不在已有 event loop 中嵌套运行，Async Client 原生 await。**
-- [ ] **步骤 4：PyO3 通过 pyo3-async-runtimes 调用 Embedded，释放 GIL；wheel 配置 macOS/Linux/Windows，不在运行时依赖训练包。**
-- [ ] **步骤 5：运行 pytest、mypy/pyright、maturin develop 后 Embedded 契约测试，提交 `feat(sdk-python): add typed sync async and embedded clients`**。
+- [x] **步骤 1：写 pytest 同步/异步/取消/错误失败测试，并补充 Embedded 命令方法和上下文管理器失败测试。**
+- [x] **步骤 2：运行 `python -m pytest sdk/python/tests -q`；宿主最初缺少 pytest，安装隔离 `.venv` 依赖后确认模块缺失红灯。**
+- [x] **步骤 3：加入 typed dict JSON 模型；同步/异步 HTTP Client 使用 `httpx`，同步客户端不嵌套事件循环，Async Client 原生 await 并保留 `CancelledError`。当前 REST 服务未提供 Python 生成 gRPC Stub，因此未伪造 gRPC 实现。**
+- [x] **步骤 4：`crates/memory-python` 使用 `pyo3-async-runtimes` Tokio Future 调用 Embedded；`extension-module` 仅作为 maturin feature，普通 Rust 测试不链接 Python；pyproject 声明 maturin wheel 构建，运行时不依赖训练包。**
+- [x] **步骤 5：运行 pytest（6 passed）、mypy、Rust 单测/Clippy、当前 Python 3.14 的 maturin develop 和真实 `_native` Embedded Smoke；提交 `feat(sdk-python): 增加同步异步与嵌入式客户端`。**
 
 ## Task 4：实现 Go SDK 与受控 C ABI
 
