@@ -130,6 +130,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - 已将 `MemoryEngine`、`EmbeddedCommandBus`、精确 `Observe` Scope Grant 和 HTTP Listener 接通。
 - 已接入 Ctrl-C 优雅关闭，并完成本机临时目录启动探针：`/healthz` 返回成功，进程收到 `SIGINT` 后以 0 退出。
 - 已补齐共享 `RecallCommand`、硬预算和 `MemoryPacket` 响应，并接入 `/v1/memory/recall`；REST 路由与共享 `CommandBus` Envelope 契约测试通过。
+- 已补齐 `StatsCommand`、Scope 统计响应并接入 `/v1/memory/stats`；统计只读取授权 Scope 的权威 Fragment/Event 数量。
 - 本记录不代表 Task 7 或 M4 完成；Recall、Commit、Correct、Forget、Explain、Stats 协议、真实 Tonic gRPC 网络服务和 TLS 文件/KeyProvider 仍未实现。
 
 ## Task 8：实现本地 Sidecar

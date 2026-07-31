@@ -10,7 +10,7 @@ use jc_memory_core::{CommandBus, CommandError};
 use jc_memory_protocol::{
     API_VERSION_V1, AccessContext, AccessScope, MemoryCommand, MemoryPacket, MemoryRequest,
     MemoryResponse, ObserveResult, RecallCommand, RecallId, RecallLimits, RecallMode,
-    ResponseEnvelope,
+    ResponseEnvelope, StatsCommand, StatsResult,
 };
 use jc_memory_server::{ApiKey, GrpcAdapter, ServerState, router};
 use serde_json::{Value, json};
@@ -147,7 +147,9 @@ async fn recall_route_returns_the_shared_recall_envelope() {
         ) -> Result<ResponseEnvelope, CommandError> {
             let query_id = match request.command {
                 MemoryCommand::Recall(_) => RecallId::new(),
-                MemoryCommand::Observe(_) => panic!("测试只接受 Recall 命令"),
+                MemoryCommand::Observe(_) | MemoryCommand::Stats(_) => {
+                    panic!("测试只接受 Recall 命令")
+                }
             };
             Ok(ResponseEnvelope::for_request(
                 &request,
@@ -190,6 +192,58 @@ async fn recall_route_returns_the_shared_recall_envelope() {
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
     let envelope: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(envelope["response"]["response"], "recall");
+}
+
+#[tokio::test]
+async fn stats_route_returns_scope_counts_from_the_shared_envelope() {
+    #[derive(Clone)]
+    struct StatsBus;
+    #[async_trait]
+    impl CommandBus for StatsBus {
+        async fn execute(
+            &self,
+            _access: &AccessContext,
+            request: MemoryRequest,
+        ) -> Result<ResponseEnvelope, CommandError> {
+            match request.command {
+                MemoryCommand::Stats(StatsCommand) => Ok(ResponseEnvelope::for_request(
+                    &request,
+                    MemoryResponse::Stats(StatsResult {
+                        scope: request.access_scope.clone(),
+                        fragment_count: 2,
+                        event_count: 3,
+                    }),
+                )),
+                MemoryCommand::Observe(_) | MemoryCommand::Recall(_) => {
+                    panic!("测试只接受 Stats 命令")
+                }
+            }
+        }
+    }
+
+    let mut request = request();
+    request.command = MemoryCommand::Stats(StatsCommand);
+    let key = ApiKey::new(
+        "test-key",
+        AccessContext::new("principal", request.access_scope.clone().into()),
+    );
+    let response = router(ServerState::new(StatsBus, vec![key]))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/memory/stats")
+                .header("content-type", "application/json")
+                .header("x-api-key", "test-key")
+                .body(Body::from(serde_json::to_vec(&request).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let envelope: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(envelope["response"]["response"], "stats");
+    assert_eq!(envelope["response"]["payload"]["fragment_count"], 2);
 }
 
 #[tokio::test]

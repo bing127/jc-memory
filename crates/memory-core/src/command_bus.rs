@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use jc_memory_activation::{RecallLimits as ActivationRecallLimits, RecallQuery};
 use jc_memory_protocol::{
     AccessContext, CommandErrorCode, MemoryCommand, MemoryRequest, MemoryResponse, ObserveResult,
-    RequestValidationError, ResponseEnvelope,
+    RequestValidationError, ResponseEnvelope, StatsResult,
 };
 
 use crate::{MemoryEngine, MemoryError};
@@ -57,7 +57,7 @@ impl CommandBus for EmbeddedCommandBus {
             MemoryCommand::Observe(command) if command.fragment.scope != request_scope => {
                 return Err(CommandError::AccessScopeMismatch);
             }
-            MemoryCommand::Observe(_) | MemoryCommand::Recall(_) => {}
+            MemoryCommand::Observe(_) | MemoryCommand::Recall(_) | MemoryCommand::Stats(_) => {}
         }
 
         let response = match request.command.clone() {
@@ -97,6 +97,18 @@ impl CommandBus for EmbeddedCommandBus {
                         .await
                         .map_err(CommandError::engine)?,
                 )
+            }
+            MemoryCommand::Stats(_) => {
+                let stats = self
+                    .engine
+                    .stats(access, &request_scope)
+                    .await
+                    .map_err(CommandError::engine)?;
+                MemoryResponse::Stats(StatsResult {
+                    scope: stats.scope.into(),
+                    fragment_count: stats.fragment_count,
+                    event_count: stats.event_count,
+                })
             }
         };
         Ok(ResponseEnvelope::for_request(&request, response))

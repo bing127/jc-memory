@@ -42,6 +42,7 @@ pub mod generated {
 pub use command::{
     API_VERSION_V1, AccessScope, CommandErrorCode, MemoryCommand, MemoryRequest, MemoryResponse,
     ObserveCommand, ObserveResult, RecallCommand, RequestValidationError, ResponseEnvelope,
+    StatsCommand, StatsResult,
 };
 pub use event::{CognitiveStage, EventDraft, MemoryEvent};
 pub use fragment::{

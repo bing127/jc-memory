@@ -83,6 +83,11 @@ impl TryFrom<MemoryRequest> for proto::RequestEnvelope {
                     kind: "recall command",
                 });
             }
+            MemoryCommand::Stats(_) => {
+                return Err(ProtoConversionError::Unsupported {
+                    kind: "stats command",
+                });
+            }
         };
         Ok(Self {
             api_version: request.api_version,
@@ -126,6 +131,11 @@ impl TryFrom<ResponseEnvelope> for proto::ResponseEnvelope {
             MemoryResponse::Recall(_) => {
                 return Err(ProtoConversionError::Unsupported {
                     kind: "recall response",
+                });
+            }
+            MemoryResponse::Stats(_) => {
+                return Err(ProtoConversionError::Unsupported {
+                    kind: "stats response",
                 });
             }
         };

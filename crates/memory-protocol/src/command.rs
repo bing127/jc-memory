@@ -72,6 +72,21 @@ pub struct RecallCommand {
     pub limits: RecallLimits,
 }
 
+/// 读取当前授权 Scope 统计的命令。
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct StatsCommand;
+
+/// Scope 内权威记录统计结果。
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct StatsResult {
+    /// 统计对应的精确访问 Scope。
+    pub scope: AccessScope,
+    /// 权威 Fragment 数量。
+    pub fragment_count: u64,
+    /// 权威 Event 数量。
+    pub event_count: u64,
+}
+
 /// 当前 `CommandBus` 可执行的命令集合。
 // Observe 和 Recall 都需要在协议边界保持完整值语义，装箱会改变现有调用方类型。
 #[allow(clippy::large_enum_variant)]
@@ -82,6 +97,8 @@ pub enum MemoryCommand {
     Observe(ObserveCommand),
     /// 在授权 Scope 内执行有界 Recall。
     Recall(RecallCommand),
+    /// 读取当前授权 Scope 的权威记录统计。
+    Stats(StatsCommand),
 }
 
 /// 所有 Embedded 与远程协议请求共享的 Envelope。
@@ -157,6 +174,8 @@ pub enum MemoryResponse {
     Observe(ObserveResult),
     /// Recall 返回的模型无关 Memory Packet。
     Recall(MemoryPacket),
+    /// Scope 内权威记录统计结果。
+    Stats(StatsResult),
 }
 
 /// 与请求元数据关联的成功响应 Envelope。

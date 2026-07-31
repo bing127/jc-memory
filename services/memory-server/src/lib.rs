@@ -112,6 +112,7 @@ where
         .route("/v1/memory/command", post(command::<B>))
         .route("/v1/memory/observe", post(observe::<B>))
         .route("/v1/memory/recall", post(recall::<B>))
+        .route("/v1/memory/stats", post(stats::<B>))
         .with_state(state)
 }
 
@@ -173,6 +174,17 @@ where
 }
 
 async fn recall<B>(
+    State(state): State<ServerState<B>>,
+    headers: HeaderMap,
+    Json(request): Json<MemoryRequest>,
+) -> Result<Json<ResponseEnvelope>, ServerError>
+where
+    B: CommandBus + Send + Sync + 'static,
+{
+    command_inner(state, headers, request).await
+}
+
+async fn stats<B>(
     State(state): State<ServerState<B>>,
     headers: HeaderMap,
     Json(request): Json<MemoryRequest>,
