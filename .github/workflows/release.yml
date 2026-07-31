@@ -1,0 +1,155 @@
+name: Private Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "SemVer，例如 0.1.0 或 0.1.0-rc.1"
+        required: true
+        type: string
+      ref:
+        description: "必须指向已存在的 v<version> tag"
+        required: true
+        type: string
+      prerelease:
+        description: "是否标记为预发布构建"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  validate:
+    name: Validate private release inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout requested tag
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref }}
+      - name: Version and source consistency
+        run: scripts/release/version.sh --version "${{ inputs.version }}"
+      - name: Tag、CHANGELOG 和私有 License 门禁
+        shell: bash
+        run: |
+          test "$(git rev-parse "refs/tags/v${{ inputs.version }}^{commit}")" = "$(git rev-parse HEAD)"
+          grep -F "## [${{ inputs.version }}]" CHANGELOG.md
+          grep -Eiq 'private|proprietary|confidential' LICENSE
+          git diff --check
+          printf '预发布标记：%s\n' '${{ inputs.prerelease }}'
+
+  native:
+    name: Native ${{ matrix.target }}
+    needs: validate
+    env:
+      RUSTUP_TOOLCHAIN: "1.97.1"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-24.04
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          - target: macos-x64
+            runner: macos-13
+          - target: macos-arm64
+            runner: macos-14
+          - target: windows-x64
+            runner: windows-2025
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout requested tag
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.ref }}
+      - name: 安装固定 Rust 工具链和目标
+        shell: bash
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal
+          rustup target add "$(case '${{ matrix.target }}' in linux-x64) echo x86_64-unknown-linux-gnu;; linux-arm64) echo aarch64-unknown-linux-gnu;; macos-x64) echo x86_64-apple-darwin;; macos-arm64) echo aarch64-apple-darwin;; windows-x64) echo x86_64-pc-windows-msvc;; esac)" --toolchain 1.97.1
+      - name: 构建 Rust 服务 Artifact
+        shell: bash
+        run: scripts/release/build.sh --version "${{ inputs.version }}" --target "${{ matrix.target }}" --output "target/release/${{ matrix.target }}"
+      - name: 封装并验证私有 Release
+        shell: bash
+        run: |
+          scripts/release/package.sh --version "${{ inputs.version }}" --target "${{ matrix.target }}" --input "target/release/${{ matrix.target }}" --output "target/private-release/${{ matrix.target }}"
+          scripts/release/verify.sh --input "target/private-release/${{ matrix.target }}" --version "${{ inputs.version }}"
+      - name: 上传私有 Actions Artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jcmem-${{ inputs.version }}-${{ matrix.target }}
+          path: target/private-release/${{ matrix.target }}
+          if-no-files-found: error
+          retention-days: 30
+
+  sdks:
+    name: SDK packages
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout requested tag
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.ref }}
+      - name: 安装 SDK 构建工具
+        shell: bash
+        run: |
+          python3 -m pip install --upgrade build
+          corepack enable
+      - name: 构建 SDK Artifact
+        run: scripts/release/build-sdks.sh --version "${{ inputs.version }}" --output target/sdk-build --skip-swift
+      - name: 封装并验证 SDK Release
+        shell: bash
+        run: |
+          scripts/release/package.sh --version "${{ inputs.version }}" --target sdk-linux-x64 --input target/sdk-build --output target/private-release/sdk
+          scripts/release/verify.sh --input target/private-release/sdk --version "${{ inputs.version }}"
+      - name: 上传私有 SDK Artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jcmem-${{ inputs.version }}-sdks
+          path: target/private-release/sdk
+          if-no-files-found: error
+          retention-days: 30
+
+  mobile:
+    name: Unsigned mobile packages
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: mobile-android
+            runner: ubuntu-24.04
+          - target: mobile-swift
+            runner: macos-14
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout requested tag
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.ref }}
+      - name: 构建未签名 Mobile 输入
+        shell: bash
+        run: scripts/release/mobile.sh --version "${{ inputs.version }}" --target "${{ matrix.target }}" --output "target/mobile-build/${{ matrix.target }}"
+      - name: 封装并验证未签名 Mobile Release
+        shell: bash
+        run: |
+          scripts/release/package.sh --version "${{ inputs.version }}" --target "${{ matrix.target }}" --input "target/mobile-build/${{ matrix.target }}" --output "target/private-release/${{ matrix.target }}"
+          scripts/release/verify.sh --input "target/private-release/${{ matrix.target }}" --version "${{ inputs.version }}"
+      - name: 上传私有 Mobile Artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jcmem-${{ inputs.version }}-${{ matrix.target }}-unsigned
+          path: target/private-release/${{ matrix.target }}
+          if-no-files-found: error
+          retention-days: 30

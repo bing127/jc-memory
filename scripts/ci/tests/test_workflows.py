@@ -15,6 +15,14 @@ WORKFLOWS = {
     "security.yml": ["cargo audit", "cargo deny", "pnpm", "pip-audit", "govulncheck"],
     "benchmarks.yml": ["scripts/benchmark/smoke.sh", "million-fragments"],
     "mobile.yml": ["Android", "assemble", "Swift", "swift test"],
+    "release.yml": [
+        "workflow_dispatch",
+        "version",
+        "private",
+        "RUSTUP_TOOLCHAIN: \"1.97.1\"",
+        "actions/upload-artifact",
+        "jcmem",
+    ],
 }
 CHECKOUT_SHA = "11bd71901bbe5b1630ceea73d27597364c9af683"
 
