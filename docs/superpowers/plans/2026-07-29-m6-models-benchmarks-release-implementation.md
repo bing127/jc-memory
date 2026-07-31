@@ -112,11 +112,11 @@ pub trait Metric { fn name(&self) -> &'static str; fn evaluate(&self, cases: &[B
 
 **文件：** `.github/workflows/release.yml`、`scripts/release/{version,build,package,checksums,verify}.sh`、各 SDK 发布配置。
 
-- [ ] **步骤 1：写版本不一致、dirty tree、缺失 Artifact、Checksum 不符的脚本测试。**
-- [ ] **步骤 2：运行脚本测试**，预期 Release 命令缺失。
-- [ ] **步骤 3：workflow_dispatch 输入 version/ref/prerelease；验证 tag/版本/CHANGELOG 一致且 License 为私有；构建 jcmem/jcmemd/server/mcp、Node 包、Python Wheel、Go SDK、Java/Kotlin 包、Swift Package/XCFramework，以及 Windows x64、macOS x64、macOS ARM64、Linux x64、Linux ARM64 目标。**
-- [ ] **步骤 4：每个产物生成 SHA-256、SBOM、构建元数据和签名接口；只上传私有 Actions Artifact，不调用 crates.io/npm/PyPI/public Release；移动端单独产出未签名构建并标注。**
-- [ ] **步骤 5：在当前主机构建可用目标并运行 verify，提交 `build: add manual private release pipeline`**。
+- [x] **步骤 1：写版本不一致、dirty tree、缺失 Artifact、Checksum 不符的脚本测试。** 已覆盖版本来源不一致、默认拒绝 dirty tree、缺失 Artifact、Checksum 篡改、Manifest Artifact 缺少 checksum、移动端帮助参数等边界。
+- [x] **步骤 2：运行脚本测试**，先确认 Release 脚本缺少工具链固定和移动端 `--target` 帮助文案时契约测试失败，再补实现；当前发布/CI 契约测试 10 项全部通过。
+- [x] **步骤 3：workflow_dispatch 输入 version/ref/prerelease；验证 tag/版本/CHANGELOG 一致且 License 为私有；构建 jcmem/jcmemd/server/mcp、Node 包、Python Wheel、Go SDK、Java/Kotlin 包、Swift Package/XCFramework，以及 Windows x64、macOS x64、macOS ARM64、Linux x64、Linux ARM64 目标。** Native job 固定 `RUSTUP_TOOLCHAIN=1.97.1`；SDK 和移动端使用独立 job，XCFramework/签名仍由后续平台发布流程负责。
+- [x] **步骤 4：每个产物生成 SHA-256、SBOM、构建元数据和签名接口；只上传私有 Actions Artifact，不调用 crates.io/npm/PyPI/public Release；移动端单独产出未签名构建并标注。** Manifest 强制 `PRIVATE` 与 `public_publish: false`，验证器拒绝 checksum 缺项和路径越界。
+- [x] **步骤 5：在当前主机构建可用目标并运行 verify，提交 `build: add manual private release pipeline`**。当前 macOS ARM64 Native Release 构建和本地私有 Fixture 封装/verify 已通过；实现提交为 `e41d372 build: add manual private release pipeline`。全量 workspace 测试在当前 Python 3.14 环境链接 `jc-memory-python` 时缺少 `_Py_*` 符号；排除该扩展后的 workspace 测试、clippy、doc、fmt 均通过。
 
 ## Task 10：完成全部文档与最终验收报告
 
