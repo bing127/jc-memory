@@ -25,7 +25,7 @@
 
 当前 Core 的 SQLite FTS5 已接入真实 Recall 路径。非 Exact Recall 还会读取精确 Scope 内的近期有界候选，并使用确定性词项覆盖率、字符稀疏特征和实体匹配评分；这不是外部 Embedding 或通用语义模型。Mutation 先追加权威 Fragment/Event，再更新进程内派生图，且在权威元数据中保留关系和目标标识。
 
-当前实现仍有明确边界：状态、语义和 Surface 模块尚未全部汇入 Core 的持久化 Memory Packet；Core 重启后尚未自动重建进程内派生图；`Operation::Consolidate` 尚未接入 Core Job 提交门面；派生重建的外部 Embedding 与 Summary backend 尚未接入。没有向量数据库或远程服务。M4 的 Server 与 Runtime 已部分落地，但完整 Protobuf 命令、请求超时、Sidecar、独立 MCP Server 和跨协议 E2E 尚未完成；M5-M6 的多语言 SDK、外部 Adapter、训练/ONNX、Benchmark 和发布流水线仍未实现。Schema 或协议字段的存在不代表对应上层调用链已经接通。
+当前实现仍有明确边界：状态、语义和 Surface 模块尚未全部汇入 Core 的持久化 Memory Packet；Core 重启后尚未自动重建进程内派生图；`Operation::Consolidate` 尚未接入 Core Job 提交门面；派生重建的外部 Embedding 与 Summary backend 尚未接入。没有向量数据库或远程服务。M4 的 Server 与 Runtime 已部分落地，Recall/Stats/Correct/Forget/Explain 的 Protobuf 命令、请求超时、文件型 TLS、YAML/环境变量配置和 Docker/Kubernetes 部署资源已经完成；Sidecar、独立 MCP Server、KeyProvider 生产实现和跨协议 E2E 尚未完成。M5-M6 的多语言 SDK、外部 Adapter、训练/ONNX、Benchmark 和发布流水线仍未实现。Schema 或协议字段的存在不代表对应上层调用链已经接通。
 
 ## 五分钟开始
 

@@ -116,11 +116,11 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 
 **文件：** `services/memory-server/` 全部模块、`tests/protocol_parity.rs`。
 
-- [ ] **步骤 1：写 Health、Observe、Recall、错误码、API Key、限流和优雅关闭失败测试。**
-- [ ] **步骤 2：运行测试**，预期 Server crate 缺失。
-- [ ] **步骤 3：Axum 路由 `/v1/memory/{observe,recall,commit,correct,forget,explain,stats}` 和 `/healthz`、`/readyz`、`/metrics`；Extractor 构造 AccessContext，禁止客户端伪造授权 Grant。**
-- [ ] **步骤 4：Tonic 实现同一 CommandBus；REST/gRPC 共享 ErrorCode、request_id、trace_id；TLS 仅从文件/KeyProvider 加载，不记录密钥；Tower 加入超时、并发和速率限制。**
-- [ ] **步骤 5：运行协议测试并提交 `feat(server): expose secured HTTP and gRPC APIs`**。
+- [x] **步骤 1：写 Health、Observe、Recall、错误码、API Key、限流和优雅关闭失败测试。**
+- [x] **步骤 2：运行测试并确认 Server crate 与共享 CommandBus 已接通。**
+- [x] **步骤 3：实现 Axum 路由 `/v1/memory/{observe,recall,correct,forget,explain,stats}` 和 `/healthz`、`/readyz`、`/metrics`；Extractor 构造 AccessContext，禁止客户端伪造授权 Grant。**
+- [x] **步骤 4：Tonic 实现同一 CommandBus；REST/gRPC 共享错误分类和 request_id；TLS 从文件加载且不记录密钥；HTTP/gRPC 统一请求超时、并发和按 API Key 速率限制。**
+- [x] **步骤 5：运行协议测试、TCP gRPC 测试和全仓门禁；按命令能力独立提交并推送。**
 
 > 当前已落地 Server 基础边界：`/healthz`、`/readyz`、Observe/Recall/Stats/Correct/Forget/Explain REST 路由、API Key 到服务端 `AccessContext` 的映射，以及共享 `CommandBus` 的适配器。真实 Tonic `Execute` 网络门面已接入；gRPC 文件型 TLS 已接入 `JC_MEMORY_TLS_CERT_FILE` 与 `JC_MEMORY_TLS_KEY_FILE`，并要求证书和私钥成对配置。未配置 TLS 时仍保留本机明文开发模式。Protobuf 尚未扩展的命令、KeyProvider、速率限制和 Task 7 的完整协议验收仍待完成。
 
@@ -142,7 +142,9 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - 已增加 YAML 配置文件加载；`JC_MEMORY_CONFIG_FILE` 指定文件，环境变量逐字段覆盖 YAML，API Key 仍只允许从环境变量或部署 Secret 注入。
 - 已补充 Dockerfile、Docker Compose、Kubernetes ConfigMap/Secret/Deployment/Service/PVC 和中文部署指南；当前仅完成本地 YAML 结构与契约验证，未宣称真实容器或集群验证。
 - 已接入可配置请求 deadline；`JC_MEMORY_REQUEST_TIMEOUT_MS` 默认 30000，HTTP 超时返回 504，gRPC 超时返回 `DeadlineExceeded`，并保留请求标识。
-- 本记录不代表 Task 7 或 M4 完成；Commit、Recall/Mutation/Explain 的完整 Protobuf 消息扩展、KeyProvider 和完整跨协议验收仍未实现。
+- 已完成 Recall、Stats、Correct、Forget、Explain 的强类型 Protobuf 请求/响应扩展，所有领域字段通过编解码往返测试保持无损；真实 TCP gRPC 已覆盖 Recall Execute。
+- 已完成按文件加载的 gRPC TLS、YAML/环境变量配置、请求超时、共享并发门禁和按 API Key 速率限制；Docker/Kubernetes 仅完成静态资源与契约验证。
+- Task 7 仍不代表 M4 完成：KeyProvider 生产实现、Sidecar、独立 MCP Server 和完整 Embedded/REST/gRPC/MCP 跨协议 E2E 仍待完成。
 
 ## Task 8：实现本地 Sidecar
 
