@@ -162,7 +162,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - [x] **步骤 4b-1：文件锁记录 PID/启动标识，并在 OS 锁可取得但存在旧元数据时标记陈旧锁。**
 - [x] **步骤 4b-2：生命周期 checkpoint 识别非干净重启并原子发布；停止时取消未认证空闲连接、等待已认证在途请求、显式关闭 CommandBus/SQLite 并记录干净退出。**
 - [x] **步骤 5a：运行 Sidecar 测试、Clippy、rustdoc、fmt 和 `git diff --check`。**
-- [x] **步骤 5b：提交当前已实现的 Sidecar 传输与生命周期边界。** Windows 实机传输仍受当前主机缺少 MinGW 工具链限制，保留步骤 3b-2 未勾选，不创建 M4 总 Tag。
+- [x] **步骤 5b：提交当前已实现的 Sidecar 传输与生命周期边界。** Windows 实机传输仍受当前主机缺少 MinGW 工具链限制，步骤 3b-2 保留未勾选；当时未创建 M4 总 Tag，后续代码门禁完成后已创建 `m4-runtime-services`。
 
 ### 2026-07-31 进度记录
 
@@ -194,7 +194,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - Observe、Recall、Commit、Correct、Forget、Explain、Stats 通过共享 `CommandBus` 执行并返回 MCP `structuredContent`；Commit 批次要求所有 Fragment 属于请求 Scope，并保留各自原始 Kind。
 - 已增加可选 `JC_MEMORY_MCP_TOKEN` 身份校验；配置后 `tools/call` 必须携带 `authToken`，缺失或错误统一返回 `-32001`，并通过固定长度比较避免 Token 提前退出比较。
 - 已收紧 `tools/list` 的请求 Schema，并在执行前校验工具名与 `MemoryCommand` 一致，避免通过错误工具路由获得不同操作 Grant。
-- MCP 到 Sidecar 的 `ExecuteAs` 主体转发链已有真实临时 SQLite 契约测试；完整部署级跨协议 E2E 仍待实现，因此 Task 9 只表示 MCP 协议边界完成，不表示 M4 完成。
+- MCP 到 Sidecar 的 `ExecuteAs` 主体转发链已有真实临时 SQLite 契约测试；独立部署级跨协议 E2E 仍需对应环境验收，因此 Task 9 只表示 MCP 协议边界完成，不把本机 Fixture 描述为实机结果。
 
 ## Task 10：端到端一致性、文档与门禁
 
@@ -226,9 +226,9 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - [x] **步骤 2：写文件型 Provider 契约失败测试。** 覆盖创建与读取、轮换版本、路径穿越拒绝、重复 ID 不覆盖、损坏/截断记录拒绝、权限拒绝、符号链接拒绝、Debug/错误不泄露材料和原子发布行为。
 - [x] **步骤 3：实现最小 `FileKeyProvider`。** 使用锁文件串行化写入；同目录临时文件写入、文件同步、不覆盖原子发布；读取时校验魔数、版本、ID、长度和元数据；所有返回材料使用 `Zeroizing`。
 - [x] **步骤 4：运行 `memory-security` 聚焦测试、严格 Clippy、rustdoc、fmt 和 `git diff --check`，并更新安全文档中的剩余风险。** 已通过 9 个文件 Provider 契约测试、包测试、严格 Clippy、rustdoc、fmt 和差异检查；仅声明当前 Unix/macOS 本机验证。
-- [x] **步骤 5：提交 `feat(security): 增加文件型生产密钥提供者` 并推送当前分支。** 已创建中文提交并准备推送；M4 总提交和阶段 Tag 仍按未完成边界保持不创建。
+- [x] **步骤 5：提交 `feat(security): 增加文件型生产密钥提供者` 并推送当前分支。** 已创建中文提交并推送；当时 M4 总提交和阶段 Tag 仍按未完成边界保持不创建，后续已完成 M4 门禁并创建里程碑 Tag。
 
-Task 11 完成前，M4 总提交和阶段 Tag 仍不得创建。
+Task 11 完成前，M4 总提交和阶段 Tag 仍不得创建；Task 11 已完成，当前里程碑 Tag 为 `m4-runtime-services`。
 
 ## M4 完成定义
 
