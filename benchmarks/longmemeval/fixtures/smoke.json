@@ -1,0 +1,63 @@
+{
+  "schema_version": "jcmem.suite.v1",
+  "dataset": "longmemeval",
+  "version": "fixture-2026-08-01",
+  "license": "PRIVATE-FIXTURE",
+  "source": {
+    "kind": "repository_fixture",
+    "uri": "benchmarks/longmemeval/fixtures/smoke.json",
+    "sha256": "fixture-digest-longmemeval-v1"
+  },
+  "smoke": true,
+  "cases": [
+    {
+      "id": "longmemeval-information-extraction",
+      "sessions": [{"id": "10000000-0000-7000-8000-000000000001", "turns": [{"fragment_id": "20000000-0000-7000-8000-000000000001", "text": "迁移窗口是周六凌晨。", "occurred_at": "2026-01-03T01:00:00Z"}]}],
+      "query": {"text": "迁移窗口是什么时候？", "mode": "semantic", "at_time": null},
+      "expected": {"point_ids": [], "evidence_ids": [], "abstention": false},
+      "tags": ["information_extraction", "single_hop"]
+    },
+    {
+      "id": "longmemeval-cross-session",
+      "sessions": [{"id": "10000000-0000-7000-8000-000000000002", "turns": [{"fragment_id": "20000000-0000-7000-8000-000000000002", "text": "项目代号为青岚。", "occurred_at": "2026-01-04T01:00:00Z"}]}, {"id": "10000000-0000-7000-8000-000000000003", "turns": [{"fragment_id": "20000000-0000-7000-8000-000000000003", "text": "青岚项目负责人是林澈。", "occurred_at": "2026-01-05T01:00:00Z"}]}],
+      "query": {"text": "青岚项目的负责人是谁？", "mode": "entity", "at_time": null},
+      "expected": {"point_ids": [], "evidence_ids": [], "abstention": false},
+      "tags": ["cross_session", "multi_hop"]
+    },
+    {
+      "id": "longmemeval-temporal",
+      "sessions": [{"id": "10000000-0000-7000-8000-000000000004", "turns": [{"fragment_id": "20000000-0000-7000-8000-000000000004", "text": "一月使用 PostgreSQL。", "occurred_at": "2026-01-10T01:00:00Z"}, {"fragment_id": "20000000-0000-7000-8000-000000000005", "text": "二月切换到 SQLite。", "occurred_at": "2026-02-10T01:00:00Z"}]}],
+      "query": {"text": "一月底使用的数据库是什么？", "mode": "historical_state", "at_time": "2026-01-31T23:59:59Z"},
+      "expected": {"point_ids": [], "evidence_ids": [], "abstention": false},
+      "tags": ["temporal", "update"]
+    },
+    {
+      "id": "longmemeval-update",
+      "sessions": [{"id": "10000000-0000-7000-8000-000000000005", "turns": [{"fragment_id": "20000000-0000-7000-8000-000000000006", "text": "值班人是周宁。", "occurred_at": "2026-03-01T01:00:00Z"}, {"fragment_id": "20000000-0000-7000-8000-000000000007", "text": "值班人更新为苏禾。", "occurred_at": "2026-03-02T01:00:00Z"}]}],
+      "query": {"text": "当前值班人是谁？", "mode": "current_state", "at_time": null},
+      "expected": {"point_ids": [], "evidence_ids": [], "abstention": false},
+      "tags": ["update", "single_hop"]
+    },
+    {
+      "id": "longmemeval-abstention",
+      "sessions": [{"id": "10000000-0000-7000-8000-000000000006", "turns": [{"fragment_id": "20000000-0000-7000-8000-000000000008", "text": "记录没有给出预算。", "occurred_at": "2026-04-01T01:00:00Z"}]}],
+      "query": {"text": "预算是多少？", "mode": "exact", "at_time": null},
+      "expected": {"point_ids": [], "evidence_ids": [], "abstention": true},
+      "tags": ["abstention"]
+    },
+    {
+      "id": "longmemeval-causal",
+      "sessions": [{"id": "10000000-0000-7000-8000-000000000007", "turns": [{"fragment_id": "20000000-0000-7000-8000-000000000009", "text": "缓存命中率下降。", "occurred_at": "2026-05-01T01:00:00Z"}, {"fragment_id": "20000000-0000-7000-8000-000000000010", "text": "因为上游超时，缓存命中率下降。", "occurred_at": "2026-05-01T02:00:00Z"}]}],
+      "query": {"text": "缓存命中率下降的原因是什么？", "mode": "causal", "at_time": null},
+      "expected": {"point_ids": [], "evidence_ids": [], "abstention": false},
+      "tags": ["causal", "multi_hop"]
+    },
+    {
+      "id": "longmemeval-causal-failure",
+      "sessions": [{"id": "10000000-0000-7000-8000-000000000008", "turns": [{"fragment_id": "20000000-0000-7000-8000-000000000011", "text": "只记录了结果，没有记录原因。", "occurred_at": "2026-06-01T01:00:00Z"}]}],
+      "query": {"text": "结果的因果原因是什么？", "mode": "causal", "at_time": null},
+      "expected": {"point_ids": [], "evidence_ids": [], "abstention": true},
+      "tags": ["causal_failure", "abstention"]
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "dataset": "longmemeval",
+  "version": "fixture-2026-08-01",
+  "license": "PRIVATE-FIXTURE",
+  "source_url": "repository://benchmarks/longmemeval/fixtures/smoke.json",
+  "sha256": "2c99114c830cc1b2f18b3f8c785cf31ebb0b2132393cdbff1554ec6ba510e328",
+  "fixture": "fixtures/smoke.json",
+  "cache_subdir": "longmemeval"
+}

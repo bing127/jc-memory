@@ -1,0 +1,9 @@
+{
+  "dataset": "locomo",
+  "version": "fixture-2026-08-01",
+  "license": "PRIVATE-FIXTURE",
+  "source_url": "repository://benchmarks/locomo/fixtures/smoke.json",
+  "sha256": "458c14708b8e3d5eb1c526aede7a75788675d4b14357532e9a60201dc915f698",
+  "fixture": "fixtures/smoke.json",
+  "cache_subdir": "locomo"
+}

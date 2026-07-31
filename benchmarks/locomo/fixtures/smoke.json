@@ -1,0 +1,63 @@
+{
+  "schema_version": "jcmem.suite.v1",
+  "dataset": "locomo",
+  "version": "fixture-2026-08-01",
+  "license": "PRIVATE-FIXTURE",
+  "source": {
+    "kind": "repository_fixture",
+    "uri": "benchmarks/locomo/fixtures/smoke.json",
+    "sha256": "fixture-digest-locomo-v1"
+  },
+  "smoke": true,
+  "cases": [
+    {
+      "id": "locomo-information-extraction",
+      "sessions": [{"id": "30000000-0000-7000-8000-000000000001", "turns": [{"fragment_id": "40000000-0000-7000-8000-000000000001", "text": "会议地点在乌鲁木齐。", "occurred_at": "2026-01-03T01:00:00Z"}]}],
+      "query": {"text": "会议地点在哪里？", "mode": "semantic", "at_time": null},
+      "expected": {"point_ids": [], "evidence_ids": [], "abstention": false},
+      "tags": ["information_extraction", "single_hop"]
+    },
+    {
+      "id": "locomo-cross-session",
+      "sessions": [{"id": "30000000-0000-7000-8000-000000000002", "turns": [{"fragment_id": "40000000-0000-7000-8000-000000000002", "text": "阿依古丽负责数据。", "occurred_at": "2026-01-04T01:00:00Z"}]}, {"id": "30000000-0000-7000-8000-000000000003", "turns": [{"fragment_id": "40000000-0000-7000-8000-000000000003", "text": "她在周会上确认了数据方案。", "occurred_at": "2026-01-05T01:00:00Z"}]}],
+      "query": {"text": "谁确认了数据方案？", "mode": "entity", "at_time": null},
+      "expected": {"point_ids": [], "evidence_ids": [], "abstention": false},
+      "tags": ["cross_session", "multi_hop"]
+    },
+    {
+      "id": "locomo-temporal",
+      "sessions": [{"id": "30000000-0000-7000-8000-000000000004", "turns": [{"fragment_id": "40000000-0000-7000-8000-000000000004", "text": "春季计划在四月。", "occurred_at": "2026-02-10T01:00:00Z"}, {"fragment_id": "40000000-0000-7000-8000-000000000005", "text": "夏季计划在七月。", "occurred_at": "2026-05-10T01:00:00Z"}]}],
+      "query": {"text": "春季计划安排在哪个月？", "mode": "temporal", "at_time": "2026-03-01T00:00:00Z"},
+      "expected": {"point_ids": [], "evidence_ids": [], "abstention": false},
+      "tags": ["temporal", "update"]
+    },
+    {
+      "id": "locomo-update",
+      "sessions": [{"id": "30000000-0000-7000-8000-000000000005", "turns": [{"fragment_id": "40000000-0000-7000-8000-000000000006", "text": "首选联系邮箱是 old@example.invalid。", "occurred_at": "2026-03-01T01:00:00Z"}, {"fragment_id": "40000000-0000-7000-8000-000000000007", "text": "首选联系邮箱更新为 new@example.invalid。", "occurred_at": "2026-03-02T01:00:00Z"}]}],
+      "query": {"text": "当前首选联系邮箱是什么？", "mode": "current_state", "at_time": null},
+      "expected": {"point_ids": [], "evidence_ids": [], "abstention": false},
+      "tags": ["update", "single_hop"]
+    },
+    {
+      "id": "locomo-abstention",
+      "sessions": [{"id": "30000000-0000-7000-8000-000000000006", "turns": [{"fragment_id": "40000000-0000-7000-8000-000000000008", "text": "对话没有记录航班号。", "occurred_at": "2026-04-01T01:00:00Z"}]}],
+      "query": {"text": "航班号是多少？", "mode": "exact", "at_time": null},
+      "expected": {"point_ids": [], "evidence_ids": [], "abstention": true},
+      "tags": ["abstention"]
+    },
+    {
+      "id": "locomo-causal",
+      "sessions": [{"id": "30000000-0000-7000-8000-000000000007", "turns": [{"fragment_id": "40000000-0000-7000-8000-000000000009", "text": "发布被延迟。", "occurred_at": "2026-05-01T01:00:00Z"}, {"fragment_id": "40000000-0000-7000-8000-000000000010", "text": "因为审批等待，发布被延迟。", "occurred_at": "2026-05-01T02:00:00Z"}]}],
+      "query": {"text": "发布延迟的原因是什么？", "mode": "causal", "at_time": null},
+      "expected": {"point_ids": [], "evidence_ids": [], "abstention": false},
+      "tags": ["causal", "multi_hop"]
+    },
+    {
+      "id": "locomo-causal-failure",
+      "sessions": [{"id": "30000000-0000-7000-8000-000000000008", "turns": [{"fragment_id": "40000000-0000-7000-8000-000000000011", "text": "只保留了会议结果，没有保留原因。", "occurred_at": "2026-06-01T01:00:00Z"}]}],
+      "query": {"text": "会议结果的原因是什么？", "mode": "causal", "at_time": null},
+      "expected": {"point_ids": [], "evidence_ids": [], "abstention": true},
+      "tags": ["causal_failure", "abstention"]
+    }
+  ]
+}

@@ -5,6 +5,7 @@
 /.jiangcheng-memory/
 /data/
 /coverage/
+/.cache/benchmarks/
 /.worktrees/
 .env
 .env.*

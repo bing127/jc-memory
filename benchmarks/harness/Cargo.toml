@@ -7,10 +7,12 @@ license-file.workspace = true
 authors.workspace = true
 
 [dependencies]
+chrono.workspace = true
 jc-memory-activation = { path = "../../crates/memory-activation" }
 jc-memory-protocol = { path = "../../crates/memory-protocol" }
 serde.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

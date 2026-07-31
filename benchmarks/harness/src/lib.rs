@@ -4,6 +4,12 @@ mod case;
 mod metrics;
 mod report;
 mod runner;
+mod suite;
+
+#[path = "../../locomo/runner.rs"]
+pub mod locomo;
+#[path = "../../longmemeval/runner.rs"]
+pub mod longmemeval;
 
 pub use case::{BenchmarkCase, CaseResult, ExpectedAnswer};
 pub use metrics::{
@@ -12,3 +18,4 @@ pub use metrics::{
 };
 pub use report::{BenchmarkReport, REPORT_SCHEMA_VERSION};
 pub use runner::{CaseExecutor, RunnerError, run_cases};
+pub use suite::{Suite, SuiteError, SuiteRunError};

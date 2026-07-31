@@ -1436,10 +1436,12 @@ dependencies = [
 name = "jc-memory-benchmark-harness"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "jc-memory-activation",
  "jc-memory-protocol",
  "serde",
  "serde_json",
+ "thiserror",
 ]
 
 [[package]]

@@ -62,11 +62,11 @@ pub trait Metric { fn name(&self) -> &'static str; fn evaluate(&self, cases: &[B
 
 **文件：** `benchmarks/{longmemeval,locomo}/{manifest.json,prepare.py,runner.rs,tests.rs}`、`scripts/benchmark/fetch-datasets.sh`。
 
-- [ ] **步骤 1：写最小许可 Fixture 的信息提取、跨 Session、时间、更新、拒答、单跳、多跳和因果失败测试。**
-- [ ] **步骤 2：运行两个 Smoke Test**，预期 Runner 缺失。
-- [ ] **步骤 3：下载脚本要求显式接受数据集许可、固定 URL/version/SHA-256，下载到 gitignored cache；prepare 转换为 BenchmarkCase 并保留原 case ID。**
-- [ ] **步骤 4：拒答按 missing_evidence 和 abstention 判断，不能用模型措辞字符串匹配；完整数据缺失时只运行仓库内许可 Fixture 并标为 smoke。**
-- [ ] **步骤 5：运行 Smoke 并提交 `feat(benchmarks): add LongMemEval and LoCoMo runners`**。
+- [x] **步骤 1：写最小许可 Fixture 的信息提取、跨 Session、时间、更新、拒答、单跳、多跳和因果失败测试。** 已新增 LongMemEval/LoCoMo `PRIVATE-FIXTURE`，覆盖上述标签并验证 Case ID、Session 数量和结构化拒答预期。
+- [x] **步骤 2：运行两个 Smoke Test**，预期 Runner 缺失。已先确认 Harness 未暴露两个 Runner 的编译红灯，再补齐 Rust Fixture/Runner 测试；当前 4 个 Suite 测试通过。
+- [x] **步骤 3：下载脚本要求显式接受数据集许可、固定 URL/version/SHA-256，下载到 gitignored cache；prepare 转换为 BenchmarkCase 并保留原 case ID。** 已新增两个 `manifest.json`、两个标准库 `prepare.py`、`scripts/benchmark/fetch-datasets.sh` 和 `.cache/benchmarks/` 忽略规则；本机已验证两个 Fixture 的许可门禁、规范化、复制和 SHA-256。
+- [x] **步骤 4：拒答按 missing_evidence 和 abstention 判断，不能用模型措辞字符串匹配；完整数据缺失时只运行仓库内许可 Fixture 并标为 smoke。** Runner 只根据 Packet 的 Point/`missing_evidence` 判定拒答；Suite 标记 `smoke: true`，注入式 `run_smoke` 负责转换、执行和生成统一报告。
+- [ ] **步骤 5：运行 Smoke 并提交 `feat(benchmarks): add LongMemEval and LoCoMo runners`**。聚焦测试、严格 Clippy、Rustfmt、rustdoc 和 `git diff --check` 待本次提交前最终确认。
 
 ## Task 5：实现 Cross-Year、Model Swap 与 Memory Poisoning
 
