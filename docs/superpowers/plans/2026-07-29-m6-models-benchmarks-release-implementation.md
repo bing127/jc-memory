@@ -56,7 +56,7 @@ pub trait Metric { fn name(&self) -> &'static str; fn evaluate(&self, cases: &[B
 ```
 
 - [x] **步骤 4：实现需求中的 19 个命名输出（把 P50/P95/P99 分别计数），百分位使用 nearest-rank 并记录样本数；报告同时输出 schema-versioned JSON 和中文 Markdown。** 已实现 `jcmem.benchmark.v1` JSON、中文 Markdown、统一 CaseExecutor 和全部 19 个指标；当前测试只使用仓库内确定性 Fixture，不宣称外部数据集或生产负载验证。
-- [ ] **步骤 5：运行指标测试并提交 `feat(benchmarks): add unified harness and metrics`**。聚焦测试、严格 Clippy、Rustfmt、rustdoc 和 `git diff --check` 已通过；待本次中文 Conventional Commit 提交并推送后勾选。
+- [x] **步骤 5：运行指标测试并提交 `feat(benchmarks): add unified harness and metrics`**。聚焦测试、严格 Clippy、Rustfmt、rustdoc 和 `git diff --check` 已通过；实现提交为 `b85082f feat(benchmarks): 增加统一 Benchmark Harness 与指标`，workspace 测试因当前主机既有 Python C API 链接环境缺失未通过，详见本轮交付说明。
 
 ## Task 4：实现 LongMemEval 与 LoCoMo Harness
 
