@@ -1,0 +1,6 @@
+name: Invalid Workflow
+jobs:
+  broken:
+    runs-on: ubuntu-latest
+    steps:
+      - run: [missing-bracket

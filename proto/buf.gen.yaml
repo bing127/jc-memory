@@ -1,0 +1,5 @@
+version: v2
+plugins:
+  # 使用 protoc 内置插件生成可审计的描述文件，不把第三方生成器下载进 CI。
+  - protoc_builtin: cpp
+    out: target/proto-gen/cpp

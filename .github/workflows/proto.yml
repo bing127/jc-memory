@@ -1,0 +1,38 @@
+name: Protobuf Contract
+
+on:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  buf:
+    name: Buf lint breaking generated diff
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: 安装固定 Buf
+        shell: bash
+        run: |
+          go install github.com/bufbuild/buf/cmd/buf@v1.64.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Buf lint
+        run: buf lint proto
+      - name: Buf breaking
+        run: buf breaking --against '.git#ref=HEAD^' --path proto
+      - name: Buf generate
+        run: buf generate proto --template proto/buf.gen.yaml
+      - name: 生成结果与版本化摘要一致
+        shell: bash
+        run: |
+          (cd target/proto-gen && find . -type f -print | sort | xargs shasum -a 256) > target/proto-generated.sha256
+          diff -u proto/generated.sha256 target/proto-generated.sha256

@@ -1,0 +1,61 @@
+name: Supply Chain Security
+
+on:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Dependency and secret audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: 安装 Rust 审计工具
+        shell: bash
+        run: |
+          cargo install --locked cargo-audit
+          cargo install --locked cargo-deny
+      - name: cargo audit
+        run: cargo audit
+      - name: cargo deny
+        run: cargo deny check
+      - name: Node 依赖审计
+        shell: bash
+        run: |
+          corepack enable
+          corepack pnpm --dir sdk/node install --frozen-lockfile
+          corepack pnpm --dir sdk/node audit --audit-level high
+      - name: Python 依赖审计
+        shell: bash
+        run: |
+          python3 -m pip install --upgrade pip-audit
+          python3 - <<'PY' > /tmp/jc-memory-python-requirements.txt
+          import tomllib
+          from pathlib import Path
+
+          document = tomllib.loads(Path("sdk/python/pyproject.toml").read_text(encoding="utf-8"))
+          print("\n".join(document["project"]["dependencies"]))
+          PY
+          pip-audit -r /tmp/jc-memory-python-requirements.txt
+      - name: Go 依赖审计
+        shell: bash
+        working-directory: sdk/go
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+          "$(go env GOPATH)/bin/govulncheck" ./...
+      - name: Secret Scan
+        shell: bash
+        run: |
+          if git grep -nE 'AKIA[0-9A-Z]{16}|-----BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY-----' -- ':!target' ':!.git'; then
+            echo "发现疑似凭据或私钥" >&2
+            exit 1
+          fi

@@ -1,0 +1,45 @@
+name: Rust Quality
+
+on:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUST_TOOLCHAIN: "1.97.1"
+
+jobs:
+  quality:
+    name: Rust ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: 安装固定 Rust 工具链
+        shell: bash
+        run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component rustfmt --component clippy
+      - name: 格式检查
+        shell: bash
+        run: cargo +"$RUST_TOOLCHAIN" fmt --all -- --check
+      - name: 严格 Clippy
+        shell: bash
+        run: cargo +"$RUST_TOOLCHAIN" clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Workspace 测试
+        shell: bash
+        run: cargo +"$RUST_TOOLCHAIN" test --workspace --all-features
+      - name: Workspace 文档
+        shell: bash
+        run: cargo +"$RUST_TOOLCHAIN" doc --workspace --no-deps
