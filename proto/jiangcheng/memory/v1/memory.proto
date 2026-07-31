@@ -204,6 +204,9 @@ message RecallCommand {
   RecallLimits limits = 5 [json_name = "limits"];
 }
 
+// StatsCommand 读取当前授权 Scope 的权威记录统计。
+message StatsCommand {}
+
 // RequestEnvelope 是所有命令共享的稳定请求外壳。
 message RequestEnvelope {
   string api_version = 1 [json_name = "apiVersion"];
@@ -213,6 +216,7 @@ message RequestEnvelope {
   oneof command {
     ObserveCommand observe = 10 [json_name = "observe"];
     RecallCommand recall = 11 [json_name = "recall"];
+    StatsCommand stats = 12 [json_name = "stats"];
   }
 }
 
@@ -224,6 +228,13 @@ message ObserveResult {
   string content_hash = 4 [json_name = "contentHash"];
   bool created = 5 [json_name = "created"];
   bool quarantined = 6 [json_name = "quarantined"];
+}
+
+// StatsResult 返回精确访问 Scope 内的权威记录数量。
+message StatsResult {
+  AccessScope scope = 1 [json_name = "scope"];
+  uint64 fragment_count = 2 [json_name = "fragmentCount"];
+  uint64 event_count = 3 [json_name = "eventCount"];
 }
 
 // EvidenceView 指向支撑派生结果的权威记录。
@@ -409,6 +420,7 @@ message ResponseEnvelope {
   oneof response {
     ObserveResult observe = 10 [json_name = "observe"];
     MemoryPacket recall = 11 [json_name = "recall"];
+    StatsResult stats = 12 [json_name = "stats"];
   }
 }
 

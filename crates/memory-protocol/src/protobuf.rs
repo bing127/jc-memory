@@ -13,8 +13,8 @@ use crate::{
     KnowledgeView, MemoryCommand, MemoryPacket, MemoryRequest, MemoryResponse, MemoryScope,
     MissingEvidence, ObserveCommand, ObserveResult, Perspective, PointKind, PointView,
     ProcedureView, RecallLimits, RecallMode, RecallPath, RequestValidationError, ResponseEnvelope,
-    SecurityLabel, SourceType, StateView, SurfaceStatus, SurfaceView, ValidityStatus,
-    VerificationMethod, generated::jiangcheng::memory::v1 as proto,
+    SecurityLabel, SourceType, StateView, StatsCommand, StatsResult, SurfaceStatus, SurfaceView,
+    ValidityStatus, VerificationMethod, generated::jiangcheng::memory::v1 as proto,
 };
 
 /// 领域协议与 Protobuf 之间的稳定转换错误。
@@ -110,9 +110,7 @@ impl TryFrom<MemoryRequest> for proto::RequestEnvelope {
                 })
             }
             MemoryCommand::Stats(_) => {
-                return Err(ProtoConversionError::Unsupported {
-                    kind: "stats command",
-                });
+                proto::request_envelope::Command::Stats(proto::StatsCommand {})
             }
             MemoryCommand::Correct(_) | MemoryCommand::Forget(_) => {
                 return Err(ProtoConversionError::Unsupported {
@@ -147,6 +145,7 @@ impl TryFrom<proto::RequestEnvelope> for MemoryRequest {
             proto::request_envelope::Command::Recall(command) => {
                 MemoryCommand::Recall(recall_command_from_proto(command)?)
             }
+            proto::request_envelope::Command::Stats(_) => MemoryCommand::Stats(StatsCommand),
         };
         let request = Self {
             api_version: request.api_version,
@@ -170,10 +169,8 @@ impl TryFrom<ResponseEnvelope> for proto::ResponseEnvelope {
             MemoryResponse::Recall(packet) => {
                 proto::response_envelope::Response::Recall(memory_packet_to_proto(packet))
             }
-            MemoryResponse::Stats(_) => {
-                return Err(ProtoConversionError::Unsupported {
-                    kind: "stats response",
-                });
+            MemoryResponse::Stats(result) => {
+                proto::response_envelope::Response::Stats(result.into())
             }
             MemoryResponse::Mutation(_) => {
                 return Err(ProtoConversionError::Unsupported {
@@ -204,6 +201,9 @@ impl TryFrom<proto::ResponseEnvelope> for ResponseEnvelope {
             }
             proto::response_envelope::Response::Recall(packet) => {
                 MemoryResponse::Recall(memory_packet_from_proto(packet)?)
+            }
+            proto::response_envelope::Response::Stats(result) => {
+                MemoryResponse::Stats(result.try_into()?)
             }
         };
         Ok(Self {
@@ -329,6 +329,28 @@ impl TryFrom<proto::ObserveResult> for ObserveResult {
             content_hash: parse_id("observe_result.content_hash", &result.content_hash)?,
             created: result.created,
             quarantined: result.quarantined,
+        })
+    }
+}
+
+impl From<StatsResult> for proto::StatsResult {
+    fn from(result: StatsResult) -> Self {
+        Self {
+            scope: Some(result.scope.into()),
+            fragment_count: result.fragment_count,
+            event_count: result.event_count,
+        }
+    }
+}
+
+impl TryFrom<proto::StatsResult> for StatsResult {
+    type Error = ProtoConversionError;
+
+    fn try_from(result: proto::StatsResult) -> Result<Self, Self::Error> {
+        Ok(Self {
+            scope: required(result.scope, "stats_result.scope")?.try_into()?,
+            fragment_count: result.fragment_count,
+            event_count: result.event_count,
         })
     }
 }

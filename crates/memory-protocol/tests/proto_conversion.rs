@@ -8,8 +8,9 @@ use jc_memory_protocol::{
     EvidenceRef, FragmentContent, FragmentId, FragmentKind, FragmentSource, MemoryCommand,
     MemoryPacket, MemoryRequest, MemoryResponse, MemoryScope, NamespaceId, ObserveCommand,
     ObserveResult, Perspective, ProjectId, RecallCommand, RecallLimits, RecallMode,
-    ResponseEnvelope, SecurityLabel, SessionId, SourceType, TenantId, TraceId, UserId,
-    ValidityStatus, VerificationMethod, generated::jiangcheng::memory::v1 as proto,
+    ResponseEnvelope, SecurityLabel, SessionId, SourceType, StatsCommand, StatsResult, TenantId,
+    TraceId, UserId, ValidityStatus, VerificationMethod,
+    generated::jiangcheng::memory::v1 as proto,
 };
 use prost::Message as _;
 
@@ -119,6 +120,44 @@ fn recall_proto_round_trip_preserves_request_and_packet() {
             .expect("解码 Recall 响应");
     assert_eq!(
         ResponseEnvelope::try_from(response_decoded).expect("Recall 响应转 Rust"),
+        response
+    );
+}
+
+#[test]
+fn stats_proto_round_trip_preserves_scope_counts() {
+    let scope = AccessScope::from(MemoryScope::new(NamespaceId::new()));
+    let request = MemoryRequest {
+        api_version: API_VERSION_V1.to_owned(),
+        request_id: "req-stats-round-trip".to_owned(),
+        access_scope: scope.clone(),
+        command: MemoryCommand::Stats(StatsCommand),
+    };
+    let response = ResponseEnvelope::for_request(
+        &request,
+        MemoryResponse::Stats(StatsResult {
+            scope,
+            fragment_count: u64::MAX,
+            event_count: 42,
+        }),
+    );
+
+    let request_wire =
+        proto::RequestEnvelope::try_from(request.clone()).expect("Stats 请求转 Proto");
+    let request_decoded = proto::RequestEnvelope::decode(request_wire.encode_to_vec().as_slice())
+        .expect("解码 Stats 请求");
+    assert_eq!(
+        MemoryRequest::try_from(request_decoded).expect("Stats 请求转 Rust"),
+        request
+    );
+
+    let response_wire =
+        proto::ResponseEnvelope::try_from(response.clone()).expect("Stats 响应转 Proto");
+    let response_decoded =
+        proto::ResponseEnvelope::decode(response_wire.encode_to_vec().as_slice())
+            .expect("解码 Stats 响应");
+    assert_eq!(
+        ResponseEnvelope::try_from(response_decoded).expect("Stats 响应转 Rust"),
         response
     );
 }
