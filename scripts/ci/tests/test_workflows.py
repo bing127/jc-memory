@@ -9,7 +9,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 WORKFLOW_DIR = ROOT / ".github" / "workflows"
 WORKFLOWS = {
-    "rust.yml": ["ubuntu-latest", "windows-latest", "macos-latest", "cargo", "fmt", "clippy", "doc"],
+    "rust.yml": [
+        "ubuntu-latest",
+        "windows-latest",
+        "macos-latest",
+        "cargo",
+        "fmt",
+        "clippy",
+        "test --workspace --all-features --exclude jc-memory-python",
+        "doc",
+    ],
     "sdks.yml": ["node", "python", "go", "gradle", "swift"],
     "proto.yml": ["buf lint", "buf breaking", "buf generate"],
     "security.yml": ["cargo audit", "cargo deny", "pnpm", "pip-audit", "govulncheck"],

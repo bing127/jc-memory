@@ -39,7 +39,10 @@ jobs:
         run: cargo +"$RUST_TOOLCHAIN" clippy --workspace --all-targets --all-features -- -D warnings
       - name: Workspace 测试
         shell: bash
-        run: cargo +"$RUST_TOOLCHAIN" test --workspace --all-features
+        run: cargo +"$RUST_TOOLCHAIN" test --workspace --all-features --exclude jc-memory-python
+      - name: Python 绑定 crate 测试
+        shell: bash
+        run: cargo +"$RUST_TOOLCHAIN" test -p jc-memory-python --no-default-features
       - name: Workspace 文档
         shell: bash
         run: cargo +"$RUST_TOOLCHAIN" doc --workspace --no-deps
