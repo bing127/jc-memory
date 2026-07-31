@@ -175,6 +175,15 @@ where
             .unwrap_or(arguments.clone());
         let request: MemoryRequest = serde_json::from_value(request_value)
             .map_err(|error| McpServerError::InvalidArguments(error.to_string()))?;
+        let expected_command = name.strip_prefix("memory_").ok_or_else(|| {
+            McpServerError::InvalidArguments(format!("unknown memory tool: {name}"))
+        })?;
+        if command_name(&request.command) != expected_command {
+            return Err(McpServerError::InvalidArguments(format!(
+                "tool {name} cannot execute command {}",
+                command_name(&request.command)
+            )));
+        }
         let access = access_context(&request, name)?;
         let response = self.bus.execute(&access, request).await?;
         let structured = serde_json::to_value(&response)?;
@@ -205,6 +214,18 @@ fn access_context(request: &MemoryRequest, tool: &str) -> Result<AccessContext, 
         &context.scope,
     ));
     Ok(context)
+}
+
+fn command_name(command: &jc_memory_protocol::MemoryCommand) -> &'static str {
+    match command {
+        jc_memory_protocol::MemoryCommand::Observe(_) => "observe",
+        jc_memory_protocol::MemoryCommand::Commit(_) => "commit",
+        jc_memory_protocol::MemoryCommand::Recall(_) => "recall",
+        jc_memory_protocol::MemoryCommand::Stats(_) => "stats",
+        jc_memory_protocol::MemoryCommand::Correct(_) => "correct",
+        jc_memory_protocol::MemoryCommand::Forget(_) => "forget",
+        jc_memory_protocol::MemoryCommand::Explain(_) => "explain",
+    }
 }
 
 fn error_response(error: &McpServerError) -> Value {
@@ -240,12 +261,46 @@ fn tool_definitions() -> Vec<Value> {
     ]
     .into_iter()
     .map(|name| {
+        let command = name
+            .strip_prefix("memory_")
+            .expect("稳定工具名带 memory_ 前缀");
         json!({
             "name": name,
             "description": "调用疆诚记忆共享 CommandBus 并返回结构化协议结果",
             "inputSchema": {
                 "type": "object",
-                "properties": {"request": {"type":"object"}},
+                "properties": {
+                    "request": {
+                        "type": "object",
+                        "properties": {
+                            "api_version": {"type":"string", "const":"v1"},
+                            "request_id": {"type":"string", "minLength":1},
+                            "access_scope": {
+                                "type":"object",
+                                "properties": {
+                                    "namespace_id": {"type":"string"},
+                                    "tenant_id": {"type":["string","null"]},
+                                    "user_id": {"type":["string","null"]},
+                                    "agent_id": {"type":["string","null"]},
+                                    "project_id": {"type":["string","null"]}
+                                },
+                                "required":["namespace_id"],
+                                "additionalProperties":false
+                            },
+                            "command": {
+                                "type":"object",
+                                "properties": {
+                                    "command": {"type":"string", "const":command},
+                                    "payload": {}
+                                },
+                                "required":["command","payload"],
+                                "additionalProperties":false
+                            }
+                        },
+                        "required":["api_version","request_id","access_scope","command"],
+                        "additionalProperties":false
+                    }
+                },
                 "required": ["request"],
                 "additionalProperties": false,
             }

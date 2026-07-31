@@ -55,6 +55,22 @@ async fn initialize_and_tools_list_expose_the_stable_mcp_contract() {
             .iter()
             .all(|tool| tool["inputSchema"]["additionalProperties"] == false)
     );
+    for tool in tools {
+        let required = tool["inputSchema"]["properties"]["request"]["required"]
+            .as_array()
+            .expect("工具必须声明请求必填字段");
+        assert!(required.iter().any(|field| field == "access_scope"));
+        assert!(required.iter().any(|field| field == "command"));
+        assert_eq!(
+            tool["inputSchema"]["properties"]["request"]["properties"]["command"]["properties"]["command"]
+                ["const"],
+            tool["name"]
+                .as_str()
+                .unwrap()
+                .strip_prefix("memory_")
+                .unwrap()
+        );
+    }
 }
 
 #[tokio::test]
@@ -99,6 +115,14 @@ async fn tools_call_returns_structured_content_for_observe_and_commit() {
         commit["result"]["structuredContent"]["response"]["response"],
         "commit"
     );
+
+    let mismatch = server
+        .handle(json!({
+            "jsonrpc":"2.0","id":9,"method":"tools/call",
+            "params":{"name":"memory_stats","arguments":{"request":request}}
+        }))
+        .await;
+    assert_eq!(mismatch["error"]["code"], -32602);
 
     let invalid: Value = server
         .handle(json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"memory_observe","arguments":{}}}))

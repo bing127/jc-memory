@@ -10,6 +10,7 @@
 - Commit 接收同一访问 Scope 内的完整 Fragment 批次，按输入顺序返回每条权威追加结果；Fragment Kind、Validity 和证据字段保持原样，不会把 Prediction 或 ToolResult 提升为 Fact。
 - 工具调用失败返回稳定 JSON-RPC 错误分类，并在工具结果中保留结构化错误对象。
 - 设置 `JC_MEMORY_MCP_TOKEN` 后，`tools/call` 必须在参数中携带 `authToken`；Token 使用固定长度循环比较，错误返回 `-32001`，不会把 Token 写入响应。
+- `tools/list` 为每个工具声明 `v1`、`request_id`、`access_scope` 和对应 `command` 的必填结构；服务端会拒绝工具名与请求命令不一致的调用。
 
 ## 尚未实现
 
