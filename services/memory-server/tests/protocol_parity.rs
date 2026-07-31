@@ -13,7 +13,7 @@ use jc_memory_protocol::{
     Operation, RecallCommand, RecallId, RecallLimits, RecallMode, ResponseEnvelope, StatsCommand,
     StatsResult,
 };
-use jc_memory_server::{ApiKey, GrpcAdapter, ServerState, router};
+use jc_memory_server::{ApiKey, GrpcAdapter, ServerState, router, serve_grpc};
 use serde_json::{Value, json};
 use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt as _},
@@ -461,6 +461,43 @@ async fn explain_route_returns_structured_trace_envelope() {
     let envelope: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(envelope["response"]["response"], "explain");
     assert_eq!(envelope["response"]["payload"]["truncated"], false);
+}
+
+#[tokio::test]
+async fn tonic_execute_reuses_the_shared_adapter_over_tcp() {
+    use jc_memory_protocol::generated::jiangcheng::memory::v1::memory_service_client::MemoryServiceClient;
+
+    let request = request();
+    let key = ApiKey::new(
+        "test-key",
+        AccessContext::new("principal", request.access_scope.clone().into()),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let shutdown = CancellationToken::new();
+    let task = tokio::spawn(serve_grpc(
+        listener,
+        ServerState::new(FixtureBus, vec![key]),
+        shutdown.clone().cancelled_owned(),
+    ));
+
+    let endpoint = tonic::transport::Endpoint::from_shared(format!("http://{address}"))
+        .unwrap()
+        .connect_timeout(std::time::Duration::from_secs(2));
+    let mut client = MemoryServiceClient::connect(endpoint).await.unwrap();
+    let wire_request: jc_memory_protocol::generated::jiangcheng::memory::v1::RequestEnvelope =
+        request.clone().try_into().unwrap();
+    let mut grpc_request = tonic::Request::new(wire_request);
+    grpc_request
+        .metadata_mut()
+        .insert("x-api-key", "test-key".parse().unwrap());
+    let response = client.execute(grpc_request).await.unwrap();
+    let domain: ResponseEnvelope = response.into_inner().try_into().unwrap();
+    assert_eq!(domain.request_id, request.request_id);
+    assert!(matches!(domain.response, MemoryResponse::Observe(_)));
+
+    shutdown.cancel();
+    task.await.unwrap().unwrap();
 }
 
 #[tokio::test]

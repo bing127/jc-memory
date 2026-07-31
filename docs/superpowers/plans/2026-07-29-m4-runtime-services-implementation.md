@@ -122,7 +122,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - [ ] **步骤 4：Tonic 实现同一 CommandBus；REST/gRPC 共享 ErrorCode、request_id、trace_id；TLS 仅从文件/KeyProvider 加载，不记录密钥；Tower 加入超时、并发和速率限制。**
 - [ ] **步骤 5：运行协议测试并提交 `feat(server): expose secured HTTP and gRPC APIs`**。
 
-> 当前已落地 Server 基础边界：`/healthz`、`/readyz`、Observe/Recall/Stats/Correct/Forget REST 路由、API Key 到服务端 `AccessContext` 的映射，以及共享 `CommandBus` 的适配器。Commit、Explain、真实 Tonic gRPC、TLS 文件/KeyProvider 和速率限制仍待本 Task 后续步骤完成。
+> 当前已落地 Server 基础边界：`/healthz`、`/readyz`、Observe/Recall/Stats/Correct/Forget/Explain REST 路由、API Key 到服务端 `AccessContext` 的映射，以及共享 `CommandBus` 的适配器。真实 Tonic `Execute` 网络门面已接入；Protobuf 尚未扩展的命令、TLS 文件/KeyProvider 和速率限制仍待本 Task 后续步骤完成。
 
 ### 2026-07-31 进度记录
 
@@ -134,7 +134,8 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - 已将服务端 API Key 授权集中到精确 Scope 构造器，入口现在授予已公开的 `Observe`、`Recall` 与 `Mutate` 操作；真实二进制 `/v1/memory/stats` 探针通过 Core ACL 并返回零计数。
 - 已补齐 `MutationCommand`、`Correct`/`Forget` 动作和追加式 `MutationResult`，接入 `/v1/memory/correct` 与 `/v1/memory/forget`；Embedded CommandBus 临时 SQLite 闭环验证通过，入口同时授予 `Mutate`。
 - 已补齐结构化 `ExplainResult`（种子、遍历、Surface、验证 Fragment、预算和截断状态），复用 Recall 查询输入并接入 `/v1/memory/explain`；入口授予 `Explain`，Embedded CommandBus 映射测试通过。
-- 本记录不代表 Task 7 或 M4 完成；Commit、真实 Tonic gRPC 网络服务、TLS 文件/KeyProvider 和速率限制仍未实现。
+- 已在稳定 Proto 契约中加入 `MemoryService.Execute`，用 Tonic 0.13 生成真实 TCP gRPC Server/Client；`x-api-key` 元数据映射到同一 `GrpcAdapter`，网络契约测试和双端口启动探针通过。
+- 本记录不代表 Task 7 或 M4 完成；Commit、Recall/Mutation/Explain 的完整 Protobuf 消息扩展、TLS 文件/KeyProvider 和速率限制仍未实现。
 
 ## Task 8：实现本地 Sidecar
 

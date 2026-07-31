@@ -9,6 +9,8 @@ use jc_memory_protocol::NamespaceId;
 pub struct ServerConfig {
     /// HTTP 监听地址。
     pub bind: SocketAddr,
+    /// gRPC 监听地址。
+    pub grpc_bind: SocketAddr,
     /// Embedded Memory 数据目录。
     pub data_dir: PathBuf,
     /// 服务端 API Key。
@@ -22,8 +24,8 @@ pub struct ServerConfig {
 impl ServerConfig {
     /// 从环境变量读取配置。
     ///
-    /// 使用 `JC_MEMORY_BIND`、`JC_MEMORY_DATA_DIR`、`JC_MEMORY_API_KEY`、
-    /// `JC_MEMORY_NAMESPACE_ID` 和 `JC_MEMORY_MAX_IN_FLIGHT`。
+    /// 使用 `JC_MEMORY_BIND`、`JC_MEMORY_GRPC_BIND`、`JC_MEMORY_DATA_DIR`、
+    /// `JC_MEMORY_API_KEY`、`JC_MEMORY_NAMESPACE_ID` 和 `JC_MEMORY_MAX_IN_FLIGHT`。
     ///
     /// # Errors
     ///
@@ -33,6 +35,10 @@ impl ServerConfig {
             .unwrap_or_else(|| "127.0.0.1:8787".into())
             .parse::<SocketAddr>()
             .map_err(|error| ConfigError::Invalid("JC_MEMORY_BIND", error.to_string()))?;
+        let grpc_bind: SocketAddr = env_value("JC_MEMORY_GRPC_BIND")
+            .unwrap_or_else(|| "127.0.0.1:8788".into())
+            .parse::<SocketAddr>()
+            .map_err(|error| ConfigError::Invalid("JC_MEMORY_GRPC_BIND", error.to_string()))?;
         let data_dir = PathBuf::from(
             env_value("JC_MEMORY_DATA_DIR").unwrap_or_else(|| "./data/jc-memory".into()),
         );
@@ -54,6 +60,7 @@ impl ServerConfig {
         }
         Ok(Self {
             bind,
+            grpc_bind,
             data_dir,
             api_key,
             namespace_id,

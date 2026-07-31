@@ -220,3 +220,9 @@ message ErrorEnvelope {
   ErrorCode code = 3 [json_name = "code"];
   string message = 4 [json_name = "message"];
 }
+
+// MemoryService 是共享 CommandBus 的最小网络 gRPC 门面。
+service MemoryService {
+  // Execute 接收稳定请求外壳并返回稳定响应外壳。
+  rpc Execute(RequestEnvelope) returns (ResponseEnvelope);
+}

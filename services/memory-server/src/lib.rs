@@ -23,6 +23,10 @@ use axum::{
 use jc_memory_core::{CommandBus, CommandError};
 use jc_memory_protocol::{
     AccessContext, Grant, MemoryRequest, MemoryScope, Operation, ResponseEnvelope,
+    generated::jiangcheng::memory::v1::{
+        RequestEnvelope as ProtoRequestEnvelope, ResponseEnvelope as ProtoResponseEnvelope,
+        memory_service_server::{MemoryService, MemoryServiceServer},
+    },
 };
 use serde::Serialize;
 use serde_json::json;
@@ -154,6 +158,73 @@ where
 {
     axum::serve(listener, router(state))
         .with_graceful_shutdown(shutdown)
+        .await
+        .map_err(|error| ServerError::Transport(error.to_string()))
+}
+
+/// 共享 `CommandBus` 的真实 Tonic gRPC 服务实现。
+#[derive(Clone)]
+pub struct TonicMemoryService<B> {
+    adapter: GrpcAdapter<B>,
+}
+
+impl<B> TonicMemoryService<B>
+where
+    B: CommandBus + Send + Sync + 'static,
+{
+    /// 从服务状态创建 Tonic 服务。
+    #[must_use]
+    pub fn new(state: ServerState<B>) -> Self {
+        Self {
+            adapter: GrpcAdapter::new(state),
+        }
+    }
+}
+
+#[tonic::async_trait]
+impl<B> MemoryService for TonicMemoryService<B>
+where
+    B: CommandBus + Send + Sync + 'static,
+{
+    async fn execute(
+        &self,
+        request: tonic::Request<ProtoRequestEnvelope>,
+    ) -> Result<tonic::Response<ProtoResponseEnvelope>, tonic::Status> {
+        let key = extract_tonic_api_key(request.metadata())
+            .ok_or_else(|| tonic::Status::unauthenticated("unauthorized"))?;
+        let domain_request = jc_memory_protocol::MemoryRequest::try_from(request.into_inner())
+            .map_err(|error| tonic::Status::invalid_argument(error.to_string()))?;
+        let response = self
+            .adapter
+            .execute(&key, domain_request)
+            .await
+            .map_err(|error| grpc_status(&error))?;
+        let wire_response = ProtoResponseEnvelope::try_from(response)
+            .map_err(|error| tonic::Status::internal(error.to_string()))?;
+        Ok(tonic::Response::new(wire_response))
+    }
+}
+
+/// 在 TCP Listener 上运行真实 Tonic gRPC 服务。
+///
+/// # Errors
+///
+/// Listener 接受循环失败或优雅关闭前出现传输错误时返回错误。
+pub async fn serve_grpc<B, F>(
+    listener: TcpListener,
+    state: ServerState<B>,
+    shutdown: F,
+) -> Result<(), ServerError>
+where
+    B: CommandBus + Send + Sync + 'static,
+    F: Future<Output = ()> + Send + 'static,
+{
+    tonic::transport::Server::builder()
+        .add_service(MemoryServiceServer::new(TonicMemoryService::new(state)))
+        .serve_with_incoming_shutdown(
+            tokio_stream::wrappers::TcpListenerStream::new(listener),
+            shutdown,
+        )
         .await
         .map_err(|error| ServerError::Transport(error.to_string()))
 }
@@ -314,6 +385,17 @@ fn extract_api_key(headers: &HeaderMap) -> Option<String> {
     value.strip_prefix("Bearer ").map(str::to_owned)
 }
 
+fn extract_tonic_api_key(metadata: &tonic::metadata::MetadataMap) -> Option<String> {
+    if let Some(value) = metadata
+        .get("x-api-key")
+        .and_then(|value| value.to_str().ok())
+    {
+        return Some(value.to_owned());
+    }
+    let value = metadata.get("authorization")?.to_str().ok()?;
+    value.strip_prefix("Bearer ").map(str::to_owned)
+}
+
 /// gRPC/SDK 适配器的共享语义入口。
 #[derive(Clone)]
 pub struct GrpcAdapter<B> {
@@ -380,6 +462,38 @@ impl ServerError {
             source,
         }
     }
+}
+
+fn grpc_status(error: &ServerError) -> tonic::Status {
+    let (code, request_id) = match &error {
+        ServerError::Unauthorized => (tonic::Code::Unauthenticated, None),
+        ServerError::RateLimited => (tonic::Code::ResourceExhausted, None),
+        ServerError::Transport(_) => (tonic::Code::Internal, None),
+        ServerError::Command { source, request_id } => {
+            let code = match source.code() {
+                jc_memory_protocol::CommandErrorCode::InvalidArgument => {
+                    tonic::Code::InvalidArgument
+                }
+                jc_memory_protocol::CommandErrorCode::PermissionDenied => {
+                    tonic::Code::PermissionDenied
+                }
+                jc_memory_protocol::CommandErrorCode::NotFound => tonic::Code::NotFound,
+                jc_memory_protocol::CommandErrorCode::Conflict => tonic::Code::AlreadyExists,
+                jc_memory_protocol::CommandErrorCode::ResourceExhausted => {
+                    tonic::Code::ResourceExhausted
+                }
+                jc_memory_protocol::CommandErrorCode::Internal => tonic::Code::Internal,
+            };
+            (code, Some(request_id.as_str()))
+        }
+    };
+    let mut status = tonic::Status::new(code, error.to_string());
+    if let Some(request_id) = request_id {
+        if let Ok(value) = request_id.parse() {
+            status.metadata_mut().insert("x-request-id", value);
+        }
+    }
+    status
 }
 
 #[derive(Serialize)]
