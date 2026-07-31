@@ -2,16 +2,38 @@
 //! Sidecar 本地认证、单实例和生命周期契约测试。
 
 use std::os::unix::fs::PermissionsExt as _;
+use std::sync::Arc;
 
-use jc_memory_core::{EmbeddedCommandBus, MemoryConfig, MemoryEngine};
+use async_trait::async_trait;
+use jc_memory_core::{CommandBus, CommandError, EmbeddedCommandBus, MemoryConfig, MemoryEngine};
 use jc_memory_protocol::{
     API_VERSION_V1, AccessScope, CommitCommand, FragmentContent, FragmentKind, FragmentSource,
     MemoryCommand, MemoryRequest, MemoryScope, NamespaceId, Perspective, SecurityLabel, SourceType,
-    ValidityStatus,
+    StatsCommand, ValidityStatus,
 };
 use jc_memory_sidecar::{
     DaemonCommand, InstanceLock, LockError, SidecarConfig, SidecarDaemon, TokenStore, send_command,
 };
+use tokio::sync::Notify;
+
+#[derive(Clone)]
+struct BlockingBus {
+    started: Arc<Notify>,
+    release: Arc<Notify>,
+}
+
+#[async_trait]
+impl CommandBus for BlockingBus {
+    async fn execute(
+        &self,
+        _access: &jc_memory_protocol::AccessContext,
+        _request: MemoryRequest,
+    ) -> Result<jc_memory_protocol::ResponseEnvelope, CommandError> {
+        self.started.notify_one();
+        self.release.notified().await;
+        Err(CommandError::RequestIdMismatch)
+    }
+}
 
 #[tokio::test]
 async fn token_file_is_fixed_length_owner_only_and_constant_time_comparable() {
@@ -154,4 +176,62 @@ async fn authenticated_execute_forwards_commit_to_shared_command_bus() {
     task.await
         .expect("等待 Sidecar 任务")
         .expect("Sidecar 正常退出");
+}
+
+#[tokio::test]
+async fn stop_is_accepted_while_an_execute_is_in_flight_and_waits_for_release() {
+    let directory = tempfile::tempdir().expect("创建 Sidecar 目录");
+    let config = SidecarConfig::local(directory.path());
+    let started = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let bus = Arc::new(BlockingBus {
+        started: Arc::clone(&started),
+        release: Arc::clone(&release),
+    });
+    let daemon = SidecarDaemon::bind_with_bus(config.clone(), bus)
+        .await
+        .expect("绑定阻塞测试 Sidecar");
+    let token = daemon.token().clone();
+    let scope = MemoryScope::new(NamespaceId::new());
+    let request = MemoryRequest {
+        api_version: API_VERSION_V1.into(),
+        request_id: "sidecar-in-flight".into(),
+        access_scope: AccessScope::from(scope),
+        command: MemoryCommand::Stats(StatsCommand),
+    };
+    let daemon_task = tokio::spawn(daemon.run());
+    let execute_config = config.clone();
+    let execute_token = token.clone();
+    let execute_task = tokio::spawn(async move {
+        send_command(
+            &execute_config,
+            &execute_token,
+            DaemonCommand::Execute {
+                request: Box::new(request),
+            },
+        )
+        .await
+    });
+    started.notified().await;
+
+    let stop = tokio::time::timeout(
+        std::time::Duration::from_millis(100),
+        send_command(&config, &token, DaemonCommand::Stop),
+    )
+    .await
+    .expect("Stop 必须在 Execute 完成前被接收")
+    .expect("发送 Stop");
+    assert_eq!(stop.status, "stopping");
+    assert!(!daemon_task.is_finished());
+
+    release.notify_one();
+    let execute = execute_task
+        .await
+        .expect("等待在途 Execute")
+        .expect("Execute 控制响应");
+    assert_eq!(execute.status, "error");
+    daemon_task
+        .await
+        .expect("等待 Sidecar 优雅关闭")
+        .expect("Sidecar 正常关闭");
 }

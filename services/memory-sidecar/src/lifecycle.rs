@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use tokio::{
     io::{AsyncBufReadExt as _, AsyncWriteExt as _},
     sync::Mutex,
+    task::JoinSet,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -129,28 +130,44 @@ impl SidecarDaemon {
     ///
     /// 接收连接或读写控制消息失败时返回错误。
     pub async fn run(self) -> Result<(), SidecarError> {
+        let mut connections = JoinSet::new();
         loop {
             tokio::select! {
-                () = self.stop.cancelled() => return Ok(()),
+                () = self.stop.cancelled() => {
+                    while let Some(result) = connections.join_next().await {
+                        result
+                            .map_err(|error| SidecarError::Io(io::Error::other(format!("Sidecar 连接任务异常退出: {error}"))))??;
+                    }
+                    return Ok(())
+                },
                 accepted = self.listener.accept() => {
                     let stream = accepted?;
                     let stop = self.stop.clone();
                     let token = self.token.clone();
                     let config = self.config.clone();
                     let active_connections = Arc::clone(&self.active_connections);
+                    let bus = self.bus.clone();
                     {
                         let mut active = active_connections.lock().await;
                         *active += 1;
                     }
-                    handle_connection(
-                        stream,
-                        token,
-                        config,
-                        stop.clone(),
-                        active_connections,
-                        self.bus.clone(),
-                    )
-                    .await?;
+                    connections.spawn(async move {
+                        handle_connection(
+                            stream,
+                            token,
+                            config,
+                            stop,
+                            active_connections,
+                            bus,
+                        )
+                        .await
+                    });
+                },
+                joined = connections.join_next(), if !connections.is_empty() => {
+                    if let Some(result) = joined {
+                        result
+                            .map_err(|error| SidecarError::Io(io::Error::other(format!("Sidecar 连接任务异常退出: {error}"))))??;
+                    }
                 }
             }
         }

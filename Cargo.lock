@@ -1372,6 +1372,7 @@ dependencies = [
 name = "jc-memory-sidecar"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chrono",
  "fs2",
  "getrandom 0.4.3",
