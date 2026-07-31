@@ -207,6 +207,17 @@ message RecallCommand {
 // StatsCommand 读取当前授权 Scope 的权威记录统计。
 message StatsCommand {}
 
+// MutationCommand 描述纠正或失效一条权威 Fragment 的变更输入。
+message MutationCommand {
+  string target_fragment_id = 1 [json_name = "targetFragmentId"];
+  FragmentContent content = 2 [json_name = "content"];
+  FragmentSource source = 3 [json_name = "source"];
+  Perspective perspective = 4 [json_name = "perspective"];
+  google.protobuf.Timestamp occurred_at = 5 [json_name = "occurredAt"];
+  VerificationMethod verification_method = 6 [json_name = "verificationMethod"];
+  string reason = 7 [json_name = "reason"];
+}
+
 // RequestEnvelope 是所有命令共享的稳定请求外壳。
 message RequestEnvelope {
   string api_version = 1 [json_name = "apiVersion"];
@@ -217,6 +228,8 @@ message RequestEnvelope {
     ObserveCommand observe = 10 [json_name = "observe"];
     RecallCommand recall = 11 [json_name = "recall"];
     StatsCommand stats = 12 [json_name = "stats"];
+    MutationCommand correct = 13 [json_name = "correct"];
+    MutationCommand forget = 14 [json_name = "forget"];
   }
 }
 
@@ -235,6 +248,22 @@ message StatsResult {
   AccessScope scope = 1 [json_name = "scope"];
   uint64 fragment_count = 2 [json_name = "fragmentCount"];
   uint64 event_count = 3 [json_name = "eventCount"];
+}
+
+enum MutationAction {
+  MUTATION_ACTION_UNSPECIFIED = 0;
+  MUTATION_ACTION_CORRECT = 1;
+  MUTATION_ACTION_FORGET = 2;
+}
+
+// MutationResult 返回已追加变更记录的稳定标识。
+message MutationResult {
+  MutationAction action = 1 [json_name = "action"];
+  string target_fragment_id = 2 [json_name = "targetFragmentId"];
+  string fragment_id = 3 [json_name = "fragmentId"];
+  string event_id = 4 [json_name = "eventId"];
+  uint64 sequence = 5 [json_name = "sequence"];
+  optional EdgeKind relation = 6 [json_name = "relation"];
 }
 
 // EvidenceView 指向支撑派生结果的权威记录。
@@ -421,6 +450,7 @@ message ResponseEnvelope {
     ObserveResult observe = 10 [json_name = "observe"];
     MemoryPacket recall = 11 [json_name = "recall"];
     StatsResult stats = 12 [json_name = "stats"];
+    MutationResult mutation = 13 [json_name = "mutation"];
   }
 }
 

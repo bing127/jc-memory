@@ -11,10 +11,11 @@ use crate::{
     AccessScope, CognitiveFragment, ConflictView, Coverage, EdgeKind, EpisodeView, EvidenceRef,
     EvidenceView, FragmentContent, FragmentKind, FragmentSource, IdParseError, KnowledgeKind,
     KnowledgeView, MemoryCommand, MemoryPacket, MemoryRequest, MemoryResponse, MemoryScope,
-    MissingEvidence, ObserveCommand, ObserveResult, Perspective, PointKind, PointView,
-    ProcedureView, RecallLimits, RecallMode, RecallPath, RequestValidationError, ResponseEnvelope,
-    SecurityLabel, SourceType, StateView, StatsCommand, StatsResult, SurfaceStatus, SurfaceView,
-    ValidityStatus, VerificationMethod, generated::jiangcheng::memory::v1 as proto,
+    MissingEvidence, MutationAction, MutationCommand, MutationResult, ObserveCommand,
+    ObserveResult, Perspective, PointKind, PointView, ProcedureView, RecallLimits, RecallMode,
+    RecallPath, RequestValidationError, ResponseEnvelope, SecurityLabel, SourceType, StateView,
+    StatsCommand, StatsResult, SurfaceStatus, SurfaceView, ValidityStatus, VerificationMethod,
+    generated::jiangcheng::memory::v1 as proto,
 };
 
 /// 领域协议与 Protobuf 之间的稳定转换错误。
@@ -112,10 +113,11 @@ impl TryFrom<MemoryRequest> for proto::RequestEnvelope {
             MemoryCommand::Stats(_) => {
                 proto::request_envelope::Command::Stats(proto::StatsCommand {})
             }
-            MemoryCommand::Correct(_) | MemoryCommand::Forget(_) => {
-                return Err(ProtoConversionError::Unsupported {
-                    kind: "mutation command",
-                });
+            MemoryCommand::Correct(command) => {
+                proto::request_envelope::Command::Correct(mutation_command_to_proto(command))
+            }
+            MemoryCommand::Forget(command) => {
+                proto::request_envelope::Command::Forget(mutation_command_to_proto(command))
             }
             MemoryCommand::Explain(_) => {
                 return Err(ProtoConversionError::Unsupported {
@@ -146,6 +148,12 @@ impl TryFrom<proto::RequestEnvelope> for MemoryRequest {
                 MemoryCommand::Recall(recall_command_from_proto(command)?)
             }
             proto::request_envelope::Command::Stats(_) => MemoryCommand::Stats(StatsCommand),
+            proto::request_envelope::Command::Correct(command) => {
+                MemoryCommand::Correct(mutation_command_from_proto(command)?)
+            }
+            proto::request_envelope::Command::Forget(command) => {
+                MemoryCommand::Forget(mutation_command_from_proto(command)?)
+            }
         };
         let request = Self {
             api_version: request.api_version,
@@ -172,10 +180,8 @@ impl TryFrom<ResponseEnvelope> for proto::ResponseEnvelope {
             MemoryResponse::Stats(result) => {
                 proto::response_envelope::Response::Stats(result.into())
             }
-            MemoryResponse::Mutation(_) => {
-                return Err(ProtoConversionError::Unsupported {
-                    kind: "mutation response",
-                });
+            MemoryResponse::Mutation(result) => {
+                proto::response_envelope::Response::Mutation(result.into())
             }
             MemoryResponse::Explain(_) => {
                 return Err(ProtoConversionError::Unsupported {
@@ -204,6 +210,9 @@ impl TryFrom<proto::ResponseEnvelope> for ResponseEnvelope {
             }
             proto::response_envelope::Response::Stats(result) => {
                 MemoryResponse::Stats(result.try_into()?)
+            }
+            proto::response_envelope::Response::Mutation(result) => {
+                MemoryResponse::Mutation(result.try_into()?)
             }
         };
         Ok(Self {
@@ -351,6 +360,66 @@ impl TryFrom<proto::StatsResult> for StatsResult {
             scope: required(result.scope, "stats_result.scope")?.try_into()?,
             fragment_count: result.fragment_count,
             event_count: result.event_count,
+        })
+    }
+}
+
+fn mutation_command_to_proto(command: MutationCommand) -> proto::MutationCommand {
+    proto::MutationCommand {
+        target_fragment_id: command.target_fragment_id.to_string(),
+        content: Some(fragment_content_to_proto(command.content)),
+        source: Some(fragment_source_to_proto(command.source)),
+        perspective: perspective_to_proto(command.perspective),
+        occurred_at: Some(datetime_to_proto(command.occurred_at)),
+        verification_method: verification_method_to_proto(command.verification_method),
+        reason: command.reason,
+    }
+}
+
+fn mutation_command_from_proto(
+    command: proto::MutationCommand,
+) -> Result<MutationCommand, ProtoConversionError> {
+    Ok(MutationCommand {
+        target_fragment_id: parse_id("mutation.target_fragment_id", &command.target_fragment_id)?,
+        content: fragment_content_from_proto(required(command.content, "mutation.content")?)?,
+        source: fragment_source_from_proto(required(command.source, "mutation.source")?)?,
+        perspective: perspective_from_proto(command.perspective)?,
+        occurred_at: datetime_from_proto(
+            "mutation.occurred_at",
+            required(command.occurred_at, "mutation.occurred_at")?,
+        )?,
+        verification_method: verification_method_from_proto(command.verification_method)?,
+        reason: command.reason,
+    })
+}
+
+impl From<MutationResult> for proto::MutationResult {
+    fn from(result: MutationResult) -> Self {
+        Self {
+            action: mutation_action_to_proto(result.action),
+            target_fragment_id: result.target_fragment_id.to_string(),
+            fragment_id: result.fragment_id.to_string(),
+            event_id: result.event_id.to_string(),
+            sequence: result.sequence,
+            relation: result.relation.map(edge_kind_to_proto),
+        }
+    }
+}
+
+impl TryFrom<proto::MutationResult> for MutationResult {
+    type Error = ProtoConversionError;
+
+    fn try_from(result: proto::MutationResult) -> Result<Self, Self::Error> {
+        Ok(Self {
+            action: mutation_action_from_proto(result.action)?,
+            target_fragment_id: parse_id(
+                "mutation_result.target_fragment_id",
+                &result.target_fragment_id,
+            )?,
+            fragment_id: parse_id("mutation_result.fragment_id", &result.fragment_id)?,
+            event_id: parse_id("mutation_result.event_id", &result.event_id)?,
+            sequence: result.sequence,
+            relation: result.relation.map(edge_kind_from_proto).transpose()?,
         })
     }
 }
@@ -1088,6 +1157,23 @@ fn recall_mode_to_proto(value: RecallMode) -> i32 {
         RecallMode::HistoricalState => proto::RecallMode::HistoricalState,
         RecallMode::DeepReconstruction => proto::RecallMode::DeepReconstruction,
     }) as i32
+}
+
+fn mutation_action_to_proto(value: MutationAction) -> i32 {
+    (match value {
+        MutationAction::Correct => proto::MutationAction::Correct,
+        MutationAction::Forget => proto::MutationAction::Forget,
+    }) as i32
+}
+
+fn mutation_action_from_proto(value: i32) -> Result<MutationAction, ProtoConversionError> {
+    match proto::MutationAction::try_from(value).ok() {
+        Some(proto::MutationAction::Correct) => Ok(MutationAction::Correct),
+        Some(proto::MutationAction::Forget) => Ok(MutationAction::Forget),
+        Some(proto::MutationAction::Unspecified) | None => {
+            Err(unknown("mutation_result.action", value))
+        }
+    }
 }
 
 fn recall_mode_from_proto(value: i32) -> Result<RecallMode, ProtoConversionError> {

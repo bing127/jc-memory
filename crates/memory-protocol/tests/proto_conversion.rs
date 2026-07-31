@@ -6,11 +6,11 @@ use chrono::{DateTime, Utc};
 use jc_memory_protocol::{
     API_VERSION_V1, AccessScope, AgentId, BlobId, CognitiveFragment, EventId, EvidenceId,
     EvidenceRef, FragmentContent, FragmentId, FragmentKind, FragmentSource, MemoryCommand,
-    MemoryPacket, MemoryRequest, MemoryResponse, MemoryScope, NamespaceId, ObserveCommand,
-    ObserveResult, Perspective, ProjectId, RecallCommand, RecallLimits, RecallMode,
-    ResponseEnvelope, SecurityLabel, SessionId, SourceType, StatsCommand, StatsResult, TenantId,
-    TraceId, UserId, ValidityStatus, VerificationMethod,
-    generated::jiangcheng::memory::v1 as proto,
+    MemoryPacket, MemoryRequest, MemoryResponse, MemoryScope, MutationAction, MutationCommand,
+    MutationResult, NamespaceId, ObserveCommand, ObserveResult, Perspective, ProjectId,
+    RecallCommand, RecallLimits, RecallMode, ResponseEnvelope, SecurityLabel, SessionId,
+    SourceType, StatsCommand, StatsResult, TenantId, TraceId, UserId, ValidityStatus,
+    VerificationMethod, generated::jiangcheng::memory::v1 as proto,
 };
 use prost::Message as _;
 
@@ -160,6 +160,94 @@ fn stats_proto_round_trip_preserves_scope_counts() {
         ResponseEnvelope::try_from(response_decoded).expect("Stats 响应转 Rust"),
         response
     );
+}
+
+#[test]
+fn mutation_proto_round_trip_preserves_correct_and_forget() {
+    let scope = AccessScope::from(MemoryScope::new(NamespaceId::new()));
+    let target_fragment_id = "00000000-0000-7000-8000-000000000010".parse().unwrap();
+    for (action, command) in [
+        (
+            MutationAction::Correct,
+            MemoryCommand::Correct(MutationCommand {
+                target_fragment_id,
+                content: FragmentContent::Text {
+                    text: "更正后的事实".into(),
+                },
+                source: FragmentSource {
+                    source_type: SourceType::User,
+                    source_id: "operator".into(),
+                    actor_id: None,
+                    observer_id: None,
+                    tool_id: None,
+                    uri: Some("urn:fixture:correction".into()),
+                },
+                perspective: Perspective::FirstPerson,
+                occurred_at: timestamp("2026-07-31T01:02:03Z"),
+                verification_method: VerificationMethod::Manual,
+                reason: "人工核验".into(),
+            }),
+        ),
+        (
+            MutationAction::Forget,
+            MemoryCommand::Forget(MutationCommand {
+                target_fragment_id,
+                content: FragmentContent::Text {
+                    text: "应当失效的事实".into(),
+                },
+                source: FragmentSource {
+                    source_type: SourceType::System,
+                    source_id: "retention".into(),
+                    actor_id: None,
+                    observer_id: None,
+                    tool_id: None,
+                    uri: None,
+                },
+                perspective: Perspective::System,
+                occurred_at: timestamp("2026-07-31T02:03:04Z"),
+                verification_method: VerificationMethod::Tool,
+                reason: "保留策略".into(),
+            }),
+        ),
+    ] {
+        let request = MemoryRequest {
+            api_version: API_VERSION_V1.to_owned(),
+            request_id: format!("req-{action:?}"),
+            access_scope: scope.clone(),
+            command,
+        };
+        let response = ResponseEnvelope::for_request(
+            &request,
+            MemoryResponse::Mutation(MutationResult {
+                action,
+                target_fragment_id,
+                fragment_id: "00000000-0000-7000-8000-000000000011".parse().unwrap(),
+                event_id: "00000000-0000-7000-8000-000000000012".parse().unwrap(),
+                sequence: 7,
+                relation: None,
+            }),
+        );
+
+        let request_wire =
+            proto::RequestEnvelope::try_from(request.clone()).expect("变更请求转 Proto");
+        let request_decoded =
+            proto::RequestEnvelope::decode(request_wire.encode_to_vec().as_slice())
+                .expect("解码变更请求");
+        assert_eq!(
+            MemoryRequest::try_from(request_decoded).expect("变更请求转 Rust"),
+            request
+        );
+
+        let response_wire =
+            proto::ResponseEnvelope::try_from(response.clone()).expect("变更响应转 Proto");
+        let response_decoded =
+            proto::ResponseEnvelope::decode(response_wire.encode_to_vec().as_slice())
+                .expect("解码变更响应");
+        assert_eq!(
+            ResponseEnvelope::try_from(response_decoded).expect("变更响应转 Rust"),
+            response
+        );
+    }
 }
 
 fn complete_request(content: FragmentContent) -> MemoryRequest {
