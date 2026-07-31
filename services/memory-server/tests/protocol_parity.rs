@@ -8,12 +8,13 @@ use axum::{
     http::{Request, StatusCode},
 };
 use http_body_util::BodyExt as _;
-use jc_memory_core::{CommandBus, CommandError};
+use jc_memory_core::{CommandBus, CommandError, EmbeddedCommandBus, MemoryConfig, MemoryEngine};
+use jc_memory_mcp::McpServer;
 use jc_memory_protocol::{
     API_VERSION_V1, AccessContext, AccessScope, CommitCommand, CommitResult, ExplainResult,
-    MemoryCommand, MemoryPacket, MemoryRequest, MemoryResponse, MutationAction, MutationCommand,
-    MutationResult, ObserveResult, Operation, RecallCommand, RecallId, RecallLimits, RecallMode,
-    ResponseEnvelope, StatsCommand, StatsResult,
+    MemoryCommand, MemoryPacket, MemoryRequest, MemoryResponse, MemoryScope, MutationAction,
+    MutationCommand, MutationResult, ObserveResult, Operation, RecallCommand, RecallId,
+    RecallLimits, RecallMode, ResponseEnvelope, StatsCommand, StatsResult,
 };
 use jc_memory_server::{ApiKey, GrpcAdapter, ServerError, ServerState, router, serve_grpc};
 use serde_json::{Value, json};
@@ -128,6 +129,136 @@ async fn rest_and_grpc_adapter_return_the_same_canonical_envelope() {
         .await
         .unwrap();
     assert_eq!(rest, serde_json::to_value(grpc).unwrap());
+}
+
+#[tokio::test]
+// 四种协议在同一个真实 Fixture 上比较，保持测试步骤线性便于审查。
+#[allow(clippy::too_many_lines)]
+async fn real_engine_recall_matches_across_embedded_rest_grpc_and_mcp() {
+    use jc_memory_protocol::{Grant, Operation};
+
+    let directory = tempfile::tempdir().unwrap();
+    let engine = MemoryEngine::open(MemoryConfig::local(directory.path()))
+        .await
+        .unwrap();
+    let bus = EmbeddedCommandBus::new(engine);
+    let observe_request = request();
+    let scope: MemoryScope = observe_request.access_scope.clone().into();
+    let mut observe_access = AccessContext::new("e2e", scope.clone());
+    observe_access.request_id = observe_request.request_id.clone();
+    observe_access
+        .grants
+        .insert(Grant::for_scope(Operation::Observe, &scope));
+    bus.execute(&observe_access, observe_request).await.unwrap();
+
+    let mut recall = request();
+    recall.request_id = "cross-protocol-recall".into();
+    recall.command = MemoryCommand::Recall(RecallCommand {
+        mode: RecallMode::Exact,
+        text: "fixture".into(),
+        entities: Vec::new(),
+        at_time: None,
+        limits: RecallLimits {
+            max_seeds: 4,
+            max_neighbors: 4,
+            max_hops: 2,
+            max_nodes: 8,
+            timeout_ms: 100,
+        },
+    });
+    let mut recall_access = AccessContext::new("e2e", scope.clone());
+    recall_access.request_id = recall.request_id.clone();
+    recall_access
+        .grants
+        .insert(Grant::for_scope(Operation::Recall, &scope));
+    let embedded = bus.execute(&recall_access, recall.clone()).await.unwrap();
+
+    let key = ApiKey::for_scope(
+        "test-key",
+        "e2e",
+        scope.clone(),
+        [Operation::Recall, Operation::Observe],
+    );
+    let rest_response = router(ServerState::new(bus.clone(), vec![key]))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/memory/recall")
+                .header("content-type", "application/json")
+                .header("x-api-key", "test-key")
+                .body(Body::from(serde_json::to_vec(&recall).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(rest_response.status(), StatusCode::OK);
+    let rest_bytes = rest_response
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes();
+    let rest: Value = serde_json::from_slice(&rest_bytes).unwrap();
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let shutdown = CancellationToken::new();
+    let grpc_key = ApiKey::for_scope(
+        "test-key",
+        "e2e",
+        scope.clone(),
+        [Operation::Recall, Operation::Observe],
+    );
+    let task = tokio::spawn(serve_grpc(
+        listener,
+        ServerState::new(bus.clone(), vec![grpc_key]),
+        shutdown.clone().cancelled_owned(),
+    ));
+    let endpoint = tonic::transport::Endpoint::from_shared(format!("http://{address}"))
+        .unwrap()
+        .connect_timeout(Duration::from_secs(2));
+    let mut client = jc_memory_protocol::generated::jiangcheng::memory::v1::memory_service_client::MemoryServiceClient::connect(endpoint)
+        .await
+        .unwrap();
+    let mut grpc_request = tonic::Request::new(recall.clone().try_into().unwrap());
+    grpc_request
+        .metadata_mut()
+        .insert("x-api-key", "test-key".parse().unwrap());
+    let grpc = client.execute(grpc_request).await.unwrap();
+    let grpc: ResponseEnvelope = grpc.into_inner().try_into().unwrap();
+    shutdown.cancel();
+    task.await.unwrap().unwrap();
+
+    let mcp = McpServer::new(bus);
+    let mcp_response = mcp
+        .handle(json!({
+            "jsonrpc":"2.0",
+            "id":1,
+            "method":"tools/call",
+            "params":{"name":"memory_recall","arguments":{"request":recall}}
+        }))
+        .await;
+
+    let embedded = canonical_packet(serde_json::to_value(embedded).unwrap());
+    let rest = canonical_packet(rest);
+    let grpc = canonical_packet(serde_json::to_value(grpc).unwrap());
+    let mcp = canonical_packet(mcp_response["result"]["structuredContent"].clone());
+    assert_eq!(embedded, rest);
+    assert_eq!(embedded, grpc);
+    assert_eq!(embedded, mcp);
+}
+
+fn canonical_packet(mut envelope: Value) -> Value {
+    let packet = envelope
+        .get_mut("response")
+        .and_then(Value::as_object_mut)
+        .and_then(|response| response.get_mut("payload"))
+        .expect("响应必须包含 Packet")
+        .clone();
+    let mut packet = packet;
+    packet["query_id"] = Value::Null;
+    packet["recommended_context"] = Value::Null;
+    packet
 }
 
 #[tokio::test]

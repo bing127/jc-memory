@@ -189,7 +189,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 **文件：** `tests/e2e/runtime_loop.rs`、`tests/e2e/protocol_parity.rs`、部署与协议文档、README/CHANGELOG。
 
 - [ ] **步骤 1：确定性 Model/Tool 完成完整循环，实际失败否定“测试会通过”的 Prediction。**
-- [ ] **步骤 2：同一 Fixture 经 Embedded、REST、gRPC、MCP 调用，canonical Memory Packet 和 Evidence 集合一致。**
+- [x] **步骤 2：同一 Fixture 经 Embedded、REST、gRPC、MCP 调用，canonical Memory Packet 和 Evidence 集合一致。**
 - [ ] **步骤 3：编写 Runtime、Capability、Server、Sidecar、MCP、故障恢复和配置文档。**
 - [ ] **步骤 4：运行全仓 Rust 门禁、服务 E2E 和 `git diff --check`。**
 - [ ] **步骤 5：提交 `docs: complete M4 runtime and services milestone`**。
@@ -197,8 +197,9 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 ### 2026-07-31 进度记录
 
 - 已完成协议包、Server、Sidecar、MCP 和 Workspace 的 fmt、严格 Clippy、测试、rustdoc 与 `git diff --check` 门禁。
-- 已有 REST/gRPC Adapter 一致性、TCP gRPC Recall、MCP structuredContent 和 Runtime Fixture 契约测试；尚未形成同一真实 Embedded Fixture 贯穿四种入口的端到端测试。
-- Sidecar 记忆命令转发、真实 MCP 身份链和跨协议 canonical Packet/Evidence 对比仍待实现，因此不创建 M4 总 Tag。
+- 已有 REST/gRPC Adapter 一致性、TCP gRPC Recall、MCP structuredContent 和 Runtime Fixture 契约测试。
+- 已补充真实临时 SQLite Fixture：同一 Fragment 的 Recall 经 Embedded、REST、TCP gRPC 与 MCP 后，规范化去除每次请求随机的 `query_id` 后，完整 Memory Packet 保持一致。
+- Sidecar 完整身份转发、Runtime 完整闭环和部署级跨协议 E2E 仍待实现，因此不创建 M4 总 Tag。
 
 ## M4 完成定义
 

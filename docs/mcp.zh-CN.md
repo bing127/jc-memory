@@ -14,7 +14,7 @@
 
 ## 尚未实现
 
-当前 Commit 已接入领域协议和共享 `CommandBus`，权威 Fragment 批次在 SQLite 单事务中追加；自动 Quarantine 治理事件仍沿用既有治理路径。Sidecar 转发和完整 Embedded/REST/gRPC/MCP 跨协议 E2E 仍待后续阶段完成。未配置 `JC_MEMORY_MCP_TOKEN` 时仅适合由外层已认证进程托管的本地 stdio 模式；远程部署必须配置该变量。
+当前 Commit 已接入领域协议和共享 `CommandBus`，权威 Fragment 批次在 SQLite 单事务中追加；自动 Quarantine 治理事件仍沿用既有治理路径。真实临时 SQLite Fixture 已覆盖 Embedded、REST、TCP gRPC 与 MCP 的 Recall Packet 一致性；Sidecar 转发、完整 Runtime 闭环和部署级跨协议 E2E 仍待后续阶段完成。未配置 `JC_MEMORY_MCP_TOKEN` 时仅适合由外层已认证进程托管的本地 stdio 模式；远程部署必须配置该变量。
 
 ## 本地运行
 

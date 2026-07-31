@@ -1352,6 +1352,7 @@ dependencies = [
  "axum",
  "http-body-util",
  "jc-memory-core",
+ "jc-memory-mcp",
  "jc-memory-protocol",
  "serde",
  "serde_json",
