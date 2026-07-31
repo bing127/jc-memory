@@ -92,11 +92,11 @@ pub trait Metric { fn name(&self) -> &'static str; fn evaluate(&self, cases: &[B
 
 **文件：** `benchmarks/schema/report.schema.json`、`scripts/benchmark/{smoke,verify-report}.sh`、`docs/benchmarks/methodology.md`。
 
-- [ ] **步骤 1：写篡改 config digest、缺失 raw counts、虚构 platform 字段被拒绝的测试。**
-- [ ] **步骤 2：运行 Validator**，预期失败。
-- [ ] **步骤 3：报告必须包含 git commit、dirty 标志、Rust/Python/OS/CPU、数据 digest、配置、开始结束时间、原始计数、派生指标和是否 smoke；dirty 长测默认拒绝，除非显式标记 non-release。**
-- [ ] **步骤 4：Markdown 只由 JSON 报告生成；仓库只提交可重复 Smoke 基线，不提交未实际运行的百万结果。**
-- [ ] **步骤 5：运行验证并提交 `test(benchmarks): make reports reproducible and auditable`**。
+- [x] **步骤 1：写篡改 config digest、缺失 raw counts、虚构 platform 字段被拒绝的测试。** 已覆盖配置 Digest 篡改、原始计数缺失、未知 platform 字段和 dirty 长测门禁。
+- [x] **步骤 2：运行 Validator**，预期失败。已先确认验证器缺失导致契约测试红灯，再实现严格 JSON 审计验证。
+- [x] **步骤 3：报告必须包含 git commit、dirty 标志、Rust/Python/OS/CPU、数据 digest、配置、开始结束时间、原始计数、派生指标和是否 smoke；dirty 长测默认拒绝，除非显式标记 non-release。** 已实现 `jcmem.benchmark.audit.v1` Schema、Digest 重算、时间/计数/平台校验和 dirty 长测门禁。
+- [x] **步骤 4：Markdown 只由 JSON 报告生成；仓库只提交可重复 Smoke 基线，不提交未实际运行的百万结果。** 已新增 Smoke 生成脚本和中文方法论；Smoke 报告写入 ignored 的 `target`，生产结果未执行时明确为 `null`/0，不提交百万结果。
+- [x] **步骤 5：运行验证并提交 `test(benchmarks): make reports reproducible and auditable`**。契约测试、Smoke、Rustfmt、严格 Clippy、rustdoc、Shell/JSON 校验和 `git diff --check` 均已通过；实现提交为 `18b681f test(benchmarks): make reports reproducible and auditable`。
 
 ## Task 8：实现跨平台 CI 与供应链门禁
 
