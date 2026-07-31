@@ -154,8 +154,9 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 
 - [x] **步骤 1：写第二实例被锁拒绝、Token 错误、崩溃重启和 shutdown 失败测试。** 已覆盖锁拒绝、错误 Token、重启、在途 Execute 和优雅停止。
 - [x] **步骤 2：运行聚焦 Sidecar 契约测试。**
-- [ ] **步骤 3a：实现 Transport Trait；Unix 使用权限 0600 的 UDS，非 Unix 使用随机 Loopback 端点文件；Named Pipe 只保留 Trait 扩展点，不宣称已实现。`jcmemd` 运行守护进程；`jcmem` 提供 status/stop/doctor/observe/recall/commit/correct/forget/explain/stats 子命令并使用同一协议 Client。**
-- [ ] **步骤 3b：补充 `jcmem start` 以及 Windows 实机传输验证。**
+- [x] **步骤 3a：实现 Transport Trait；Unix 使用权限 0600 的 UDS，非 Unix 使用随机 Loopback 端点文件；Named Pipe 只保留 Trait 扩展点，不宣称已实现。`jcmemd` 运行守护进程；`jcmem` 提供 status/stop/doctor/observe/recall/commit/correct/forget/explain/stats 子命令并使用同一协议 Client。**
+- [x] **步骤 3b-1：补充 `jcmem start`，并通过本机启动、状态和停止探针。**
+- [ ] **步骤 3b-2：补充 Windows 实机传输验证。** 当前环境为 macOS，未宣称 Windows 实机验证。
 - [x] **步骤 4a：Token 使用 256-bit 随机值、权限受限文件和常量时间比较；停止流程等待已认证在途请求。**
 - [ ] **步骤 4b：文件锁记录 PID/启动标识并检测陈旧锁；checkpoint 恢复并显式关闭 DB。**
 - [x] **步骤 5a：运行 Sidecar 测试、Clippy、rustdoc、fmt 和 `git diff --check`。**
@@ -169,6 +170,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - 已增加 `jcmem observe/commit/recall/correct/forget/explain/stats` 专用子命令；每个子命令接收 `--request-file` 或 `--request-json`，并在发送前校验命令类型与 Envelope。
 - 已将 Sidecar 连接改为并发任务处理；`stop` 会停止接收新连接并等待已认证的在途连接完成后再退出，新增阻塞 CommandBus 契约测试。
 - 非 Unix Loopback 已通过端点文件保存随机端口并由客户端读取连接；Named Pipe、完整 checkpoint 恢复和跨协议身份链尚未实现。因此 Task 8 不标记为完成。
+- 已增加 `jcmemd` 守护进程别名和 `jcmem start`；本机临时目录启动、状态、停止探针通过。Windows 实机传输仍待专用环境验证。
 
 ## Task 9：实现 MCP Server
 

@@ -1,6 +1,6 @@
 # 本地 Sidecar
 
-当前仓库提供 `jc-memory-sidecar` 的本地认证与生命周期核心，二进制名称为 `jc-memory-sidecar`（守护进程）和 `jcmem`（控制命令）。
+当前仓库提供 `jc-memory-sidecar` 的本地认证与生命周期核心，二进制名称为 `jcmemd`（守护进程）和 `jcmem`（控制命令）。
 
 ## 已实现边界
 
@@ -12,12 +12,16 @@
 - 控制命令支持 `status`、`stop`、`doctor`，以及 `observe`、`commit`、`recall`、`correct`、`forget`、`explain`、`stats` 七个业务子命令。
 - 绑定 Core 的守护进程支持 `execute` 控制消息，将 `MemoryRequest` 转发到共享 `CommandBus` 并返回 `ResponseEnvelope`；Commit 已覆盖该转发路径。
 - 连接按任务并发处理；收到 `stop` 后停止接收新连接，并等待已经通过认证的在途请求完成响应后退出。
+- `jcmem start` 会在当前数据目录启动 `jcmemd`；如果已有可认证的守护进程则返回 `already_running`。
 
 ## 启动与控制
 
 ```bash
 JC_MEMORY_SIDECAR_DATA_DIR=/var/lib/jc-memory-sidecar \
-  cargo run --locked -p jc-memory-sidecar
+  cargo run --locked -p jc-memory-sidecar --bin jcmemd
+
+JC_MEMORY_SIDECAR_DATA_DIR=/var/lib/jc-memory-sidecar \
+  cargo run --locked -p jc-memory-sidecar --bin jcmem -- start
 
 JC_MEMORY_SIDECAR_DATA_DIR=/var/lib/jc-memory-sidecar \
   cargo run --locked -p jc-memory-sidecar --bin jcmem -- status

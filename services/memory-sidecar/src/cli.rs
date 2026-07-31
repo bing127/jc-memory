@@ -64,6 +64,8 @@ pub enum RequestInput {
 /// `jcmem` 已解析的控制命令。
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CliCommand {
+    /// 启动 Sidecar 守护进程。
+    Start,
     /// 查询 Sidecar 状态。
     Status,
     /// 停止 Sidecar。
@@ -84,7 +86,7 @@ pub enum CliCommand {
 pub enum CliError {
     /// 缺少顶层命令。
     #[error(
-        "缺少命令；用法: jcmem <status|stop|doctor|observe|commit|recall|correct|forget|explain|stats>"
+        "缺少命令；用法: jcmem <start|status|stop|doctor|observe|commit|recall|correct|forget|explain|stats>"
     )]
     MissingCommand,
     /// 命令名称不受支持。
@@ -122,6 +124,7 @@ where
         return Err(CliError::MissingCommand);
     };
     let command = match name.as_str() {
+        "start" => return finish_no_args(&mut arguments, CliCommand::Start),
         "status" => return finish_no_args(&mut arguments, CliCommand::Status),
         "stop" => return finish_no_args(&mut arguments, CliCommand::Stop),
         "doctor" => return finish_no_args(&mut arguments, CliCommand::Doctor),
@@ -203,6 +206,11 @@ mod tests {
                 "控制命令不接受额外参数: --request-json".into()
             ))
         );
+    }
+
+    #[test]
+    fn parses_start_without_request_payload() {
+        assert!(matches!(parse_args(["start"]), Ok(CliCommand::Start)));
     }
 
     #[test]
