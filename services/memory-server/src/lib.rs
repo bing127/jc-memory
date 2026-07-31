@@ -105,6 +105,7 @@ where
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
         .route("/metrics", get(metrics))
+        .route("/v1/memory/command", post(command::<B>))
         .route("/v1/memory/observe", post(observe::<B>))
         .with_state(state)
 }
@@ -148,6 +149,28 @@ async fn observe<B>(
     State(state): State<ServerState<B>>,
     headers: HeaderMap,
     Json(request): Json<MemoryRequest>,
+) -> Result<Json<ResponseEnvelope>, ServerError>
+where
+    B: CommandBus + Send + Sync + 'static,
+{
+    command_inner(state, headers, request).await
+}
+
+async fn command<B>(
+    State(state): State<ServerState<B>>,
+    headers: HeaderMap,
+    Json(request): Json<MemoryRequest>,
+) -> Result<Json<ResponseEnvelope>, ServerError>
+where
+    B: CommandBus + Send + Sync + 'static,
+{
+    command_inner(state, headers, request).await
+}
+
+async fn command_inner<B>(
+    state: ServerState<B>,
+    headers: HeaderMap,
+    request: MemoryRequest,
 ) -> Result<Json<ResponseEnvelope>, ServerError>
 where
     B: CommandBus + Send + Sync + 'static,

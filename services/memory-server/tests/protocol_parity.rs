@@ -109,6 +109,31 @@ async fn rest_and_grpc_adapter_return_the_same_canonical_envelope() {
 }
 
 #[tokio::test]
+async fn generic_command_route_reuses_the_same_core_envelope() {
+    let request = request();
+    let key = ApiKey::new(
+        "test-key",
+        AccessContext::new("principal", request.access_scope.clone().into()),
+    );
+    let response = router(ServerState::new(FixtureBus, vec![key]))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/memory/command")
+                .header("content-type", "application/json")
+                .header("x-api-key", "test-key")
+                .body(Body::from(serde_json::to_vec(&request).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let envelope: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(envelope["request_id"], "request-1");
+}
+
+#[tokio::test]
 async fn missing_api_key_is_rejected_without_calling_bus() {
     let state = ServerState::new(FixtureBus, Vec::new());
     let response = router(state)
