@@ -124,6 +124,13 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 
 > 当前已落地 Server 基础边界：`/healthz`、`/readyz`、Observe REST 路由、API Key 到服务端 `AccessContext` 的映射，以及共享 `CommandBus` 的 gRPC/SDK 适配器。完整 REST 命令集合、真实 Tonic gRPC、限流和优雅关闭仍待本 Task 后续步骤完成。
 
+### 2026-07-31 进度记录
+
+- 已增加真实 `memory-server` 二进制入口：从环境变量读取监听地址、数据目录、API Key、Namespace 和并发上限。
+- 已将 `MemoryEngine`、`EmbeddedCommandBus`、精确 `Observe` Scope Grant 和 HTTP Listener 接通。
+- 已接入 Ctrl-C 优雅关闭，并完成本机临时目录启动探针：`/healthz` 返回成功，进程收到 `SIGINT` 后以 0 退出。
+- 本记录不代表 Task 7 或 M4 完成；Recall、Commit、Correct、Forget、Explain、Stats 协议、真实 Tonic gRPC 网络服务和 TLS 文件/KeyProvider 仍未实现。
+
 ## Task 8：实现本地 Sidecar
 
 **文件：** `services/memory-sidecar/src/{main,config,transport,lock,token,lifecycle}.rs`、`src/bin/{jcmem,jcmemd}.rs`、集成测试。

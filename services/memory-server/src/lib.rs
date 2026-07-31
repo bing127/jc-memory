@@ -1,5 +1,9 @@
 //! 疆诚记忆 HTTP 与共享协议服务边界。
 
+mod config;
+
+pub use config::{ConfigError, ServerConfig};
+
 use std::{
     collections::BTreeMap,
     future::Future,
