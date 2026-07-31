@@ -1563,6 +1563,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "jc-memory-million-fragments"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "jc-memory-neural"
 version = "0.1.0"
 dependencies = [

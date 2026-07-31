@@ -27,6 +27,7 @@ members = [
   "services/memory-sidecar",
   "services/memory-mcp",
   "benchmarks/harness",
+  "benchmarks/million-fragments",
 ]
 
 [workspace.package]
