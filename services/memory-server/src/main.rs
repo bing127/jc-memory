@@ -2,8 +2,9 @@
 
 use jc_memory_core::{EmbeddedCommandBus, MemoryConfig, MemoryEngine};
 use jc_memory_protocol::{MemoryScope, Operation};
-use jc_memory_server::{ApiKey, ServerConfig, ServerState, serve, serve_grpc};
+use jc_memory_server::{ApiKey, ServerConfig, ServerState, serve, serve_grpc_with_tls};
 use tokio_util::sync::CancellationToken;
+use tonic::transport::{Identity, ServerTlsConfig};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -29,16 +30,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let listener = tokio::net::TcpListener::bind(config.bind).await?;
     let grpc_listener = tokio::net::TcpListener::bind(config.grpc_bind).await?;
+    let grpc_tls = match config.tls {
+        Some(files) => {
+            let certificate = tokio::fs::read(files.cert_file).await?;
+            let private_key = tokio::fs::read(files.key_file).await?;
+            Some(ServerTlsConfig::new().identity(Identity::from_pem(certificate, private_key)))
+        }
+        None => None,
+    };
     let shutdown = CancellationToken::new();
     let http_task = tokio::spawn(serve(
         listener,
         state.clone(),
         shutdown.clone().cancelled_owned(),
     ));
-    let grpc_task = tokio::spawn(serve_grpc(
+    let grpc_task = tokio::spawn(serve_grpc_with_tls(
         grpc_listener,
         state,
         shutdown.clone().cancelled_owned(),
+        grpc_tls,
     ));
     tracing::info!(
         http_address = %config.bind,

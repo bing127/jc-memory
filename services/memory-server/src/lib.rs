@@ -2,7 +2,7 @@
 
 mod config;
 
-pub use config::{ConfigError, ServerConfig};
+pub use config::{ConfigError, ServerConfig, TlsFiles};
 
 use std::{
     collections::BTreeMap,
@@ -219,7 +219,31 @@ where
     B: CommandBus + Send + Sync + 'static,
     F: Future<Output = ()> + Send + 'static,
 {
-    tonic::transport::Server::builder()
+    serve_grpc_with_tls(listener, state, shutdown, None).await
+}
+
+/// 在 TCP Listener 上运行可选 TLS 的 Tonic gRPC 服务。
+///
+/// # Errors
+///
+/// TLS 配置无效、Listener 接受循环失败或优雅关闭前出现传输错误时返回错误。
+pub async fn serve_grpc_with_tls<B, F>(
+    listener: TcpListener,
+    state: ServerState<B>,
+    shutdown: F,
+    tls: Option<tonic::transport::ServerTlsConfig>,
+) -> Result<(), ServerError>
+where
+    B: CommandBus + Send + Sync + 'static,
+    F: Future<Output = ()> + Send + 'static,
+{
+    let mut server = tonic::transport::Server::builder();
+    if let Some(tls) = tls {
+        server = server
+            .tls_config(tls)
+            .map_err(|error| ServerError::Transport(error.to_string()))?;
+    }
+    server
         .add_service(MemoryServiceServer::new(TonicMemoryService::new(state)))
         .serve_with_incoming_shutdown(
             tokio_stream::wrappers::TcpListenerStream::new(listener),
@@ -488,10 +512,10 @@ fn grpc_status(error: &ServerError) -> tonic::Status {
         }
     };
     let mut status = tonic::Status::new(code, error.to_string());
-    if let Some(request_id) = request_id {
-        if let Ok(value) = request_id.parse() {
-            status.metadata_mut().insert("x-request-id", value);
-        }
+    if let Some(request_id) = request_id
+        && let Ok(value) = request_id.parse()
+    {
+        status.metadata_mut().insert("x-request-id", value);
     }
     status
 }
