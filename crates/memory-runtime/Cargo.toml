@@ -6,16 +6,21 @@ rust-version.workspace = true
 license-file.workspace = true
 
 [dependencies]
+async-trait.workspace = true
 chrono.workspace = true
+futures.workspace = true
 hex.workspace = true
 jc-memory-protocol = { path = "../memory-protocol" }
 jc-memory-security = { path = "../memory-security" }
 jc-memory-storage = { path = "../memory-storage" }
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]

@@ -61,9 +61,9 @@ fn executing_cannot_skip_commit_to_completed() {
 
 **文件：** `memory-runtime/src/{model,providers/openai_compatible,providers/http,parser}.rs`、`tests/model_contract.rs`。
 
-- [ ] **步骤 1：写确定性 Provider、超时、SSE 分片和非法输出失败测试。**
-- [ ] **步骤 2：运行测试**，预期 ModelProvider 缺失。
-- [ ] **步骤 3：实现：**
+- [x] **步骤 1：写确定性 Provider、超时、SSE 分片和非法输出失败测试。**
+- [x] **步骤 2：运行测试**，预期 ModelProvider 缺失。
+- [x] **步骤 3：实现：**
 
 ```rust
 #[async_trait]
@@ -71,8 +71,8 @@ pub trait ModelProvider: Send + Sync { async fn invoke(&self, request: ModelRequ
 pub enum ModelOutput { Hypothesis(Hypothesis), Prediction(Prediction), Plan(Plan), DecisionCandidate(DecisionCandidate), ToolRequest(ToolRequest), FinalResponse(FinalResponse) }
 ```
 
-- [ ] **步骤 4：OpenAICompatibleProvider 支持非流式和 SSE、Bearer/Header 配置、超时、429/5xx 有界重试；GenericHttpProvider 使用配置化 JSON Pointer 映射；Parser 拒绝未知种类和 Schema 不匹配。**
-- [ ] **步骤 5：运行测试并提交 `feat(runtime): add replaceable model providers`**。
+- [x] **步骤 4：OpenAICompatibleProvider 支持非流式和 SSE、Bearer/Header 配置、超时、429/5xx 有界重试；GenericHttpProvider 使用配置化 JSON Pointer 映射；Parser 拒绝未知种类和 Schema 不匹配。**
+- [x] **步骤 5：运行测试并提交 `feat(runtime): add replaceable model providers`**。
 
 ## Task 4：实现 Capability Registry
 
