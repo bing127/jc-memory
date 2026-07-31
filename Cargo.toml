@@ -16,6 +16,7 @@ members = [
   "crates/memory-core",
   "crates/memory-node",
   "crates/memory-ffi",
+  "crates/memory-uniffi",
   "crates/memory-python",
   "services/memory-server",
   "services/memory-sidecar",
