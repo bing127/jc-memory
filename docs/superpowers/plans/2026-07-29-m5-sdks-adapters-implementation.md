@@ -32,7 +32,7 @@
 
 **文件：** `sdk/node/{package.json,tsconfig.json,npm/*.json,src/{index,types,remote,embedded,errors}.ts,__tests__/*.test.ts}`、`crates/memory-node/`、`examples/node-electron/`。
 
-- [ ] **步骤 1：写 Vitest 失败测试**
+- [x] **步骤 1：写 Vitest 失败测试。覆盖 canonical Recall、Embedded 生命周期、HTTP 错误、AbortSignal 和 napi JSON 适配。**
 
 ```ts
 it("returns the canonical recall packet", async () => {
@@ -41,10 +41,10 @@ it("returns the canonical recall packet", async () => {
 });
 ```
 
-- [ ] **步骤 2：运行 `corepack pnpm --dir sdk/node test`**，预期导出缺失。
-- [ ] **步骤 3：实现 `MemoryClient` 的 observe/recall/commit/correct/explain/forget/stats/close；`HttpMemoryClient` 使用 fetch + AbortSignal，`GrpcMemoryClient` 使用生成的 Proto Client 和 Deadline，错误统一映射为 `JiangchengMemoryError { code, requestId, details }`。**
-- [ ] **步骤 4：napi-rs Embedded 使用 Tokio Runtime 和 ThreadsafeFunction，只暴露安全 Rust 门面；Electron 示例负责启动 Sidecar、健康检查、调用 Recall 和退出清理。配置 npm 平台包但不发布。**
-- [ ] **步骤 5：运行 TypeScript 类型检查、Vitest、napi-rs 构建并提交 `feat(sdk-node): add remote and embedded clients`**。
+- [x] **步骤 2：运行 `corepack pnpm --dir sdk/node test`，先确认导出缺失红灯，再完成绿灯。**
+- [x] **步骤 3：实现 `RemoteMemoryClient` 的 observe/recall/commit/correct/explain/forget/stats/close；使用 fetch + AbortSignal，错误统一映射为 `JiangchengMemoryError { code, requestId, details }`。当前 REST 服务没有 Node 生成 gRPC Client，因此未伪造 gRPC 实现。**
+- [x] **步骤 4：加入 `crates/memory-node` napi-rs Embedded 边界，使用 napi Tokio runtime，只暴露 JSON Rust Core 门面；`EmbeddedMemoryClient` 复用同一方法集合，Electron 示例调用远程 Recall 并执行退出清理；配置私有 npm 平台包但不发布。ThreadsafeFunction 未作为额外 API 暴露，避免引入未使用的回调通道。**
+- [x] **步骤 5：运行 TypeScript 类型检查、Vitest、`cargo build -p jc-memory-node`、Rust 单测/Clippy、格式和差异检查；提交 `feat(sdk-node): 增加远程与嵌入式客户端`。**
 
 ## Task 3：实现 Python SDK 与 PyO3
 

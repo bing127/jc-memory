@@ -1,0 +1,31 @@
+{
+  "name": "@jiangcheng-memory/node",
+  "version": "0.1.0",
+  "description": "疆诚记忆 Node.js 与 Electron SDK",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "npm"],
+  "napi": {
+    "name": "jcmemory",
+    "triples": {
+      "defaults": true,
+      "additional": ["x86_64-pc-windows-msvc", "aarch64-unknown-linux-gnu"]
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

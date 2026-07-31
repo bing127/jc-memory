@@ -1,0 +1,8 @@
+{
+  "name": "@jiangcheng-memory/node-linux-arm64-gnu",
+  "version": "0.1.0",
+  "os": ["linux"],
+  "cpu": ["arm64"],
+  "main": "jcmemory.linux-arm64-gnu.node",
+  "files": ["jcmemory.linux-arm64-gnu.node"]
+}

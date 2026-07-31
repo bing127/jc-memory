@@ -1,0 +1,8 @@
+{
+  "name": "@jiangcheng-memory/node-win32-x64-msvc",
+  "version": "0.1.0",
+  "os": ["win32"],
+  "cpu": ["x64"],
+  "main": "jcmemory.win32-x64-msvc.node",
+  "files": ["jcmemory.win32-x64-msvc.node"]
+}

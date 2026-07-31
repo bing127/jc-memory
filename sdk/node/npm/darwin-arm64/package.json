@@ -1,0 +1,8 @@
+{
+  "name": "@jiangcheng-memory/node-darwin-arm64",
+  "version": "0.1.0",
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "main": "jcmemory.darwin-arm64.node",
+  "files": ["jcmemory.darwin-arm64.node"]
+}
