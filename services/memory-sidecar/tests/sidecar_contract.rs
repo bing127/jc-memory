@@ -2,6 +2,7 @@
 //! Sidecar 本地认证、单实例和生命周期契约测试。
 
 use std::os::unix::fs::PermissionsExt as _;
+use std::process::Command;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -75,6 +76,39 @@ fn stale_lock_metadata_is_detected_when_the_os_lock_is_available() {
     std::fs::write(&path, "pid=424242\nstarted_at=1\n").expect("写入旧锁元数据");
     let lock = InstanceLock::acquire(&path).expect("取得可用锁");
     assert!(lock.recovered_stale_metadata());
+}
+
+#[test]
+fn jcmem_start_status_and_stop_control_a_real_jcmemd_process() {
+    let directory = tempfile::tempdir().expect("创建进程测试目录");
+    let start = Command::new(env!("CARGO_BIN_EXE_jcmem"))
+        .env("JC_MEMORY_SIDECAR_DATA_DIR", directory.path())
+        .env("JC_MEMORY_SIDECAR_DAEMON_BIN", env!("CARGO_BIN_EXE_jcmemd"))
+        .arg("start")
+        .output()
+        .expect("启动 jcmem");
+    assert!(start.status.success(), "start stderr: {:?}", start.stderr);
+    assert!(String::from_utf8_lossy(&start.stdout).contains("\"status\":\"started\""));
+
+    let status = Command::new(env!("CARGO_BIN_EXE_jcmem"))
+        .env("JC_MEMORY_SIDECAR_DATA_DIR", directory.path())
+        .arg("status")
+        .output()
+        .expect("查询 Sidecar 状态");
+    assert!(
+        status.status.success(),
+        "status stderr: {:?}",
+        status.stderr
+    );
+    assert!(String::from_utf8_lossy(&status.stdout).contains("\"status\":\"ready\""));
+
+    let stop = Command::new(env!("CARGO_BIN_EXE_jcmem"))
+        .env("JC_MEMORY_SIDECAR_DATA_DIR", directory.path())
+        .arg("stop")
+        .output()
+        .expect("停止 Sidecar");
+    assert!(stop.status.success(), "stop stderr: {:?}", stop.stderr);
+    assert!(String::from_utf8_lossy(&stop.stdout).contains("\"status\":\"stopping\""));
 }
 
 #[tokio::test]
