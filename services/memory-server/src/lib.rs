@@ -446,6 +446,7 @@ where
         key: &str,
         request: MemoryRequest,
     ) -> Result<ResponseEnvelope, ServerError> {
+        let _permit = InFlightPermit::acquire(&self.state)?;
         let access = self.state.access(key, &request.request_id)?;
         let request_id = access.request_id.clone();
         self.state

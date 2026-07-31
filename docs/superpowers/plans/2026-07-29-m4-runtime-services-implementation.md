@@ -137,6 +137,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - 已在稳定 Proto 契约中加入 `MemoryService.Execute`，用 Tonic 0.14 生成真实 TCP gRPC Server/Client；`x-api-key` 元数据映射到同一 `GrpcAdapter`，网络契约测试和双端口启动探针通过。
 - 已将 Tonic/Prost 依赖升级到 0.14，并切换 `tonic_prost_build` 生成代码；服务端在新依赖下保持可编译。
 - 已接入文件型 gRPC TLS：启动入口只读取证书链和私钥文件内容构造 `ServerTlsConfig`，不记录私钥；配置解析使用纯查找器测试，避免修改进程环境。
+- 已修正 gRPC 适配器绕过并发门禁的问题；HTTP 与 gRPC 现在共同使用 `max_in_flight` permit，超限统一返回资源耗尽语义。
 - 本记录不代表 Task 7 或 M4 完成；Commit、Recall/Mutation/Explain 的完整 Protobuf 消息扩展、KeyProvider、速率限制和完整跨协议验收仍未实现。
 
 ## Task 8：实现本地 Sidecar

@@ -13,7 +13,7 @@ use jc_memory_protocol::{
     Operation, RecallCommand, RecallId, RecallLimits, RecallMode, ResponseEnvelope, StatsCommand,
     StatsResult,
 };
-use jc_memory_server::{ApiKey, GrpcAdapter, ServerState, router, serve_grpc};
+use jc_memory_server::{ApiKey, GrpcAdapter, ServerError, ServerState, router, serve_grpc};
 use serde_json::{Value, json};
 use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt as _},
@@ -593,6 +593,20 @@ async fn metrics_is_public_and_concurrency_limit_is_stable() {
         .await
         .unwrap();
     assert_eq!(limited.status(), StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test]
+async fn grpc_adapter_obeys_the_same_concurrency_limit_as_http() {
+    let request = request();
+    let key = ApiKey::new(
+        "test-key",
+        AccessContext::new("principal", request.access_scope.clone().into()),
+    );
+    let adapter = GrpcAdapter::new(ServerState::with_max_in_flight(FixtureBus, vec![key], 0));
+
+    let error = adapter.execute("test-key", request).await.unwrap_err();
+
+    assert!(matches!(error, ServerError::RateLimited));
 }
 
 #[tokio::test]
