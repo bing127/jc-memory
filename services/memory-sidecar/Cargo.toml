@@ -6,6 +6,8 @@ rust-version.workspace = true
 license-file.workspace = true
 
 [dependencies]
+jc-memory-core = { path = "../../crates/memory-core" }
+jc-memory-protocol = { path = "../../crates/memory-protocol" }
 fs2.workspace = true
 getrandom.workspace = true
 serde.workspace = true
@@ -20,4 +22,5 @@ tracing-subscriber.workspace = true
 workspace = true
 
 [dev-dependencies]
+chrono.workspace = true
 tempfile.workspace = true

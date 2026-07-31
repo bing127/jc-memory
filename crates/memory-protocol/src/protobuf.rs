@@ -8,14 +8,14 @@ use std::{
 use chrono::{DateTime, Utc};
 
 use crate::{
-    AccessScope, CognitiveFragment, ConflictView, Coverage, EdgeKind, EpisodeView, EvidenceRef,
-    EvidenceView, ExplainResult, FragmentContent, FragmentKind, FragmentSource, IdParseError,
-    KnowledgeKind, KnowledgeView, MemoryCommand, MemoryPacket, MemoryRequest, MemoryResponse,
-    MemoryScope, MissingEvidence, MutationAction, MutationCommand, MutationResult, ObserveCommand,
-    ObserveResult, Perspective, PointKind, PointView, ProcedureView, RecallLimits, RecallMode,
-    RecallPath, RequestValidationError, ResponseEnvelope, SecurityLabel, SourceType, StateView,
-    StatsCommand, StatsResult, SurfaceStatus, SurfaceView, ValidityStatus, VerificationMethod,
-    generated::jiangcheng::memory::v1 as proto,
+    AccessScope, CognitiveFragment, CommitCommand, CommitResult, ConflictView, Coverage, EdgeKind,
+    EpisodeView, EvidenceRef, EvidenceView, ExplainResult, FragmentContent, FragmentKind,
+    FragmentSource, IdParseError, KnowledgeKind, KnowledgeView, MemoryCommand, MemoryPacket,
+    MemoryRequest, MemoryResponse, MemoryScope, MissingEvidence, MutationAction, MutationCommand,
+    MutationResult, ObserveCommand, ObserveResult, Perspective, PointKind, PointView,
+    ProcedureView, RecallLimits, RecallMode, RecallPath, RequestValidationError, ResponseEnvelope,
+    SecurityLabel, SourceType, StateView, StatsCommand, StatsResult, SurfaceStatus, SurfaceView,
+    ValidityStatus, VerificationMethod, generated::jiangcheng::memory::v1 as proto,
 };
 
 /// 领域协议与 Protobuf 之间的稳定转换错误。
@@ -101,6 +101,15 @@ impl TryFrom<MemoryRequest> for proto::RequestEnvelope {
                     fragment: Some(command.fragment.try_into()?),
                 })
             }
+            MemoryCommand::Commit(command) => {
+                proto::request_envelope::Command::Commit(proto::CommitCommand {
+                    fragments: command
+                        .fragments
+                        .into_iter()
+                        .map(TryInto::try_into)
+                        .collect::<Result<_, ProtoConversionError>>()?,
+                })
+            }
             MemoryCommand::Recall(command) => {
                 proto::request_envelope::Command::Recall(proto::RecallCommand {
                     mode: recall_mode_to_proto(command.mode),
@@ -148,6 +157,15 @@ impl TryFrom<proto::RequestEnvelope> for MemoryRequest {
                     fragment: required(command.fragment, "observe.fragment")?.try_into()?,
                 })
             }
+            proto::request_envelope::Command::Commit(command) => {
+                MemoryCommand::Commit(CommitCommand {
+                    fragments: command
+                        .fragments
+                        .into_iter()
+                        .map(TryInto::try_into)
+                        .collect::<Result<_, ProtoConversionError>>()?,
+                })
+            }
             proto::request_envelope::Command::Recall(command) => {
                 MemoryCommand::Recall(recall_command_from_proto(command)?)
             }
@@ -181,6 +199,9 @@ impl TryFrom<ResponseEnvelope> for proto::ResponseEnvelope {
             MemoryResponse::Observe(result) => {
                 proto::response_envelope::Response::Observe(result.into())
             }
+            MemoryResponse::Commit(result) => {
+                proto::response_envelope::Response::Commit(result.into())
+            }
             MemoryResponse::Recall(packet) => {
                 proto::response_envelope::Response::Recall(memory_packet_to_proto(packet))
             }
@@ -209,6 +230,9 @@ impl TryFrom<proto::ResponseEnvelope> for ResponseEnvelope {
         let response = match required(envelope.response, "response")? {
             proto::response_envelope::Response::Observe(result) => {
                 MemoryResponse::Observe(result.try_into()?)
+            }
+            proto::response_envelope::Response::Commit(result) => {
+                MemoryResponse::Commit(result.try_into()?)
             }
             proto::response_envelope::Response::Recall(packet) => {
                 MemoryResponse::Recall(memory_packet_from_proto(packet)?)
@@ -346,6 +370,28 @@ impl TryFrom<proto::ObserveResult> for ObserveResult {
             content_hash: parse_id("observe_result.content_hash", &result.content_hash)?,
             created: result.created,
             quarantined: result.quarantined,
+        })
+    }
+}
+
+impl From<CommitResult> for proto::CommitResult {
+    fn from(result: CommitResult) -> Self {
+        Self {
+            receipts: result.receipts.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl TryFrom<proto::CommitResult> for CommitResult {
+    type Error = ProtoConversionError;
+
+    fn try_from(result: proto::CommitResult) -> Result<Self, Self::Error> {
+        Ok(Self {
+            receipts: result
+                .receipts
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<_, ProtoConversionError>>()?,
         })
     }
 }

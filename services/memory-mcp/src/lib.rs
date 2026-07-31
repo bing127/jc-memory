@@ -105,9 +105,6 @@ where
     }
 
     async fn call_tool(&self, name: &str, arguments: Value) -> Result<Value, McpServerError> {
-        if name == "memory_commit" {
-            return Ok(tool_error("unsupported", "当前协议尚未定义 Commit 命令"));
-        }
         let request_value = arguments
             .get("request")
             .cloned()
@@ -128,8 +125,8 @@ where
 fn access_context(request: &MemoryRequest, tool: &str) -> Result<AccessContext, McpServerError> {
     let operation = match tool {
         "memory_observe" => Operation::Observe,
+        "memory_commit" | "memory_correct" | "memory_forget" => Operation::Mutate,
         "memory_recall" | "memory_stats" => Operation::Recall,
-        "memory_correct" | "memory_forget" => Operation::Mutate,
         "memory_explain" => Operation::Explain,
         _ => {
             return Err(McpServerError::InvalidArguments(format!(
@@ -160,14 +157,6 @@ fn error_response(error: &McpServerError) -> Value {
             json!({"code": -32603, "message": "internal error", "data": {"detail": detail.to_string()}})
         }
     }
-}
-
-fn tool_error(code: &str, detail: &str) -> Value {
-    json!({
-        "content": [{"type":"text", "text": detail}],
-        "structuredContent": {"code": code, "detail": detail},
-        "isError": true,
-    })
 }
 
 fn tool_definitions() -> Vec<Value> {

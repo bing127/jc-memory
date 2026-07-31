@@ -4,7 +4,7 @@
 
 当前代码已完成 M1 基础可信存储、M2 认知图/有界召回和 M3 巩固/安全治理：不可变 Fragment/Event/EvidenceRef、SQLite WAL/FTS5、内容寻址 Blob、Point/Edge/Surface、十种 Recall、Memory Packet、可恢复巩固 Job、确定性离线 Neural Fallback、Quarantine、Snapshot/Restore、Retention、Export 和 Hard Delete。
 
-Core 当前实际接通 Observe、Fragment lookup、Health、Recall、Explain、Stats、Mutation、Quarantine 审查和 Snapshot/Restore/Rebuild，且这些操作显式接收 `AccessContext` 并采用默认拒绝 ACL。Recall 在检索前和返回前执行授权。SQLite FTS5 是实际执行路径；跨措辞候选使用确定性词项和稀疏字符特征，不是外部 Embedding。
+Core 当前实际接通 Observe、Commit、Fragment lookup、Health、Recall、Explain、Stats、Mutation、Quarantine 审查和 Snapshot/Restore/Rebuild，且这些操作显式接收 `AccessContext` 并采用默认拒绝 ACL。Recall 在检索前和返回前执行授权。SQLite FTS5 是实际执行路径；跨措辞候选使用确定性词项和稀疏字符特征，不是外部 Embedding。
 
 M3 的巩固与治理能力目前以本地 Rust crate 和嵌入式 API 提供。`Operation::Consolidate` 尚未接入 Core Job 提交门面；状态、语义与 Surface 尚未全部汇入持久化 Packet；进程内 Mutation 图尚未在 Core 重启时自动恢复。派生重建的 FTS/Point 路径真实执行，其余模型相关阶段只验证本地契约。
 

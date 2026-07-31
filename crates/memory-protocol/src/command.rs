@@ -58,6 +58,13 @@ pub struct ObserveCommand {
     pub fragment: CognitiveFragment,
 }
 
+/// 提交一次完整 Runtime 状态转移中产生的权威 Fragment 集合。
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct CommitCommand {
+    /// 当前观察、假设、动作、工具结果和 Outcome 等原始 Fragment。
+    pub fragments: Vec<CognitiveFragment>,
+}
+
 /// 一个有界、模型无关的 Recall 命令。
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct RecallCommand {
@@ -134,6 +141,13 @@ pub struct MutationResult {
     pub relation: Option<EdgeKind>,
 }
 
+/// 一次 Commit 中各 Fragment 的持久化结果。
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CommitResult {
+    /// 按输入顺序返回的权威 Observe 结果。
+    pub receipts: Vec<ObserveResult>,
+}
+
 /// Explain 结果中的初始种子。
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct ExplainSeed {
@@ -198,6 +212,8 @@ pub struct ExplainResult {
 pub enum MemoryCommand {
     /// 写入新的权威 Fragment/Event。
     Observe(ObserveCommand),
+    /// 追加 Runtime 状态转移产生的完整 Fragment 集合。
+    Commit(CommitCommand),
     /// 在授权 Scope 内执行有界 Recall。
     Recall(RecallCommand),
     /// 读取当前授权 Scope 的权威记录统计。
@@ -238,6 +254,11 @@ impl MemoryRequest {
         if self.request_id.trim().is_empty() {
             return Err(RequestValidationError::EmptyRequestId);
         }
+        if let MemoryCommand::Commit(command) = &self.command
+            && command.fragments.is_empty()
+        {
+            return Err(RequestValidationError::EmptyCommit);
+        }
         Ok(())
     }
 }
@@ -254,6 +275,9 @@ pub enum RequestValidationError {
     /// `request_id` 为空或仅包含空白。
     #[error("request_id cannot be empty")]
     EmptyRequestId,
+    /// Commit 至少需要一条待追加的权威 Fragment。
+    #[error("commit must contain at least one fragment")]
+    EmptyCommit,
 }
 
 /// Observe 的稳定服务响应，不暴露 Core 内部检测器实现。
@@ -281,6 +305,8 @@ pub struct ObserveResult {
 pub enum MemoryResponse {
     /// Observe 的持久化结果。
     Observe(ObserveResult),
+    /// Commit 中各权威 Fragment 的追加结果。
+    Commit(CommitResult),
     /// Recall 返回的模型无关 Memory Packet。
     Recall(MemoryPacket),
     /// Scope 内权威记录统计结果。

@@ -249,6 +249,36 @@ impl MemoryEngine {
         result
     }
 
+    /// 追加一次 Runtime Commit 产生的完整 Fragment 集合。
+    ///
+    /// Commit 使用 `Mutate` Grant 进入核心，并复用同一准入和权威追加路径；
+    /// 每个 Fragment 仍保持独立的原始 Kind，不会被提升为 Verified Fact。
+    ///
+    /// # Errors
+    ///
+    /// 任一 Fragment 无法通过准入、事件校验或持久化时返回错误。
+    pub async fn commit(
+        &self,
+        context: &AccessContext,
+        fragments: Vec<CognitiveFragment>,
+    ) -> Result<Vec<ObserveReceipt>, MemoryError> {
+        crate::security::authorize(context, Operation::Mutate, &context.scope)?;
+        if fragments
+            .iter()
+            .any(|fragment| fragment.scope != context.scope)
+        {
+            return Err(MemoryError::AccessDenied {
+                operation: Operation::Mutate,
+                reason: DenyReason::SubjectScopeMismatch,
+            });
+        }
+        let mut receipts = Vec::with_capacity(fragments.len());
+        for fragment in fragments {
+            receipts.push(self.observe_admitted(fragment).await?);
+        }
+        Ok(receipts)
+    }
+
     pub(crate) async fn observe_admitted(
         &self,
         mut fragment: CognitiveFragment,

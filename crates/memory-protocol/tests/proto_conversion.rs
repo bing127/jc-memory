@@ -4,13 +4,13 @@ use std::str::FromStr as _;
 
 use chrono::{DateTime, Utc};
 use jc_memory_protocol::{
-    API_VERSION_V1, AccessScope, AgentId, BlobId, CognitiveFragment, EventId, EvidenceId,
-    EvidenceRef, ExplainResult, ExplainSeed, ExplainSurface, ExplainTraversal, FragmentContent,
-    FragmentId, FragmentKind, FragmentSource, MemoryCommand, MemoryPacket, MemoryRequest,
-    MemoryResponse, MemoryScope, MutationAction, MutationCommand, MutationResult, NamespaceId,
-    ObserveCommand, ObserveResult, Perspective, PointId, ProjectId, RecallCommand, RecallLimits,
-    RecallMode, ResponseEnvelope, SecurityLabel, SessionId, SourceType, StatsCommand, StatsResult,
-    SurfaceId, TenantId, TraceId, UserId, ValidityStatus, VerificationMethod,
+    API_VERSION_V1, AccessScope, AgentId, BlobId, CognitiveFragment, CommitCommand, CommitResult,
+    EventId, EvidenceId, EvidenceRef, ExplainResult, ExplainSeed, ExplainSurface, ExplainTraversal,
+    FragmentContent, FragmentId, FragmentKind, FragmentSource, MemoryCommand, MemoryPacket,
+    MemoryRequest, MemoryResponse, MemoryScope, MutationAction, MutationCommand, MutationResult,
+    NamespaceId, ObserveCommand, ObserveResult, Perspective, PointId, ProjectId, RecallCommand,
+    RecallLimits, RecallMode, ResponseEnvelope, SecurityLabel, SessionId, SourceType, StatsCommand,
+    StatsResult, SurfaceId, TenantId, TraceId, UserId, ValidityStatus, VerificationMethod,
     generated::jiangcheng::memory::v1 as proto,
 };
 use prost::Message as _;
@@ -73,6 +73,63 @@ fn response_proto_round_trip_preserves_observe_result() {
     let round_trip = ResponseEnvelope::try_from(decoded).expect("Proto 响应转 Rust");
 
     assert_eq!(round_trip, response);
+}
+
+#[test]
+fn commit_proto_round_trip_preserves_fragment_batch_and_receipts() {
+    let first = protocol_fragment("提交前观察");
+    let second = CognitiveFragment {
+        id: FragmentId::new(),
+        scope: first.scope.clone(),
+        session_id: None,
+        trace_id: None,
+        kind: FragmentKind::ToolResult,
+        content: FragmentContent::Json {
+            value: serde_json::json!({"ok": true}),
+        },
+        source: first.source.clone(),
+        perspective: first.perspective,
+        occurred_at: first.occurred_at,
+        observed_at: first.observed_at,
+        confidence: 1.0,
+        importance: 0.5,
+        validity: ValidityStatus::Unverified,
+        security_label: SecurityLabel::Internal,
+        evidence: Vec::new(),
+        metadata: serde_json::Map::new(),
+    };
+    let request = MemoryRequest {
+        api_version: API_VERSION_V1.to_owned(),
+        request_id: "req-commit-round-trip".to_owned(),
+        access_scope: AccessScope::from(first.scope.clone()),
+        command: MemoryCommand::Commit(CommitCommand {
+            fragments: vec![first, second],
+        }),
+    };
+    let response = ResponseEnvelope::for_request(
+        &request,
+        MemoryResponse::Commit(CommitResult {
+            receipts: Vec::new(),
+        }),
+    );
+    let request_wire =
+        proto::RequestEnvelope::try_from(request.clone()).expect("Commit 请求转 Proto");
+    let request_decoded = proto::RequestEnvelope::decode(request_wire.encode_to_vec().as_slice())
+        .expect("解码 Commit 请求");
+    assert_eq!(
+        MemoryRequest::try_from(request_decoded).expect("Commit 请求转 Rust"),
+        request
+    );
+
+    let response_wire =
+        proto::ResponseEnvelope::try_from(response.clone()).expect("Commit 响应转 Proto");
+    let response_decoded =
+        proto::ResponseEnvelope::decode(response_wire.encode_to_vec().as_slice())
+            .expect("解码 Commit 响应");
+    assert_eq!(
+        ResponseEnvelope::try_from(response_decoded).expect("Commit 响应转 Rust"),
+        response
+    );
 }
 
 #[test]
@@ -392,6 +449,37 @@ fn complete_request(content: FragmentContent) -> MemoryRequest {
         request_id: "req-complete-fragment".to_owned(),
         access_scope: AccessScope::from(scope),
         command: MemoryCommand::Observe(ObserveCommand { fragment }),
+    }
+}
+
+fn protocol_fragment(text: &str) -> CognitiveFragment {
+    let now = Utc::now();
+    CognitiveFragment {
+        id: FragmentId::new(),
+        scope: MemoryScope::new(NamespaceId::new()),
+        session_id: None,
+        trace_id: None,
+        kind: FragmentKind::Observation,
+        content: FragmentContent::Text {
+            text: text.to_owned(),
+        },
+        source: FragmentSource {
+            source_type: SourceType::System,
+            source_id: "commit-test".to_owned(),
+            actor_id: None,
+            observer_id: None,
+            tool_id: None,
+            uri: None,
+        },
+        perspective: Perspective::System,
+        occurred_at: now,
+        observed_at: now,
+        confidence: 1.0,
+        importance: 0.5,
+        validity: ValidityStatus::Unverified,
+        security_label: SecurityLabel::Internal,
+        evidence: Vec::new(),
+        metadata: serde_json::Map::new(),
     }
 }
 

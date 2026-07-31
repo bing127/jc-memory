@@ -171,6 +171,11 @@ message ObserveCommand {
   CognitiveFragment fragment = 1 [json_name = "fragment"];
 }
 
+// CommitCommand 携带一次 Runtime 状态转移产生的完整 Fragment 集合。
+message CommitCommand {
+  repeated CognitiveFragment fragments = 1 [json_name = "fragments"];
+}
+
 // RecallMode 定义有界 Recall 的选择与遍历意图。
 enum RecallMode {
   RECALL_MODE_UNSPECIFIED = 0;
@@ -226,6 +231,7 @@ message RequestEnvelope {
 
   oneof command {
     ObserveCommand observe = 10 [json_name = "observe"];
+    CommitCommand commit = 16 [json_name = "commit"];
     RecallCommand recall = 11 [json_name = "recall"];
     StatsCommand stats = 12 [json_name = "stats"];
     MutationCommand correct = 13 [json_name = "correct"];
@@ -242,6 +248,11 @@ message ObserveResult {
   string content_hash = 4 [json_name = "contentHash"];
   bool created = 5 [json_name = "created"];
   bool quarantined = 6 [json_name = "quarantined"];
+}
+
+// CommitResult 返回每个权威 Fragment 的追加结果。
+message CommitResult {
+  repeated ObserveResult receipts = 1 [json_name = "receipts"];
 }
 
 // StatsResult 返回精确访问 Scope 内的权威记录数量。
@@ -483,6 +494,7 @@ message ResponseEnvelope {
 
   oneof response {
     ObserveResult observe = 10 [json_name = "observe"];
+    CommitResult commit = 16 [json_name = "commit"];
     MemoryPacket recall = 11 [json_name = "recall"];
     StatsResult stats = 12 [json_name = "stats"];
     MutationResult mutation = 13 [json_name = "mutation"];

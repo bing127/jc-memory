@@ -1,5 +1,9 @@
 use std::{io, sync::Arc};
 
+use jc_memory_core::{CommandBus, CommandError};
+use jc_memory_protocol::{
+    AccessContext, Grant, MemoryCommand, MemoryRequest, Operation, ResponseEnvelope,
+};
 use serde::{Deserialize, Serialize};
 use tokio::{
     io::{AsyncBufReadExt as _, AsyncWriteExt as _},
@@ -21,10 +25,15 @@ pub enum DaemonCommand {
     Stop,
     /// 诊断本地文件和传输端点。
     Doctor,
+    /// 通过本地认证转发一个共享 `MemoryRequest`。
+    Execute {
+        /// 需要转发到共享 `CommandBus` 的业务请求。
+        request: Box<MemoryRequest>,
+    },
 }
 
 /// Sidecar 控制响应。
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct DaemonResponse {
     /// 是否成功处理命令。
     pub ok: bool,
@@ -32,6 +41,9 @@ pub struct DaemonResponse {
     pub status: String,
     /// 诊断细节。
     pub detail: Option<String>,
+    /// 业务命令成功时返回的共享协议响应。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response: Option<ResponseEnvelope>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -71,6 +83,7 @@ pub struct SidecarDaemon {
     listener: SidecarListener,
     stop: CancellationToken,
     active_connections: Arc<Mutex<usize>>,
+    bus: Option<Arc<dyn CommandBus>>,
 }
 
 impl SidecarDaemon {
@@ -92,7 +105,22 @@ impl SidecarDaemon {
             listener,
             stop: CancellationToken::new(),
             active_connections: Arc::new(Mutex::new(0)),
+            bus: None,
         })
+    }
+
+    /// 准备绑定共享 Core `CommandBus` 的 Sidecar。
+    ///
+    /// # Errors
+    ///
+    /// 配置、Token、实例锁或本地端点无法准备时返回错误。
+    pub async fn bind_with_bus(
+        config: SidecarConfig,
+        bus: Arc<dyn CommandBus>,
+    ) -> Result<Self, SidecarError> {
+        let mut daemon = Self::bind(config).await?;
+        daemon.bus = Some(bus);
+        Ok(daemon)
     }
 
     /// 运行控制行协议直到收到 Stop 或外部取消。
@@ -114,7 +142,15 @@ impl SidecarDaemon {
                         let mut active = active_connections.lock().await;
                         *active += 1;
                     }
-                    handle_connection(stream, token, config, stop.clone(), active_connections).await?;
+                    handle_connection(
+                        stream,
+                        token,
+                        config,
+                        stop.clone(),
+                        active_connections,
+                        self.bus.clone(),
+                    )
+                    .await?;
                 }
             }
         }
@@ -133,8 +169,9 @@ async fn handle_connection(
     config: SidecarConfig,
     stop: CancellationToken,
     active_connections: Arc<Mutex<usize>>,
+    bus: Option<Arc<dyn CommandBus>>,
 ) -> Result<(), SidecarError> {
-    let result = handle_connection_inner(stream, token, config, stop).await;
+    let result = handle_connection_inner(stream, token, config, stop, bus).await;
     let mut active = active_connections.lock().await;
     *active = active.saturating_sub(1);
     result
@@ -145,6 +182,7 @@ async fn handle_connection_inner(
     token: TokenStore,
     config: SidecarConfig,
     stop: CancellationToken,
+    bus: Option<Arc<dyn CommandBus>>,
 ) -> Result<(), SidecarError> {
     let stream = stream.into_inner();
     let (reader, mut writer) = tokio::io::split(stream);
@@ -166,11 +204,13 @@ async fn handle_connection_inner(
             ok: true,
             status: "ready".into(),
             detail: Some(config.endpoint.display().to_string()),
+            response: None,
         },
         DaemonCommand::Doctor => DaemonResponse {
             ok: true,
             status: "healthy".into(),
             detail: Some(config.data_dir.display().to_string()),
+            response: None,
         },
         DaemonCommand::Stop => {
             stop.cancel();
@@ -178,8 +218,31 @@ async fn handle_connection_inner(
                 ok: true,
                 status: "stopping".into(),
                 detail: None,
+                response: None,
             }
         }
+        DaemonCommand::Execute { request } => match bus {
+            Some(bus) => match execute_request(bus.as_ref(), *request).await {
+                Ok(response) => DaemonResponse {
+                    ok: true,
+                    status: "executed".into(),
+                    detail: None,
+                    response: Some(response),
+                },
+                Err(error) => DaemonResponse {
+                    ok: false,
+                    status: "error".into(),
+                    detail: Some(error.to_string()),
+                    response: None,
+                },
+            },
+            None => DaemonResponse {
+                ok: false,
+                status: "unsupported".into(),
+                detail: Some("Sidecar 未绑定 CommandBus".into()),
+                response: None,
+            },
+        },
     };
     write_response(&mut writer, response).await
 }
@@ -200,7 +263,27 @@ fn unauthorized() -> DaemonResponse {
         ok: false,
         status: "unauthorized".into(),
         detail: None,
+        response: None,
     }
+}
+
+async fn execute_request(
+    bus: &dyn CommandBus,
+    request: MemoryRequest,
+) -> Result<ResponseEnvelope, CommandError> {
+    let operation = match &request.command {
+        MemoryCommand::Observe(_) => Operation::Observe,
+        MemoryCommand::Commit(_) | MemoryCommand::Correct(_) | MemoryCommand::Forget(_) => {
+            Operation::Mutate
+        }
+        MemoryCommand::Recall(_) | MemoryCommand::Stats(_) => Operation::Recall,
+        MemoryCommand::Explain(_) => Operation::Explain,
+    };
+    let scope: jc_memory_protocol::MemoryScope = request.access_scope.clone().into();
+    let mut access = AccessContext::new("sidecar-local", scope.clone());
+    access.request_id.clone_from(&request.request_id);
+    access.grants.insert(Grant::for_scope(operation, &scope));
+    bus.execute(&access, request).await
 }
 
 fn decode_hex(value: &str) -> Option<Vec<u8>> {

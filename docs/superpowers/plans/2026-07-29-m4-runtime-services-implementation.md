@@ -118,7 +118,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 
 - [x] **步骤 1：写 Health、Observe、Recall、错误码、API Key、限流和优雅关闭失败测试。**
 - [x] **步骤 2：运行测试并确认 Server crate 与共享 CommandBus 已接通。**
-- [x] **步骤 3：实现 Axum 路由 `/v1/memory/{observe,recall,correct,forget,explain,stats}` 和 `/healthz`、`/readyz`、`/metrics`；Extractor 构造 AccessContext，禁止客户端伪造授权 Grant。**
+- [x] **步骤 3：实现 Axum 路由 `/v1/memory/{observe,commit,recall,correct,forget,explain,stats}` 和 `/healthz`、`/readyz`、`/metrics`；Extractor 构造 AccessContext，禁止客户端伪造授权 Grant。**
 - [x] **步骤 4：Tonic 实现同一 CommandBus；REST/gRPC 共享错误分类和 request_id；TLS 从文件加载且不记录密钥；HTTP/gRPC 统一请求超时、并发和按 API Key 速率限制。**
 - [x] **步骤 5：运行协议测试、TCP gRPC 测试和全仓门禁；按命令能力独立提交并推送。**
 
@@ -134,6 +134,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - 已将服务端 API Key 授权集中到精确 Scope 构造器，入口现在授予已公开的 `Observe`、`Recall` 与 `Mutate` 操作；真实二进制 `/v1/memory/stats` 探针通过 Core ACL 并返回零计数。
 - 已补齐 `MutationCommand`、`Correct`/`Forget` 动作和追加式 `MutationResult`，接入 `/v1/memory/correct` 与 `/v1/memory/forget`；Embedded CommandBus 临时 SQLite 闭环验证通过，入口同时授予 `Mutate`。
 - 已补齐结构化 `ExplainResult`（种子、遍历、Surface、验证 Fragment、预算和截断状态），复用 Recall 查询输入并接入 `/v1/memory/explain`；入口授予 `Explain`，Embedded CommandBus 映射测试通过。
+- 已补齐 Commit 领域命令、`/v1/memory/commit` REST 路由和 MCP/Sidecar 转发；Commit 只允许同一 Scope 的 Fragment 批次，并按输入顺序返回权威追加结果。
 - 已在稳定 Proto 契约中加入 `MemoryService.Execute`，用 Tonic 0.14 生成真实 TCP gRPC Server/Client；`x-api-key` 元数据映射到同一 `GrpcAdapter`，网络契约测试和双端口启动探针通过。
 - 已将 Tonic/Prost 依赖升级到 0.14，并切换 `tonic_prost_build` 生成代码；服务端在新依赖下保持可编译。
 - 已接入文件型 gRPC TLS：启动入口只读取证书链和私钥文件内容构造 `ServerTlsConfig`，不记录私钥；配置解析使用纯查找器测试，避免修改进程环境。
@@ -160,7 +161,8 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 
 - 已建立 `jc-memory-sidecar` crate，完成 32 字节随机 Token、Unix `0600` 文件权限、恒时比较和文件排他锁。
 - 已完成 Unix Domain Socket 控制行协议、`status`/`stop`/`doctor` 控制命令，以及错误 Token、第二实例、停止和重启契约测试。
-- 当前仍未实现 Observe/Recall/Correct/Forget/Explain/Stats 的同协议转发；非 Unix Loopback 仅保留传输抽象，Named Pipe 尚未实现。因此 Task 8 不标记为完成。
+- 已增加带共享 `CommandBus` 的 `execute` 控制消息和 Commit 转发契约测试；请求仍由本地 Token、精确 Scope 和 Core ACL 共同保护。
+- 当前仍未提供完整专用 CLI 子命令；非 Unix Loopback 仅保留传输抽象，Named Pipe 尚未实现，Commit 跨 Fragment 也未提供单事务保证。因此 Task 8 不标记为完成。
 
 ## Task 9：实现 MCP Server
 
@@ -175,8 +177,8 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 ### 2026-07-31 进度记录
 
 - 已建立 `jc-memory-mcp` stdio JSON-RPC Server，完成 `initialize`、`tools/list` 和七个稳定工具名的契约测试。
-- Observe、Recall、Correct、Forget、Explain、Stats 通过共享 `CommandBus` 执行并返回 MCP `structuredContent`；`memory_commit` 因领域协议尚未定义 Commit 命令而明确返回 `unsupported`。
-- 当前仍未完成 Commit 领域命令、Sidecar 转发身份链和完整跨协议 E2E，因此 Task 9 不标记为完成。
+- Observe、Recall、Commit、Correct、Forget、Explain、Stats 通过共享 `CommandBus` 执行并返回 MCP `structuredContent`；Commit 批次要求所有 Fragment 属于请求 Scope，并保留各自原始 Kind。
+- 当前仍未完成 Sidecar 转发身份链、Commit 跨 Fragment 单事务保证和完整跨协议 E2E，因此 Task 9 不标记为完成。
 
 ## Task 10：端到端一致性、文档与门禁
 
@@ -192,7 +194,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 
 - 已完成协议包、Server、Sidecar、MCP 和 Workspace 的 fmt、严格 Clippy、测试、rustdoc 与 `git diff --check` 门禁。
 - 已有 REST/gRPC Adapter 一致性、TCP gRPC Recall、MCP structuredContent 和 Runtime Fixture 契约测试；尚未形成同一真实 Embedded Fixture 贯穿四种入口的端到端测试。
-- Commit 领域命令、Sidecar 记忆命令转发、真实 MCP 身份链和跨协议 canonical Packet/Evidence 对比仍待实现，因此不创建 M4 总 Tag。
+- Sidecar 记忆命令转发、真实 MCP 身份链、Commit 跨 Fragment 单事务保证和跨协议 canonical Packet/Evidence 对比仍待实现，因此不创建 M4 总 Tag。
 
 ## M4 完成定义
 

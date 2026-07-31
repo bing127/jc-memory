@@ -4,9 +4,9 @@ mod common;
 
 use jc_memory_core::{CommandBus, CommandError, EmbeddedCommandBus, MemoryConfig, MemoryEngine};
 use jc_memory_protocol::{
-    API_VERSION_V1, AccessContext, AccessScope, CommandErrorCode, FragmentContent, Grant,
-    MemoryCommand, MemoryRequest, MemoryResponse, MutationAction, MutationCommand, ObserveCommand,
-    ObserveResult, Operation, Perspective, RecallCommand, RecallLimits, RecallMode,
+    API_VERSION_V1, AccessContext, AccessScope, CommandErrorCode, CommitCommand, FragmentContent,
+    Grant, MemoryCommand, MemoryRequest, MemoryResponse, MutationAction, MutationCommand,
+    ObserveCommand, ObserveResult, Operation, Perspective, RecallCommand, RecallLimits, RecallMode,
     ResponseEnvelope, TenantId, VerificationMethod,
 };
 
@@ -58,6 +58,76 @@ async fn observe_command_matches_direct_engine_canonical_json() {
         direct.canonical_json().expect("序列化直接调用响应"),
         dispatched.canonical_json().expect("序列化 CommandBus 响应")
     );
+}
+
+#[tokio::test]
+async fn commit_command_appends_all_runtime_fragments_without_fact_promotion() {
+    let data_dir = tempfile::tempdir().expect("创建引擎数据目录");
+    let engine = MemoryEngine::open(MemoryConfig::local(data_dir.path()))
+        .await
+        .expect("打开记忆引擎");
+    let first = common::observation("Commit 当前观察");
+    let scope = first.scope.clone();
+    let second = jc_memory_protocol::CognitiveFragment {
+        id: jc_memory_protocol::FragmentId::new(),
+        scope: scope.clone(),
+        session_id: None,
+        trace_id: None,
+        kind: jc_memory_protocol::FragmentKind::ToolResult,
+        content: FragmentContent::Json {
+            value: serde_json::json!({"ok": true}),
+        },
+        source: first.source.clone(),
+        perspective: first.perspective,
+        occurred_at: first.occurred_at,
+        observed_at: first.observed_at,
+        confidence: 1.0,
+        importance: 0.5,
+        validity: jc_memory_protocol::ValidityStatus::Unverified,
+        security_label: jc_memory_protocol::SecurityLabel::Internal,
+        evidence: Vec::new(),
+        metadata: serde_json::Map::new(),
+    };
+    let mut access = common::access_context(&scope);
+    access.request_id = "req-commit-command-bus".to_owned();
+    access
+        .grants
+        .insert(Grant::for_scope(Operation::Mutate, &scope));
+    let request = MemoryRequest {
+        api_version: API_VERSION_V1.to_owned(),
+        request_id: access.request_id.clone(),
+        access_scope: AccessScope::from(scope.clone()),
+        command: MemoryCommand::Commit(CommitCommand {
+            fragments: vec![first.clone(), second.clone()],
+        }),
+    };
+
+    let response = EmbeddedCommandBus::new(engine.clone())
+        .execute(&access, request)
+        .await
+        .expect("执行 Commit");
+    let MemoryResponse::Commit(result) = response.response else {
+        panic!("Commit 必须返回 CommitResult");
+    };
+    assert_eq!(result.receipts.len(), 2);
+    assert!(result.receipts.iter().all(|receipt| receipt.created));
+    let first_stored = engine
+        .fragment(&access, first.id)
+        .await
+        .expect("读取 Commit 第一条记录");
+    let second_stored = engine
+        .fragment(&access, second.id)
+        .await
+        .expect("读取 Commit 第二条记录");
+    assert_eq!(
+        first_stored.kind,
+        jc_memory_protocol::FragmentKind::Observation
+    );
+    assert_eq!(
+        second_stored.kind,
+        jc_memory_protocol::FragmentKind::ToolResult
+    );
+    assert_ne!(first_stored.kind, jc_memory_protocol::FragmentKind::Fact);
 }
 
 #[tokio::test]

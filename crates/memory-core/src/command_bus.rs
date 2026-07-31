@@ -3,9 +3,9 @@
 use async_trait::async_trait;
 use jc_memory_activation::{ExplainTrace, RecallLimits as ActivationRecallLimits, RecallQuery};
 use jc_memory_protocol::{
-    AccessContext, CommandErrorCode, ExplainResult, ExplainSeed, ExplainSurface, ExplainTraversal,
-    MemoryCommand, MemoryRequest, MemoryResponse, MutationAction, MutationResult, ObserveResult,
-    RequestValidationError, ResponseEnvelope, StatsResult,
+    AccessContext, CommandErrorCode, CommitResult, ExplainResult, ExplainSeed, ExplainSurface,
+    ExplainTraversal, MemoryCommand, MemoryRequest, MemoryResponse, MutationAction, MutationResult,
+    ObserveResult, RequestValidationError, ResponseEnvelope, StatsResult,
 };
 
 use crate::{MemoryEngine, MemoryError};
@@ -58,7 +58,16 @@ impl CommandBus for EmbeddedCommandBus {
             MemoryCommand::Observe(command) if command.fragment.scope != request_scope => {
                 return Err(CommandError::AccessScopeMismatch);
             }
+            MemoryCommand::Commit(command)
+                if command
+                    .fragments
+                    .iter()
+                    .any(|fragment| fragment.scope != request_scope) =>
+            {
+                return Err(CommandError::AccessScopeMismatch);
+            }
             MemoryCommand::Observe(_)
+            | MemoryCommand::Commit(_)
             | MemoryCommand::Recall(_)
             | MemoryCommand::Stats(_)
             | MemoryCommand::Correct(_)
@@ -66,7 +75,21 @@ impl CommandBus for EmbeddedCommandBus {
             | MemoryCommand::Explain(_) => {}
         }
 
-        let response = match request.command.clone() {
+        let response = self
+            .execute_command(access, request_scope, request.command.clone())
+            .await?;
+        Ok(ResponseEnvelope::for_request(&request, response))
+    }
+}
+
+impl EmbeddedCommandBus {
+    async fn execute_command(
+        &self,
+        access: &AccessContext,
+        request_scope: jc_memory_protocol::MemoryScope,
+        command: MemoryCommand,
+    ) -> Result<MemoryResponse, CommandError> {
+        let response = match command {
             MemoryCommand::Observe(command) => {
                 let receipt = self
                     .engine
@@ -81,6 +104,24 @@ impl CommandBus for EmbeddedCommandBus {
                     created: receipt.created,
                     quarantined: receipt.quarantined,
                 })
+            }
+            MemoryCommand::Commit(command) => {
+                let receipts = self
+                    .engine
+                    .commit(access, command.fragments)
+                    .await
+                    .map_err(CommandError::engine)?
+                    .into_iter()
+                    .map(|receipt| ObserveResult {
+                        fragment_id: receipt.fragment_id,
+                        event_id: receipt.event_id,
+                        sequence: receipt.sequence,
+                        content_hash: receipt.content_hash,
+                        created: receipt.created,
+                        quarantined: receipt.quarantined,
+                    })
+                    .collect();
+                MemoryResponse::Commit(CommitResult { receipts })
             }
             MemoryCommand::Recall(command) => {
                 let query = recall_query(request_scope, command);
@@ -128,7 +169,7 @@ impl CommandBus for EmbeddedCommandBus {
                 MemoryResponse::Explain(explain_result(trace))
             }
         };
-        Ok(ResponseEnvelope::for_request(&request, response))
+        Ok(response)
     }
 }
 

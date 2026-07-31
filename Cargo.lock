@@ -1371,8 +1371,11 @@ dependencies = [
 name = "jc-memory-sidecar"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "fs2",
  "getrandom 0.4.3",
+ "jc-memory-core",
+ "jc-memory-protocol",
  "serde",
  "serde_json",
  "tempfile",

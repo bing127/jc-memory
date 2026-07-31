@@ -4,7 +4,8 @@ use async_trait::async_trait;
 use jc_memory_core::{CommandBus, CommandError};
 use jc_memory_mcp::McpServer;
 use jc_memory_protocol::{
-    AccessContext, MemoryRequest, MemoryResponse, ObserveResult, ResponseEnvelope,
+    AccessContext, CommitResult, MemoryCommand, MemoryRequest, MemoryResponse, ObserveResult,
+    ResponseEnvelope,
 };
 use serde_json::{Value, json};
 
@@ -18,9 +19,11 @@ impl CommandBus for FixtureBus {
         _access: &AccessContext,
         request: MemoryRequest,
     ) -> Result<ResponseEnvelope, CommandError> {
-        Ok(ResponseEnvelope::for_request(
-            &request,
-            MemoryResponse::Observe(ObserveResult {
+        let response = match request.command {
+            MemoryCommand::Commit(_) => MemoryResponse::Commit(CommitResult {
+                receipts: Vec::new(),
+            }),
+            _ => MemoryResponse::Observe(ObserveResult {
                 fragment_id: "00000000-0000-7000-8000-000000000001".parse().unwrap(),
                 event_id: "00000000-0000-7000-8000-000000000002".parse().unwrap(),
                 sequence: 1,
@@ -28,7 +31,8 @@ impl CommandBus for FixtureBus {
                 created: true,
                 quarantined: false,
             }),
-        ))
+        };
+        Ok(ResponseEnvelope::for_request(&request, response))
     }
 }
 
@@ -54,7 +58,7 @@ async fn initialize_and_tools_list_expose_the_stable_mcp_contract() {
 }
 
 #[tokio::test]
-async fn tools_call_returns_structured_content_and_unknown_commit_is_explicit() {
+async fn tools_call_returns_structured_content_for_observe_and_commit() {
     let server = McpServer::new(FixtureBus);
     let request = json!({
         "api_version":"v1",
@@ -82,11 +86,19 @@ async fn tools_call_returns_structured_content_and_unknown_commit_is_explicit() 
     assert_eq!(called["result"]["isError"], false);
     assert!(called["result"].get("structuredContent").is_some());
 
+    let mut commit_request = request.clone();
+    commit_request["command"] = json!({
+        "command":"commit",
+        "payload":{"fragments":[request["command"]["payload"]["fragment"].clone()]}
+    });
     let commit = server
-        .handle(json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"memory_commit","arguments":{}}}))
+        .handle(json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"memory_commit","arguments":{"request":commit_request}}}))
         .await;
-    assert_eq!(commit["result"]["isError"], true);
-    assert_eq!(commit["result"]["structuredContent"]["code"], "unsupported");
+    assert_eq!(commit["result"]["isError"], false);
+    assert_eq!(
+        commit["result"]["structuredContent"]["response"]["response"],
+        "commit"
+    );
 
     let invalid: Value = server
         .handle(json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"memory_observe","arguments":{}}}))

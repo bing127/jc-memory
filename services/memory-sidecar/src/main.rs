@@ -1,5 +1,8 @@
 //! `jcmemd` 本地 Sidecar 守护进程入口。
 
+use std::sync::Arc;
+
+use jc_memory_core::{EmbeddedCommandBus, MemoryConfig, MemoryEngine};
 use jc_memory_sidecar::{SidecarConfig, SidecarDaemon};
 
 #[tokio::main]
@@ -9,7 +12,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         || std::env::temp_dir().join("jc-memory"),
         std::path::PathBuf::from,
     );
-    let daemon = SidecarDaemon::bind(SidecarConfig::local(data_dir)).await?;
+    let config = SidecarConfig::local(&data_dir);
+    let engine = MemoryEngine::open(MemoryConfig::local(&data_dir)).await?;
+    let bus = Arc::new(EmbeddedCommandBus::new(engine));
+    let daemon = SidecarDaemon::bind_with_bus(config, bus).await?;
     tracing::info!("疆诚记忆 Sidecar 已启动");
     daemon.run().await?;
     Ok(())

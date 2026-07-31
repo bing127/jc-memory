@@ -10,10 +10,10 @@ use axum::{
 use http_body_util::BodyExt as _;
 use jc_memory_core::{CommandBus, CommandError};
 use jc_memory_protocol::{
-    API_VERSION_V1, AccessContext, AccessScope, ExplainResult, MemoryCommand, MemoryPacket,
-    MemoryRequest, MemoryResponse, MutationAction, MutationCommand, MutationResult, ObserveResult,
-    Operation, RecallCommand, RecallId, RecallLimits, RecallMode, ResponseEnvelope, StatsCommand,
-    StatsResult,
+    API_VERSION_V1, AccessContext, AccessScope, CommitCommand, CommitResult, ExplainResult,
+    MemoryCommand, MemoryPacket, MemoryRequest, MemoryResponse, MutationAction, MutationCommand,
+    MutationResult, ObserveResult, Operation, RecallCommand, RecallId, RecallLimits, RecallMode,
+    ResponseEnvelope, StatsCommand, StatsResult,
 };
 use jc_memory_server::{ApiKey, GrpcAdapter, ServerError, ServerState, router, serve_grpc};
 use serde_json::{Value, json};
@@ -34,9 +34,11 @@ impl CommandBus for FixtureBus {
         _access: &AccessContext,
         request: MemoryRequest,
     ) -> Result<ResponseEnvelope, CommandError> {
-        Ok(ResponseEnvelope::for_request(
-            &request,
-            MemoryResponse::Observe(ObserveResult {
+        let response = match request.command {
+            MemoryCommand::Commit(_) => MemoryResponse::Commit(CommitResult {
+                receipts: Vec::new(),
+            }),
+            _ => MemoryResponse::Observe(ObserveResult {
                 fragment_id: "00000000-0000-7000-8000-000000000001".parse().unwrap(),
                 event_id: "00000000-0000-7000-8000-000000000002".parse().unwrap(),
                 sequence: 1,
@@ -44,7 +46,8 @@ impl CommandBus for FixtureBus {
                 created: true,
                 quarantined: false,
             }),
-        ))
+        };
+        Ok(ResponseEnvelope::for_request(&request, response))
     }
 }
 
@@ -153,6 +156,38 @@ async fn generic_command_route_reuses_the_same_core_envelope() {
 }
 
 #[tokio::test]
+async fn commit_route_returns_structured_commit_envelope() {
+    let mut request = request();
+    let fragment = match request.command {
+        MemoryCommand::Observe(command) => command.fragment,
+        _ => panic!("Fixture 必须从 Observe 开始"),
+    };
+    request.command = MemoryCommand::Commit(CommitCommand {
+        fragments: vec![fragment],
+    });
+    let key = ApiKey::new(
+        "test-key",
+        AccessContext::new("principal", request.access_scope.clone().into()),
+    );
+    let response = router(ServerState::new(FixtureBus, vec![key]))
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/memory/commit")
+                .header("content-type", "application/json")
+                .header("x-api-key", "test-key")
+                .body(Body::from(serde_json::to_vec(&request).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let envelope: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(envelope["response"]["response"], "commit");
+}
+
+#[tokio::test]
 async fn recall_route_returns_the_shared_recall_envelope() {
     #[derive(Clone)]
     struct RecallBus;
@@ -166,6 +201,7 @@ async fn recall_route_returns_the_shared_recall_envelope() {
             let query_id = match request.command {
                 MemoryCommand::Recall(_) => RecallId::new(),
                 MemoryCommand::Observe(_)
+                | MemoryCommand::Commit(_)
                 | MemoryCommand::Stats(_)
                 | MemoryCommand::Correct(_)
                 | MemoryCommand::Forget(_)
@@ -237,6 +273,7 @@ async fn stats_route_returns_scope_counts_from_the_shared_envelope() {
                     }),
                 )),
                 MemoryCommand::Observe(_)
+                | MemoryCommand::Commit(_)
                 | MemoryCommand::Recall(_)
                 | MemoryCommand::Correct(_)
                 | MemoryCommand::Forget(_)
@@ -347,6 +384,7 @@ async fn mutation_routes_return_correct_and_forget_results() {
                 MemoryCommand::Correct(_) => MutationAction::Correct,
                 MemoryCommand::Forget(_) => MutationAction::Forget,
                 MemoryCommand::Observe(_)
+                | MemoryCommand::Commit(_)
                 | MemoryCommand::Recall(_)
                 | MemoryCommand::Stats(_)
                 | MemoryCommand::Explain(_) => {
@@ -435,6 +473,7 @@ async fn explain_route_returns_structured_trace_envelope() {
                     MemoryResponse::Explain(ExplainResult::default()),
                 )),
                 MemoryCommand::Observe(_)
+                | MemoryCommand::Commit(_)
                 | MemoryCommand::Recall(_)
                 | MemoryCommand::Stats(_)
                 | MemoryCommand::Correct(_)
@@ -534,6 +573,7 @@ async fn tonic_execute_supports_recall_over_tcp() {
             let mode = match &request.command {
                 MemoryCommand::Recall(command) => command.mode,
                 MemoryCommand::Observe(_)
+                | MemoryCommand::Commit(_)
                 | MemoryCommand::Stats(_)
                 | MemoryCommand::Correct(_)
                 | MemoryCommand::Forget(_)

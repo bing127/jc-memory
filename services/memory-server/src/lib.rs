@@ -234,6 +234,7 @@ where
         .route("/metrics", get(metrics))
         .route("/v1/memory/command", post(command::<B>))
         .route("/v1/memory/observe", post(observe::<B>))
+        .route("/v1/memory/commit", post(commit::<B>))
         .route("/v1/memory/recall", post(recall::<B>))
         .route("/v1/memory/stats", post(stats::<B>))
         .route("/v1/memory/correct", post(correct::<B>))
@@ -369,6 +370,17 @@ async fn metrics() -> impl IntoResponse {
 }
 
 async fn observe<B>(
+    State(state): State<ServerState<B>>,
+    headers: HeaderMap,
+    Json(request): Json<MemoryRequest>,
+) -> Result<Json<ResponseEnvelope>, ServerError>
+where
+    B: CommandBus + Send + Sync + 'static,
+{
+    command_inner(state, headers, request).await
+}
+
+async fn commit<B>(
     State(state): State<ServerState<B>>,
     headers: HeaderMap,
     Json(request): Json<MemoryRequest>,

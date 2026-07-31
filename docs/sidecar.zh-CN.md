@@ -10,6 +10,7 @@
 - Unix 使用权限为 `0600` 的 Unix Domain Socket。
 - 非 Unix 平台保留本地 Loopback 传输抽象；Named Pipe 尚未实现。
 - 控制命令支持 `status`、`stop` 和 `doctor`。
+- 绑定 Core 的守护进程支持 `execute` 控制消息，将 `MemoryRequest` 转发到共享 `CommandBus` 并返回 `ResponseEnvelope`；Commit 已覆盖该转发路径。
 
 ## 启动与控制
 
@@ -25,4 +26,4 @@ JC_MEMORY_SIDECAR_DATA_DIR=/var/lib/jc-memory-sidecar \
 
 ## 尚未实现
 
-Sidecar 尚未提供 Observe/Recall/Correct/Forget/Explain/Stats 的同协议转发，也尚未接入服务端 API Key、TLS 或独立 MCP Server。生产部署不能把当前 Sidecar 控制接口当作完整 Memory API；这些能力完成前不会创建 M4 总 Tag。
+Sidecar 当前仍未提供完整 Observe/Recall/Correct/Forget/Explain/Stats 的专用 CLI 子命令，也尚未接入服务端 API Key、TLS 或独立 MCP Server。`execute` 转发复用本地 Token 和 Core ACL，但跨多条 Commit Fragment 仍逐条追加，未提供单事务保证。生产部署不能把当前 Sidecar 控制接口当作完整 Memory API；这些能力完成前不会创建 M4 总 Tag。
