@@ -1,0 +1,12 @@
+seed: 17
+input_dim: 4
+hidden_dim: 8
+router_classes: 3
+batch_size: 3
+epochs: 2
+learning_rate: 0.01
+validation_ratio: 0.25
+checkpoint_path: artifacts/smoke-checkpoint.pt
+schema_version: m6.training.v1
+device: cpu
+num_workers: 0

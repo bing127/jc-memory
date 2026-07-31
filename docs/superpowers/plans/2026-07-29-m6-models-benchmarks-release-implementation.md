@@ -25,11 +25,11 @@
 
 **文件：** `models/pyproject.toml`、`models/training/{config.py,data.py,model.py,train.py,checkpoint.py}`、`models/tests/`。
 
-- [ ] **步骤 1：写固定 Seed、Dataset Split 和 Checkpoint round-trip 失败测试。**
-- [ ] **步骤 2：运行 `python -m pytest models/tests/test_training.py -q`**，预期模块缺失。
-- [ ] **步骤 3：实现 YAML/JSON `TrainingConfig` 的 schema 校验、全局 seed、按样本 ID 稳定 split、DataLoader worker seed；小型多任务网络只覆盖 Router/Importance/Contradiction Fixture。**
-- [ ] **步骤 4：Checkpoint 保存 model/optimizer/config/schema_version/git_commit/metrics，不保存绝对路径或 Token；恢复时校验结构和 checksum。**
-- [ ] **步骤 5：运行 pytest 和一次 CPU 两 epoch 小训练，提交 `feat(models): add reproducible training pipeline`**。
+- [x] **步骤 1：写固定 Seed、Dataset Split 和 Checkpoint round-trip 失败测试。** 已覆盖配置安全、输入顺序无关的稳定切分、训练参数摘要和 Checkpoint 尾部篡改拒绝。
+- [x] **步骤 2：运行 `python -m pytest models/tests/test_training.py -q`**，先确认 `models.training` 缺失红灯，再完成 4 个测试通过。
+- [x] **步骤 3：实现 YAML/JSON `TrainingConfig` 的 schema 校验、全局 seed、按样本 ID 稳定 split、DataLoader worker seed；小型多任务网络覆盖 Router/Importance/Contradiction Fixture。**
+- [x] **步骤 4：Checkpoint 保存 model/optimizer/config/schema_version/git_commit/metrics，不保存绝对路径或 Token；恢复时校验文件内 SHA-256、结构和配置。**
+- [x] **步骤 5：运行 pytest 和一次 CPU 两 epoch 小训练，提交 `feat(models): add reproducible training pipeline`。** `models/.venv` 中 4 个测试、Ruff、编译检查和两 epoch Smoke 均已通过；实现提交待本次提交完成。
 
 ## Task 2：实现 ONNX 导出、一致性验证与 Rust 部署
 
