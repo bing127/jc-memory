@@ -1,0 +1,2 @@
+# Android native slices 由 build-android-uniffi.sh 按目标 ABI 生成，不提交二进制。
+*.so

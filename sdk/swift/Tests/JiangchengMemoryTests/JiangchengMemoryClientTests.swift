@@ -2,6 +2,19 @@ import Foundation
 import Testing
 @testable import JiangchengMemory
 
+@Test("UniFFI 生成 binding 保留 Embedded API")
+func generatedUniFFIBindingContractIsPresent() throws {
+    let sourcePath = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .appendingPathComponent("Sources/JiangchengMemoryUniffi/jc_memory_uniffi.swift")
+    let source = try String(contentsOf: sourcePath, encoding: .utf8)
+    #expect(source.contains("public protocol JcMemoryEngineProtocol"))
+    #expect(source.contains("func execute(requestJson: String)"))
+    #expect(source.contains("func shutdown()"))
+}
+
 @Test("返回 canonical Recall response 并携带 Bearer API Key")
 func recallReturnsFixture() async throws {
     let fixture = try loadFixture()

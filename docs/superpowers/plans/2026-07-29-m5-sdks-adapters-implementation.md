@@ -73,7 +73,11 @@ it("returns the canonical recall packet", async () => {
 - [x] **步骤 1：写 JVM Fixture、Coroutine 取消和稳定错误映射失败测试。**
 - [x] **步骤 2：运行 `gradle -p sdk/kotlin test`，先确认 API 缺失红灯，再完成绿灯。**
 - [x] **步骤 3：实现 Kotlin/JVM 远程 `JiangchengMemoryClient`，方法使用 `suspend`，`recallFlow` 使用 `Flow`，网络调用运行在 `Dispatchers.IO`，客户端实现 `AutoCloseable`。**
-- [ ] **步骤 4：Android AAR、ABI filters、consumer ProGuard 和 UniFFI `JcMemoryEngine` 尚未实现；当前仓库没有 `memory-uniffi` crate，不能把 JVM 客户端标记为 Android Embedded。**
+- [ ] **步骤 4：Android Embedded 仍有目标平台输入未完成。**
+  - [x] Android Library、Debug AAR、四类 ABI filters、consumer ProGuard 和 `AndroidEmbeddedMemoryClient` 已实现；`gradle -p sdk/kotlin/android assembleDebug --no-daemon` 已通过。
+  - [x] Android 复用锁定 UniFFI 生成的 `JcMemoryEngine` Kotlin binding，不复制第二套 JNI。
+  - [x] `build-android-uniffi.sh` 已安装/检查四个 Rust Android targets，并成功生成 `arm64-v8a`、`armeabi-v7a`、`x86_64`、`x86` 四类 native slices；Release AAR 已验证包含四类 `.so`。
+  - [ ] `connectedAndroidTest` 尚未在真实设备或模拟器执行；因此本步骤主复选框保持未勾选。
 - [x] **步骤 5：运行 JVM Gradle 测试（4 个通过）；当前主机未运行 connectedAndroidTest，已在 `docs/sdk/kotlin.md` 记录为 CI/设备待验证；提交 `feat(sdk-kotlin): 增加 JVM Coroutine 客户端`。**
 
 ## Task 6：实现 Swift/iOS/macOS SDK
@@ -83,7 +87,11 @@ it("returns the canonical recall packet", async () => {
 - [x] **步骤 1：写 Swift Fixture、async cancellation、Actor 并发和错误映射失败测试。**
 - [x] **步骤 2：运行 `swift test --package-path sdk/swift`，先确认 target 缺失红灯，再完成绿灯。**
 - [x] **步骤 3：`JiangchengMemoryClient` 使用 actor 保护 URLSession 状态，公开 async observe/recall/commit/correct/explain/forget/stats；调用方取消保留 Swift `CancellationError`。**
-- [ ] **步骤 4：Package.swift 已声明 macOS/iOS 最低版本并加入显式输入的 XCFramework 脚本；但 `memory-uniffi`、device/simulator/macOS 原生 slices 和 dSYM 合并尚未实现，不能标记为完成。**
+- [ ] **步骤 4：Swift Embedded 已完成当前主机生成与编译，目标平台发布仍未收口。**
+  - [x] 通过锁定 UniFFI 版本生成 Swift binding、FFI header/modulemap，并加入 `JiangchengMemoryEmbedded` SwiftPM target。
+  - [x] 当前 macOS 可编译 `JiangchengMemoryUniffi` 与 `JiangchengMemoryEmbedded`，生成契约测试已覆盖 `JcMemoryEngine`、`execute` 和 `shutdown`。
+  - [x] `build-xcframework.sh` 已成功生成当前 macOS ARM64 的 `JiangchengMemory.xcframework`。
+  - [ ] iOS device/simulator、macOS x64 发布 slice、签名和 dSYM 合并尚未完成；因此本步骤主复选框保持未勾选。
 - [x] **步骤 5：运行当前主机 Swift 测试（3 个通过），提交 `feat(sdk-swift): 增加异步 Apple 客户端`；Apple 原生绑定留待 UniFFI/CI。**
 
 ## Task 7：实现 Java/JVM SDK

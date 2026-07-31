@@ -9,8 +9,9 @@
 | Node napi-rs | 已有 JSON Embedded 门面 | macOS Rust 构建和单测 | Windows/Linux 发布包与 Electron 平台二进制 |
 | Python PyO3 | 已有同步/异步 Embedded 门面 | 本机可构建时运行 PyO3 测试 | manylinux、Windows wheel、PyPy |
 | Go C ABI | 已隔离受控 C ABI | Rust ABI 单测 | Windows/Linux cgo 动态库和交叉链接 |
-| Kotlin/JVM UniFFI | JVM Facade、loader 和 checksum 契约已存在 | JVM 单测 | `memory-uniffi` 真实生成绑定、JNI、Android AAR/设备 |
-| Swift UniFFI | 远程 actor 已存在 | macOS Swift 单测 | `memory-uniffi` 生成绑定、iOS device/simulator、XCFramework |
+| Kotlin/JVM UniFFI | JVM Facade、loader 和 checksum 契约已存在 | JVM 单测 | Android native slices、JNI 设备运行、connected test |
+| Kotlin/Android | Android Library、AAR、四类 ABI filters、ProGuard、Embedded facade 和 native slices | Release AAR 包含四类 `.so` | native slice 运行、设备/模拟器 connected test |
+| Swift UniFFI | SwiftPM Embedded target、生成 binding 和本机 XCFramework | macOS ARM64 生成/编译/XCFramework | iOS device/simulator、macOS x64、签名和 dSYM 合并 |
 | Java/JVM | 远程 CompletableFuture 与 Embedded Facade 已存在 | JVM 单测 | native binding 在目标 classloader 和平台上的实机加载 |
 
 ## 生命周期与校验
