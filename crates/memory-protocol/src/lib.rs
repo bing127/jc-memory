@@ -41,7 +41,7 @@ pub mod generated {
 
 pub use command::{
     API_VERSION_V1, AccessScope, CommandErrorCode, MemoryCommand, MemoryRequest, MemoryResponse,
-    ObserveCommand, ObserveResult, RequestValidationError, ResponseEnvelope,
+    ObserveCommand, ObserveResult, RecallCommand, RequestValidationError, ResponseEnvelope,
 };
 pub use event::{CognitiveStage, EventDraft, MemoryEvent};
 pub use fragment::{
@@ -58,7 +58,7 @@ pub use packet::{
     MissingEvidence, PointView, ProcedureView, RecallPath, StateView, SurfaceView,
 };
 pub use protobuf::ProtoConversionError;
-pub use recall::RecallMode;
+pub use recall::{RecallLimits, RecallMode};
 pub use scope::MemoryScope;
 pub use security::{AccessContext, Decision, DenyReason, Grant, Operation};
 pub use surface::{SurfaceKind, SurfaceStatus};

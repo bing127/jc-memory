@@ -1,10 +1,11 @@
 //! Embedded 与远程服务共享的稳定命令 Envelope。
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AgentId, BlobId, CognitiveFragment, EventId, FragmentId, MemoryScope, NamespaceId, ProjectId,
-    TenantId, UserId,
+    AgentId, BlobId, CognitiveFragment, EventId, FragmentId, MemoryPacket, MemoryScope,
+    NamespaceId, ProjectId, RecallLimits, RecallMode, TenantId, UserId,
 };
 
 /// 当前稳定服务协议版本。
@@ -56,12 +57,31 @@ pub struct ObserveCommand {
     pub fragment: CognitiveFragment,
 }
 
+/// 一个有界、模型无关的 Recall 命令。
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct RecallCommand {
+    /// Recall 选择模式。
+    pub mode: RecallMode,
+    /// 调用方提供的检索文本。
+    pub text: String,
+    /// 已规范化的实体名称。
+    pub entities: Vec<String>,
+    /// 可选的历史有效时间点。
+    pub at_time: Option<DateTime<Utc>>,
+    /// 本次请求的硬执行预算。
+    pub limits: RecallLimits,
+}
+
 /// 当前 `CommandBus` 可执行的命令集合。
+// Observe 和 Recall 都需要在协议边界保持完整值语义，装箱会改变现有调用方类型。
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "command", content = "payload", rename_all = "snake_case")]
 pub enum MemoryCommand {
     /// 写入新的权威 Fragment/Event。
     Observe(ObserveCommand),
+    /// 在授权 Scope 内执行有界 Recall。
+    Recall(RecallCommand),
 }
 
 /// 所有 Embedded 与远程协议请求共享的 Envelope。
@@ -128,15 +148,19 @@ pub struct ObserveResult {
 }
 
 /// 当前 `CommandBus` 的稳定响应集合。
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+// Observe 和 Recall 都需要在协议边界保持完整值语义，装箱会改变现有调用方类型。
+#[allow(clippy::large_enum_variant)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "response", content = "payload", rename_all = "snake_case")]
 pub enum MemoryResponse {
     /// Observe 的持久化结果。
     Observe(ObserveResult),
+    /// Recall 返回的模型无关 Memory Packet。
+    Recall(MemoryPacket),
 }
 
 /// 与请求元数据关联的成功响应 Envelope。
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ResponseEnvelope {
     /// 与请求一致的服务协议版本。
     pub api_version: String,

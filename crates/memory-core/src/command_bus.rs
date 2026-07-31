@@ -1,6 +1,7 @@
 //! 所有 Embedded 与远程服务复用的 Core 命令入口。
 
 use async_trait::async_trait;
+use jc_memory_activation::{RecallLimits as ActivationRecallLimits, RecallQuery};
 use jc_memory_protocol::{
     AccessContext, CommandErrorCode, MemoryCommand, MemoryRequest, MemoryResponse, ObserveResult,
     RequestValidationError, ResponseEnvelope,
@@ -56,7 +57,7 @@ impl CommandBus for EmbeddedCommandBus {
             MemoryCommand::Observe(command) if command.fragment.scope != request_scope => {
                 return Err(CommandError::AccessScopeMismatch);
             }
-            MemoryCommand::Observe(_) => {}
+            MemoryCommand::Observe(_) | MemoryCommand::Recall(_) => {}
         }
 
         let response = match request.command.clone() {
@@ -74,6 +75,28 @@ impl CommandBus for EmbeddedCommandBus {
                     created: receipt.created,
                     quarantined: receipt.quarantined,
                 })
+            }
+            MemoryCommand::Recall(command) => {
+                let query = RecallQuery {
+                    scope: request_scope,
+                    mode: command.mode,
+                    text: command.text,
+                    entities: command.entities,
+                    at_time: command.at_time,
+                    limits: ActivationRecallLimits {
+                        max_seeds: command.limits.max_seeds,
+                        max_neighbors: command.limits.max_neighbors,
+                        max_hops: command.limits.max_hops,
+                        max_nodes: command.limits.max_nodes,
+                        timeout_ms: command.limits.timeout_ms,
+                    },
+                };
+                MemoryResponse::Recall(
+                    self.engine
+                        .recall(access, query)
+                        .await
+                        .map_err(CommandError::engine)?,
+                )
             }
         };
         Ok(ResponseEnvelope::for_request(&request, response))

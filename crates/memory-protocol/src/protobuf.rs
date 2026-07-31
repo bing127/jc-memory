@@ -59,6 +59,12 @@ pub enum ProtoConversionError {
     /// 请求 Envelope 字段未通过领域协议校验。
     #[error(transparent)]
     Request(#[from] RequestValidationError),
+    /// 当前 Protobuf 契约尚未声明该命令或响应。
+    #[error("protobuf contract does not support {kind}")]
+    Unsupported {
+        /// 尚未支持的命令或响应名称。
+        kind: &'static str,
+    },
 }
 
 impl TryFrom<MemoryRequest> for proto::RequestEnvelope {
@@ -71,6 +77,11 @@ impl TryFrom<MemoryRequest> for proto::RequestEnvelope {
                 proto::request_envelope::Command::Observe(proto::ObserveCommand {
                     fragment: Some(command.fragment.try_into()?),
                 })
+            }
+            MemoryCommand::Recall(_) => {
+                return Err(ProtoConversionError::Unsupported {
+                    kind: "recall command",
+                });
             }
         };
         Ok(Self {
@@ -111,6 +122,11 @@ impl TryFrom<ResponseEnvelope> for proto::ResponseEnvelope {
         let response = match envelope.response {
             MemoryResponse::Observe(result) => {
                 proto::response_envelope::Response::Observe(result.into())
+            }
+            MemoryResponse::Recall(_) => {
+                return Err(ProtoConversionError::Unsupported {
+                    kind: "recall response",
+                });
             }
         };
         Ok(Self {
