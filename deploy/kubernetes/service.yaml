@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: jc-memory-server
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: jc-memory-server
+  ports:
+    - name: http
+      port: 8787
+      targetPort: http
+      protocol: TCP
+    - name: grpc
+      port: 8788
+      targetPort: grpc
+      protocol: TCP

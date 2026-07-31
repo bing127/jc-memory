@@ -140,6 +140,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - 已修正 gRPC 适配器绕过并发门禁的问题；HTTP 与 gRPC 现在共同使用 `max_in_flight` permit，超限统一返回资源耗尽语义。
 - 已接入按 API Key 隔离的固定窗口速率限制；`JC_MEMORY_MAX_REQUESTS_PER_SECOND` 默认 128，HTTP 与 gRPC 共享配额，配置为零时拒绝启动。
 - 已增加 YAML 配置文件加载；`JC_MEMORY_CONFIG_FILE` 指定文件，环境变量逐字段覆盖 YAML，API Key 仍只允许从环境变量或部署 Secret 注入。
+- 已补充 Dockerfile、Docker Compose、Kubernetes ConfigMap/Secret/Deployment/Service/PVC 和中文部署指南；当前仅完成本地 YAML 结构与契约验证，未宣称真实容器或集群验证。
 - 本记录不代表 Task 7 或 M4 完成；Commit、Recall/Mutation/Explain 的完整 Protobuf 消息扩展、KeyProvider、请求超时和完整跨协议验收仍未实现。
 
 ## Task 8：实现本地 Sidecar

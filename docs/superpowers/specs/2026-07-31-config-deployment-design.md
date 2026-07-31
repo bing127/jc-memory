@@ -42,6 +42,7 @@ API Key 是秘密，不写入 YAML 示例、ConfigMap、Docker 镜像或 Git 仓
 - `deploy/kubernetes/secret.example.yaml`：只包含 Secret 字段模板和替换说明，不包含真实值；
 - `deploy/kubernetes/deployment.yaml`：ConfigMap/Secret 挂载、资源限制、非 root 安全上下文、HTTP 健康探针；
 - `deploy/kubernetes/service.yaml`：分别暴露 HTTP 和 gRPC 服务端口；
+- `deploy/kubernetes/persistentvolumeclaim.yaml`：为 Embedded SQLite 和 Blob 目录提供持久卷声明；
 - `docs/deployment.zh-CN.md`：本地、Docker Compose、Kubernetes 的配置和验证流程。
 
 Kubernetes 探针使用 `/healthz` 和 `/readyz`；TLS 私钥不放进 ConfigMap。示例资源不宣称已连接真实集群，验证以 YAML 结构检查和本地容器构建为准。

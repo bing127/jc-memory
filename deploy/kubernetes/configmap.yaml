@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jc-memory-server-config
+data:
+  server.yaml: |
+    bind: 0.0.0.0:8787
+    grpc_bind: 0.0.0.0:8788
+    data_dir: /var/lib/jc-memory
+    namespace_id: 00000000-0000-7000-8000-000000000003
+    max_in_flight: 64
+    max_requests_per_second: 128
+    tls:
+      cert_file: /etc/jc-memory/tls/tls.crt
+      key_file: /etc/jc-memory/tls/tls.key

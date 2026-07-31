@@ -423,4 +423,16 @@ mod tests {
         assert!(error.to_string().contains("/missing/jc-memory/server.yaml"));
         assert!(!error.to_string().contains("do-not-print-this-key"));
     }
+
+    #[test]
+    fn docker_yaml_example_stays_compatible_with_the_server_schema() {
+        let partial = ServerConfig::from_yaml_str(include_str!(
+            "../../../deploy/docker/config/server.yaml.example"
+        ))
+        .unwrap();
+
+        assert_eq!(partial.bind.as_deref(), Some("0.0.0.0:8787"));
+        assert_eq!(partial.grpc_bind.as_deref(), Some("0.0.0.0:8788"));
+        assert_eq!(partial.data_dir.as_deref(), Some("/var/lib/jc-memory"));
+    }
 }

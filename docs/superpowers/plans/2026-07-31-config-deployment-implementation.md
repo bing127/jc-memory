@@ -129,28 +129,29 @@ git commit -m "feat(config): 接入 Server 配置文件"
 ### Task 4：提供 Docker 部署资源
 
 **文件：**
+- 创建：`.dockerignore`
 - 创建：`deploy/docker/Dockerfile`
 - 创建：`deploy/docker/compose.yaml`
 - 创建：`deploy/docker/config/server.yaml.example`
 - 创建：`docs/deployment.zh-CN.md`
 
-- [ ] **步骤 1：写资源静态契约检查**
+- [x] **步骤 1：写资源静态契约检查**
 
 使用文本/结构化检查验证 Dockerfile 构建 `memory-server`、运行阶段非 root、Compose 不包含真实 API Key、配置通过 `JC_MEMORY_CONFIG_FILE` 挂载、数据目录为持久化卷。
 
-- [ ] **步骤 2：实现多阶段 Dockerfile**
+- [x] **步骤 2：实现多阶段 Dockerfile**
 
 构建阶段使用 Rust 1.97 工具链编译 `memory-server`；运行阶段使用最小可运行镜像、非 root 用户、`/var/lib/jc-memory` 数据目录和 `/etc/jc-memory/server.yaml` 配置路径。
 
-- [ ] **步骤 3：实现 Compose 模板**
+- [x] **步骤 3：实现 Compose 模板**
 
 Compose 暴露 `8787` HTTP 和 `8788` gRPC，挂载配置/数据目录，API Key 使用 `${JC_MEMORY_API_KEY:?}`，不在 YAML 中写入默认秘密。
 
-- [ ] **步骤 4：运行可用工具上的静态验证**
+- [x] **步骤 4：运行可用工具上的静态验证**
 
 可用时运行 `docker build -f deploy/docker/Dockerfile .`；不可用时执行 YAML 结构检查并明确未完成真实镜像构建。
 
-- [ ] **步骤 5：提交 Docker 资源**
+- [x] **步骤 5：提交 Docker 资源**
 
 ```bash
 git add deploy/docker docs/deployment.zh-CN.md
@@ -164,21 +165,23 @@ git commit -m "feat(deploy): 增加 Docker Compose 部署资源"
 - 创建：`deploy/kubernetes/secret.example.yaml`
 - 创建：`deploy/kubernetes/deployment.yaml`
 - 创建：`deploy/kubernetes/service.yaml`
+- 创建：`deploy/kubernetes/persistentvolumeclaim.yaml`
+- 修改：`README.zh-CN.md`
 - 修改：`docs/deployment.zh-CN.md`
 
-- [ ] **步骤 1：写 Kubernetes 结构契约检查**
+- [x] **步骤 1：写 Kubernetes 结构契约检查**
 
 验证 Deployment 引用 ConfigMap 和 Secret、容器不以 root 运行、HTTP 探针指向 `/healthz`/`/readyz`、Service 同时暴露 HTTP/gRPC，Secret 示例不包含真实值。
 
-- [ ] **步骤 2：实现 ConfigMap 与 Secret 模板**
+- [x] **步骤 2：实现 ConfigMap 与 Secret 模板**
 
 ConfigMap 只挂载非秘密 `server.yaml`；Secret 示例只保留 `JC_MEMORY_API_KEY`、TLS 证书和私钥字段名称与替换说明。
 
-- [ ] **步骤 3：实现 Deployment 与 Service**
+- [x] **步骤 3：实现 Deployment 与 Service**
 
 Deployment 设置资源请求/上限、`runAsNonRoot`、只读根文件系统、数据卷和配置卷；Service 使用明确端口名 `http`、`grpc`。
 
-- [ ] **步骤 4：执行本地结构验证**
+- [x] **步骤 4：执行本地结构验证**
 
 可用时运行：
 
@@ -188,7 +191,7 @@ kubectl apply --dry-run=client -f deploy/kubernetes/
 
 否则使用 `yaml_serde` 结构检查脚本，并把结果标为 Fixture/静态验证，不宣称真实集群验证。
 
-- [ ] **步骤 5：提交 Kubernetes 资源**
+- [x] **步骤 5：提交 Kubernetes 资源**
 
 ```bash
 git add deploy/kubernetes docs/deployment.zh-CN.md
@@ -197,8 +200,8 @@ git commit -m "feat(deploy): 增加 Kubernetes 部署资源"
 
 ### Task 6：完成配置与部署阶段门禁
 
-- [ ] **步骤 1：运行聚焦测试、Clippy、文档和 `git diff --check`**
-- [ ] **步骤 2：检查敏感字段和示例凭据**
+- [x] **步骤 1：运行聚焦测试、Clippy、文档和 `git diff --check`**
+- [x] **步骤 2：检查敏感字段和示例凭据**
 
 ```bash
 rg -n "sk-|BEGIN .*PRIVATE KEY|真实密码|真实 token" deploy docs/configuration.zh-CN.md docs/deployment.zh-CN.md
@@ -206,11 +209,11 @@ rg -n "sk-|BEGIN .*PRIVATE KEY|真实密码|真实 token" deploy docs/configurat
 
 预期只有字段名、明确占位符和测试说明，不出现可用凭据。
 
-- [ ] **步骤 3：更新 M4 计划**
+- [x] **步骤 3：更新 M4 计划**
 
 记录配置来源优先级、部署资源、静态验证结果和未完成的请求超时/完整 Proto/Sidecar/MCP 范围。
 
-- [ ] **步骤 4：阶段提交并推送**
+- [x] **步骤 4：阶段提交并推送**
 
 ```bash
 git add docs/superpowers/plans/2026-07-31-config-deployment-implementation.md

@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jc-memory-server
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: jc-memory-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: jc-memory-server
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: memory-server
+          image: jc-memory-server:replace-with-version
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: JC_MEMORY_CONFIG_FILE
+              value: /etc/jc-memory/server.yaml
+            - name: JC_MEMORY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: jc-memory-server-secret
+                  key: JC_MEMORY_API_KEY
+          ports:
+            - name: http
+              containerPort: 8787
+              protocol: TCP
+            - name: grpc
+              containerPort: 8788
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/jc-memory/server.yaml
+              subPath: server.yaml
+              readOnly: true
+            - name: tls
+              mountPath: /etc/jc-memory/tls
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/jc-memory
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: jc-memory-server-config
+        - name: tls
+          secret:
+            secretName: jc-memory-server-secret
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+                mode: 0400
+        - name: data
+          persistentVolumeClaim:
+            claimName: jc-memory-server-data
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi

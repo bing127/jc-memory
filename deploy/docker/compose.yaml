@@ -1,0 +1,25 @@
+services:
+  memory-server:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: jc-memory-server:local
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      JC_MEMORY_API_KEY: ${JC_MEMORY_API_KEY:?请设置 JC_MEMORY_API_KEY}
+      JC_MEMORY_NAMESPACE_ID: ${JC_MEMORY_NAMESPACE_ID:?请设置 JC_MEMORY_NAMESPACE_ID}
+      JC_MEMORY_CONFIG_FILE: /etc/jc-memory/server.yaml
+    ports:
+      - "8787:8787"
+      - "8788:8788"
+    volumes:
+      - ./config/server.yaml.example:/etc/jc-memory/server.yaml:ro
+      - jc-memory-data:/var/lib/jc-memory
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+
+volumes:
+  jc-memory-data:
