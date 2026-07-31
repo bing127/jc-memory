@@ -29,7 +29,7 @@
 - [x] **步骤 2：运行 `python -m pytest models/tests/test_training.py -q`**，先确认 `models.training` 缺失红灯，再完成 4 个测试通过。
 - [x] **步骤 3：实现 YAML/JSON `TrainingConfig` 的 schema 校验、全局 seed、按样本 ID 稳定 split、DataLoader worker seed；小型多任务网络覆盖 Router/Importance/Contradiction Fixture。**
 - [x] **步骤 4：Checkpoint 保存 model/optimizer/config/schema_version/git_commit/metrics，不保存绝对路径或 Token；恢复时校验文件内 SHA-256、结构和配置。**
-- [x] **步骤 5：运行 pytest 和一次 CPU 两 epoch 小训练，提交 `feat(models): add reproducible training pipeline`。** `models/.venv` 中 4 个测试、Ruff、编译检查和两 epoch Smoke 均已通过；实现提交待本次提交完成。
+- [x] **步骤 5：运行 pytest 和一次 CPU 两 epoch 小训练，提交 `feat(models): add reproducible training pipeline`。** `models/.venv` 中 4 个测试、Ruff、编译检查和两 epoch Smoke 均已通过；实现已提交于 `3dded8f`。
 
 ## Task 2：实现 ONNX 导出、一致性验证与 Rust 部署
 
