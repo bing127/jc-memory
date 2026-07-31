@@ -11,6 +11,8 @@ pub struct SidecarConfig {
     pub token_file: PathBuf,
     /// 单实例排他锁文件。
     pub lock_file: PathBuf,
+    /// 生命周期检查点文件。
+    pub checkpoint_file: PathBuf,
 }
 
 impl SidecarConfig {
@@ -22,6 +24,7 @@ impl SidecarConfig {
             endpoint: data_dir.join("jcmemd.sock"),
             token_file: data_dir.join("jcmemd.token"),
             lock_file: data_dir.join("jcmemd.lock"),
+            checkpoint_file: data_dir.join("jcmemd.checkpoint.json"),
             data_dir,
         }
     }
@@ -45,6 +48,7 @@ impl SidecarConfig {
             ("endpoint", &self.endpoint),
             ("token_file", &self.token_file),
             ("lock_file", &self.lock_file),
+            ("checkpoint_file", &self.checkpoint_file),
         ] {
             if !path.starts_with(&self.data_dir) {
                 return Err(format!("{name} must be inside data_dir"));

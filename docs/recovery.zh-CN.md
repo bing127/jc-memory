@@ -6,7 +6,7 @@
 
 SQLite 使用 WAL、外键、Busy Timeout 和版本化 Migration。Observe、Commit 和治理写入通过事务保证原子性；Commit 批次中任一晚期写入失败时整批回滚。
 
-连接池在所有引用释放后关闭。当前 Sidecar 会先停止接收新连接并等待已认证在途请求结束，再让 CommandBus 和 MemoryEngine 随进程退出释放；尚未提供独立的显式数据库关闭 API。
+连接池在所有引用释放后关闭。当前 Sidecar 会先停止接收新连接并等待已认证在途请求结束，再调用 `CommandBus::shutdown`；Embedded Bus 通过 `MemoryEngine::close` 显式关闭共享 SQLite 连接池。
 
 ## Snapshot 与 Restore
 
@@ -26,4 +26,4 @@ Runtime Snapshot 和 Transition 保存在 SQLite。恢复会校验 Scope、版�
 
 Sidecar 锁文件记录 PID 与启动标识。OS 锁可取得但旧元数据仍存在时，会标记为陈旧元数据恢复；如果其他进程仍持有 OS 锁，则拒绝第二实例。`stop` 等待已认证在途请求后退出。
 
-Sidecar 当前没有独立 checkpoint 文件，也没有在启动时自动执行 Snapshot Restore 或 Runtime Run 恢复。Windows 实机传输、Sidecar checkpoint 和显式数据库关闭完成前，不应把 Sidecar 描述为完整崩溃恢复服务。
+Sidecar 生命周期 checkpoint 记录 `running`、`stopped`、PID 和启动时间，通过同目录临时文件、文件同步和原子替换发布；Unix 同步父目录，Windows 使用目录句柄刷新目录项。实例取得 OS 锁后才读取该文件，可识别上一次未干净停止；关闭资源失败时不会写入 `stopped`。它不包含记忆数据，也不会自动执行 Snapshot Restore 或 Runtime Run 恢复。Windows 实机传输和完整恢复演练完成前，不应把 Sidecar 描述为完整跨平台崩溃恢复服务。

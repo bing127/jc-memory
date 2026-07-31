@@ -23,6 +23,15 @@ pub trait CommandBus: Send + Sync {
         access: &AccessContext,
         request: MemoryRequest,
     ) -> Result<ResponseEnvelope, CommandError>;
+
+    /// 停止接收业务请求后释放持久化资源。
+    ///
+    /// # Errors
+    ///
+    /// 实现无法安全释放资源时返回稳定错误。
+    async fn shutdown(&self) -> Result<(), CommandError> {
+        Ok(())
+    }
 }
 
 /// 直接复用 [`MemoryEngine`] 的进程内 `CommandBus`。
@@ -79,6 +88,11 @@ impl CommandBus for EmbeddedCommandBus {
             .execute_command(access, request_scope, request.command.clone())
             .await?;
         Ok(ResponseEnvelope::for_request(&request, response))
+    }
+
+    async fn shutdown(&self) -> Result<(), CommandError> {
+        self.engine.close().await;
+        Ok(())
     }
 }
 

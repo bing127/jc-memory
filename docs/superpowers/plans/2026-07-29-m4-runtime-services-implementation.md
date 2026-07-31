@@ -152,14 +152,14 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 
 **文件：** `services/memory-sidecar/src/{main,config,transport,lock,token,lifecycle}.rs`、`src/bin/{jcmem,jcmemd}.rs`、集成测试。
 
-- [x] **步骤 1：写第二实例被锁拒绝、Token 错误、崩溃重启和 shutdown 失败测试。** 已覆盖锁拒绝、错误 Token、重启、在途 Execute 和优雅停止。
+- [x] **步骤 1：写第二实例被锁拒绝、Token 错误、崩溃重启和 shutdown 失败测试。** 已覆盖锁拒绝、错误 Token、重启、在途 Execute、未认证空闲连接、畸形连接隔离、shutdown 成功与失败。
 - [x] **步骤 2：运行聚焦 Sidecar 契约测试。**
 - [x] **步骤 3a：实现 Transport Trait；Unix 使用权限 0600 的 UDS，非 Unix 使用随机 Loopback 端点文件；Named Pipe 只保留 Trait 扩展点，不宣称已实现。`jcmemd` 运行守护进程；`jcmem` 提供 status/stop/doctor/observe/recall/commit/correct/forget/explain/stats 子命令并使用同一协议 Client。**
 - [x] **步骤 3b-1：补充 `jcmem start`，并通过本机启动、状态和停止探针。**
 - [ ] **步骤 3b-2：补充 Windows 实机传输验证。** 当前环境为 macOS，未宣称 Windows 实机验证。
 - [x] **步骤 4a：Token 使用 256-bit 随机值、权限受限文件和常量时间比较；停止流程等待已认证在途请求。**
 - [x] **步骤 4b-1：文件锁记录 PID/启动标识，并在 OS 锁可取得但存在旧元数据时标记陈旧锁。**
-- [ ] **步骤 4b-2：checkpoint 恢复并显式关闭 DB。**
+- [x] **步骤 4b-2：生命周期 checkpoint 识别非干净重启并原子发布；停止时取消未认证空闲连接、等待已认证在途请求、显式关闭 CommandBus/SQLite 并记录干净退出。**
 - [x] **步骤 5a：运行 Sidecar 测试、Clippy、rustdoc、fmt 和 `git diff --check`。**
 - [ ] **步骤 5b：完成 Sidecar 全部边界后创建阶段总提交。**
 
@@ -170,9 +170,11 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - 已增加带共享 `CommandBus` 的 `execute` 控制消息和 Commit 转发契约测试；请求仍由本地 Token、精确 Scope 和 Core ACL 共同保护。
 - 已增加 `jcmem observe/commit/recall/correct/forget/explain/stats` 专用子命令；每个子命令接收 `--request-file` 或 `--request-json`，并在发送前校验命令类型与 Envelope。
 - 已将 Sidecar 连接改为并发任务处理；`stop` 会停止接收新连接并等待已认证的在途连接完成后再退出，新增阻塞 CommandBus 契约测试。
-- 非 Unix Loopback 已通过端点文件保存随机端口并由客户端读取连接；Named Pipe、完整 checkpoint 恢复和跨协议身份链尚未实现。因此 Task 8 不标记为完成。
+- 非 Unix Loopback 已通过端点文件保存随机端口并由客户端读取连接；Named Pipe 和 Windows 实机验证尚未完成。因此 Task 8 不标记为完成。
 - 已增加 `jcmemd` 守护进程别名和 `jcmem start`；本机临时目录启动、状态、停止探针通过。Windows 实机传输仍待专用环境验证。
-- 锁文件现在记录 PID/启动标识，并在旧元数据残留但 OS 锁已释放时报告陈旧恢复；checkpoint 恢复和显式 DB 关闭仍待实现。
+- 锁文件现在记录 PID/启动标识，并在旧元数据残留但 OS 锁已释放时报告陈旧恢复。
+- 生命周期检查点记录 `running`/`stopped`、PID 和启动时间；非干净重启可被识别，干净停止会在等待在途请求后调用 CommandBus shutdown，Embedded Bus 显式关闭 SQLite 连接池。
+- 检查点通过同目录临时文件、文件同步和原子替换发布；Unix 同步父目录，Windows 使用目录句柄刷新目录项。取得实例锁后才读取旧状态。单连接解析错误不会终止守护进程，未认证空闲连接也不会阻塞干净停止；shutdown 失败会保留 `running`。
 
 ## Task 9：实现 MCP Server
 

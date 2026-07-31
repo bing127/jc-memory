@@ -157,6 +157,9 @@ pub trait MemoryRepository: Send + Sync {
 
     /// 统计一个精确 Scope 内的权威 Fragment 和 Event。
     async fn stats(&self, scope: &MemoryScope) -> Result<RepositoryStats, StorageError>;
+
+    /// 显式关闭该仓储共享的连接池。
+    async fn close(&self);
 }
 
 /// Injectable boundary used to prove transaction rollback before durable commit.
@@ -754,6 +757,10 @@ impl MemoryRepository for SqliteMemoryRepository {
             event_count: u64::try_from(event_count)
                 .map_err(|error| corrupt("events", "count", format!("invalid count: {error}")))?,
         })
+    }
+
+    async fn close(&self) {
+        self.pool.close().await;
     }
 }
 

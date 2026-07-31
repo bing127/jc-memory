@@ -4,18 +4,20 @@
 use std::os::unix::fs::PermissionsExt as _;
 use std::process::Command;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
 use jc_memory_core::{CommandBus, CommandError, EmbeddedCommandBus, MemoryConfig, MemoryEngine};
 use jc_memory_protocol::{
-    API_VERSION_V1, AccessScope, CommitCommand, FragmentContent, FragmentKind, FragmentSource,
-    MemoryCommand, MemoryRequest, MemoryScope, NamespaceId, Perspective, SecurityLabel, SourceType,
-    StatsCommand, ValidityStatus,
+    API_VERSION_V1, AccessScope, CommandErrorCode, CommitCommand, FragmentContent, FragmentKind,
+    FragmentSource, MemoryCommand, MemoryRequest, MemoryScope, NamespaceId, Perspective,
+    SecurityLabel, SourceType, StatsCommand, ValidityStatus,
 };
 use jc_memory_sidecar::{
-    DaemonCommand, InstanceLock, LockError, SidecarConfig, SidecarDaemon, TokenStore, send_command,
+    DaemonCommand, InstanceLock, LockError, SidecarConfig, SidecarDaemon, SidecarStream,
+    TokenStore, send_command,
 };
-use tokio::sync::Notify;
+use tokio::{io::AsyncWriteExt as _, sync::Notify};
 
 #[derive(Clone)]
 struct BlockingBus {
@@ -26,6 +28,48 @@ struct BlockingBus {
 #[derive(Clone)]
 struct RecordingBus {
     principal: Arc<tokio::sync::Mutex<Option<String>>>,
+}
+
+#[derive(Clone)]
+struct ShutdownBus {
+    closed: Arc<AtomicBool>,
+}
+
+#[derive(Clone)]
+struct FailingShutdownBus;
+
+#[async_trait]
+impl CommandBus for FailingShutdownBus {
+    async fn execute(
+        &self,
+        _access: &jc_memory_protocol::AccessContext,
+        _request: MemoryRequest,
+    ) -> Result<jc_memory_protocol::ResponseEnvelope, CommandError> {
+        Err(CommandError::RequestIdMismatch)
+    }
+
+    async fn shutdown(&self) -> Result<(), CommandError> {
+        Err(CommandError::transport(
+            CommandErrorCode::Internal,
+            "注入关闭失败",
+        ))
+    }
+}
+
+#[async_trait]
+impl CommandBus for ShutdownBus {
+    async fn execute(
+        &self,
+        _access: &jc_memory_protocol::AccessContext,
+        _request: MemoryRequest,
+    ) -> Result<jc_memory_protocol::ResponseEnvelope, CommandError> {
+        Err(CommandError::RequestIdMismatch)
+    }
+
+    async fn shutdown(&self) -> Result<(), CommandError> {
+        self.closed.store(true, Ordering::SeqCst);
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -276,6 +320,170 @@ async fn execute_as_forwards_the_authenticated_principal_to_core() {
         .await
         .expect("停止身份转发 Sidecar");
     task.await.expect("等待 Sidecar").expect("Sidecar 正常退出");
+}
+
+#[tokio::test]
+async fn clean_stop_explicitly_shuts_down_the_command_bus() {
+    let directory = tempfile::tempdir().expect("创建关闭测试目录");
+    let config = SidecarConfig::local(directory.path());
+    let closed = Arc::new(AtomicBool::new(false));
+    let daemon = SidecarDaemon::bind_with_bus(
+        config.clone(),
+        Arc::new(ShutdownBus {
+            closed: Arc::clone(&closed),
+        }),
+    )
+    .await
+    .expect("绑定关闭测试 Sidecar");
+    let token = daemon.token().clone();
+    let task = tokio::spawn(daemon.run());
+    send_command(&config, &token, DaemonCommand::Stop)
+        .await
+        .expect("停止关闭测试 Sidecar");
+    task.await.expect("等待 Sidecar").expect("Sidecar 正常退出");
+    assert!(closed.load(Ordering::SeqCst));
+}
+
+#[tokio::test]
+async fn unauthenticated_idle_connection_does_not_block_clean_stop() {
+    let directory = tempfile::tempdir().expect("创建空闲连接测试目录");
+    let config = SidecarConfig::local(directory.path());
+    let closed = Arc::new(AtomicBool::new(false));
+    let daemon = SidecarDaemon::bind_with_bus(
+        config.clone(),
+        Arc::new(ShutdownBus {
+            closed: Arc::clone(&closed),
+        }),
+    )
+    .await
+    .expect("绑定空闲连接测试 Sidecar");
+    let token = daemon.token().clone();
+    let mut task = tokio::spawn(daemon.run());
+    let _idle = SidecarStream::connect(&config.endpoint)
+        .await
+        .expect("建立未认证空闲连接");
+
+    send_command(&config, &token, DaemonCommand::Stop)
+        .await
+        .expect("停止空闲连接测试 Sidecar");
+    let stopped = tokio::time::timeout(std::time::Duration::from_millis(200), &mut task).await;
+    if stopped.is_err() {
+        task.abort();
+    }
+    assert!(stopped.is_ok(), "未认证空闲连接阻塞了 Sidecar 关闭");
+    assert!(closed.load(Ordering::SeqCst));
+}
+
+#[tokio::test]
+async fn malformed_connection_does_not_skip_clean_shutdown() {
+    let directory = tempfile::tempdir().expect("创建畸形连接测试目录");
+    let config = SidecarConfig::local(directory.path());
+    let closed = Arc::new(AtomicBool::new(false));
+    let daemon = SidecarDaemon::bind_with_bus(
+        config.clone(),
+        Arc::new(ShutdownBus {
+            closed: Arc::clone(&closed),
+        }),
+    )
+    .await
+    .expect("绑定畸形连接测试 Sidecar");
+    let token = daemon.token().clone();
+    let task = tokio::spawn(daemon.run());
+    let malformed = SidecarStream::connect(&config.endpoint)
+        .await
+        .expect("建立畸形连接");
+    malformed
+        .into_inner()
+        .write_all(b"{invalid-json}\n")
+        .await
+        .expect("发送畸形控制消息");
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+
+    assert!(!task.is_finished(), "单个畸形连接终止了 Sidecar");
+    send_command(&config, &token, DaemonCommand::Stop)
+        .await
+        .expect("停止畸形连接测试 Sidecar");
+    task.await.expect("等待 Sidecar").expect("Sidecar 正常退出");
+    assert!(closed.load(Ordering::SeqCst));
+}
+
+#[tokio::test]
+async fn shutdown_failure_keeps_the_checkpoint_running() {
+    let directory = tempfile::tempdir().expect("创建关闭失败测试目录");
+    let config = SidecarConfig::local(directory.path());
+    let daemon = SidecarDaemon::bind_with_bus(config.clone(), Arc::new(FailingShutdownBus))
+        .await
+        .expect("绑定关闭失败测试 Sidecar");
+    let token = daemon.token().clone();
+    let task = tokio::spawn(daemon.run());
+
+    send_command(&config, &token, DaemonCommand::Stop)
+        .await
+        .expect("请求停止关闭失败测试 Sidecar");
+    let error = task
+        .await
+        .expect("等待关闭失败测试 Sidecar")
+        .expect_err("关闭失败必须由守护进程返回");
+    assert!(matches!(error, jc_memory_sidecar::SidecarError::Command(_)));
+    let checkpoint: serde_json::Value = serde_json::from_slice(
+        &tokio::fs::read(&config.checkpoint_file)
+            .await
+            .expect("读取失败后的生命周期检查点"),
+    )
+    .expect("解析失败后的生命周期检查点");
+    assert_eq!(checkpoint["state"], "running");
+}
+
+#[tokio::test]
+async fn lifecycle_checkpoint_detects_unclean_restart_and_records_clean_stop() {
+    let directory = tempfile::tempdir().expect("创建检查点测试目录");
+    let config = SidecarConfig::local(directory.path());
+    let first = SidecarDaemon::bind(config.clone())
+        .await
+        .expect("首次绑定 Sidecar");
+    assert!(!first.recovered_unclean_shutdown());
+    drop(first);
+
+    let restarted = SidecarDaemon::bind(config.clone())
+        .await
+        .expect("崩溃后重新绑定 Sidecar");
+    assert!(restarted.recovered_unclean_shutdown());
+    let token = restarted.token().clone();
+    let task = tokio::spawn(restarted.run());
+    send_command(&config, &token, DaemonCommand::Stop)
+        .await
+        .expect("干净停止 Sidecar");
+    task.await.expect("等待 Sidecar").expect("Sidecar 正常退出");
+
+    let checkpoint: serde_json::Value = serde_json::from_slice(
+        &tokio::fs::read(&config.checkpoint_file)
+            .await
+            .expect("读取生命周期检查点"),
+    )
+    .expect("解析生命周期检查点");
+    assert_eq!(checkpoint["version"], 1);
+    assert_eq!(checkpoint["state"], "stopped");
+}
+
+#[tokio::test]
+async fn second_instance_checks_the_os_lock_before_reading_checkpoint() {
+    let directory = tempfile::tempdir().expect("创建锁顺序测试目录");
+    let config = SidecarConfig::local(directory.path());
+    let first = SidecarDaemon::bind(config.clone())
+        .await
+        .expect("绑定首个 Sidecar");
+    tokio::fs::write(&config.checkpoint_file, b"{invalid-json")
+        .await
+        .expect("破坏共享检查点");
+
+    let Err(error) = SidecarDaemon::bind(config).await else {
+        panic!("第二实例不应取得锁");
+    };
+    assert!(matches!(
+        error,
+        jc_memory_sidecar::SidecarError::Lock(LockError::AlreadyRunning)
+    ));
+    drop(first);
 }
 
 #[tokio::test]

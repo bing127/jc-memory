@@ -12,6 +12,7 @@ fs2.workspace = true
 getrandom.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tempfile.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
@@ -24,4 +25,3 @@ workspace = true
 [dev-dependencies]
 async-trait.workspace = true
 chrono.workspace = true
-tempfile.workspace = true

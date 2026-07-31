@@ -1,4 +1,10 @@
-use std::{io, sync::Arc};
+use std::{
+    io,
+    path::Path,
+    process,
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use jc_memory_core::{CommandBus, CommandError};
 use jc_memory_protocol::{
@@ -60,6 +66,21 @@ struct DaemonRequest {
     command: DaemonCommand,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum LifecycleState {
+    Running,
+    Stopped,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct LifecycleCheckpoint {
+    version: u32,
+    state: LifecycleState,
+    pid: u32,
+    started_at_ms: u128,
+}
+
 /// Sidecar 生命周期错误。
 #[derive(Debug, thiserror::Error)]
 pub enum SidecarError {
@@ -78,9 +99,15 @@ pub enum SidecarError {
     /// 本地传输错误。
     #[error(transparent)]
     Transport(#[from] TransportError),
+    /// 关闭共享 `CommandBus` 失败。
+    #[error(transparent)]
+    Command(#[from] CommandError),
     /// 控制消息无法解析。
     #[error("invalid control message: {0}")]
     Json(#[from] serde_json::Error),
+    /// 生命周期检查点不受支持。
+    #[error("invalid lifecycle checkpoint: {0}")]
+    Checkpoint(String),
 }
 
 /// 已取得实例锁并绑定本地端点的 Sidecar 守护进程。
@@ -92,6 +119,8 @@ pub struct SidecarDaemon {
     stop: CancellationToken,
     active_connections: Arc<Mutex<usize>>,
     bus: Option<Arc<dyn CommandBus>>,
+    checkpoint: LifecycleCheckpoint,
+    recovered_unclean_shutdown: bool,
 }
 
 impl SidecarDaemon {
@@ -103,9 +132,20 @@ impl SidecarDaemon {
     pub async fn bind(config: SidecarConfig) -> Result<Self, SidecarError> {
         config.validate().map_err(SidecarError::Config)?;
         config.prepare().await?;
-        let token = TokenStore::load_or_create(&config.token_file).await?;
         let lock = InstanceLock::acquire(&config.lock_file)?;
+        let previous_checkpoint = load_checkpoint(&config.checkpoint_file).await?;
+        let recovered_unclean_shutdown = previous_checkpoint
+            .as_ref()
+            .is_some_and(|checkpoint| checkpoint.state == LifecycleState::Running);
+        let token = TokenStore::load_or_create(&config.token_file).await?;
         let listener = SidecarListener::bind(&config.endpoint).await?;
+        let checkpoint = LifecycleCheckpoint {
+            version: 1,
+            state: LifecycleState::Running,
+            pid: process::id(),
+            started_at_ms: now_millis(),
+        };
+        save_checkpoint(&config.checkpoint_file, &checkpoint).await?;
         Ok(Self {
             config,
             token,
@@ -114,6 +154,8 @@ impl SidecarDaemon {
             stop: CancellationToken::new(),
             active_connections: Arc::new(Mutex::new(0)),
             bus: None,
+            checkpoint,
+            recovered_unclean_shutdown,
         })
     }
 
@@ -142,9 +184,14 @@ impl SidecarDaemon {
             tokio::select! {
                 () = self.stop.cancelled() => {
                     while let Some(result) = connections.join_next().await {
-                        result
-                            .map_err(|error| SidecarError::Io(io::Error::other(format!("Sidecar 连接任务异常退出: {error}"))))??;
+                        report_connection_result(result);
                     }
+                    if let Some(bus) = &self.bus {
+                        bus.shutdown().await?;
+                    }
+                    let mut checkpoint = self.checkpoint.clone();
+                    checkpoint.state = LifecycleState::Stopped;
+                    save_checkpoint(&self.config.checkpoint_file, &checkpoint).await?;
                     return Ok(())
                 },
                 accepted = self.listener.accept() => {
@@ -172,8 +219,7 @@ impl SidecarDaemon {
                 },
                 joined = connections.join_next(), if !connections.is_empty() => {
                     if let Some(result) = joined {
-                        result
-                            .map_err(|error| SidecarError::Io(io::Error::other(format!("Sidecar 连接任务异常退出: {error}"))))??;
+                        report_connection_result(result);
                     }
                 }
             }
@@ -185,6 +231,99 @@ impl SidecarDaemon {
     pub fn token(&self) -> &TokenStore {
         &self.token
     }
+
+    /// 返回本次启动是否从未标记干净停止的检查点恢复。
+    #[must_use]
+    pub const fn recovered_unclean_shutdown(&self) -> bool {
+        self.recovered_unclean_shutdown
+    }
+}
+
+fn report_connection_result(result: Result<Result<(), SidecarError>, tokio::task::JoinError>) {
+    match result {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => tracing::warn!(error = %error, "Sidecar 客户端连接处理失败"),
+        Err(error) => tracing::warn!(error = %error, "Sidecar 客户端连接任务异常退出"),
+    }
+}
+
+async fn load_checkpoint(
+    path: &std::path::Path,
+) -> Result<Option<LifecycleCheckpoint>, SidecarError> {
+    let bytes = match tokio::fs::read(path).await {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    let checkpoint: LifecycleCheckpoint = serde_json::from_slice(&bytes)?;
+    if checkpoint.version != 1 {
+        return Err(SidecarError::Checkpoint(format!(
+            "unsupported version {}",
+            checkpoint.version
+        )));
+    }
+    Ok(Some(checkpoint))
+}
+
+async fn save_checkpoint(
+    path: &Path,
+    checkpoint: &LifecycleCheckpoint,
+) -> Result<(), SidecarError> {
+    save_checkpoint_with_before_replace(path, checkpoint, |_| Ok(())).await?;
+    Ok(())
+}
+
+async fn save_checkpoint_with_before_replace<F>(
+    path: &Path,
+    checkpoint: &LifecycleCheckpoint,
+    before_replace: F,
+) -> Result<(), io::Error>
+where
+    F: FnOnce(&Path) -> Result<(), io::Error>,
+{
+    let parent = path
+        .parent()
+        .ok_or_else(|| io::Error::other("生命周期检查点缺少父目录"))?;
+    let bytes = serde_json::to_vec(checkpoint)?;
+    let temporary = tempfile::NamedTempFile::new_in(parent)?;
+    let mut file = tokio::fs::File::from_std(temporary.reopen()?);
+    file.write_all(&bytes).await?;
+    file.sync_all().await?;
+    drop(file);
+    before_replace(temporary.path())?;
+    temporary.persist(path).map_err(|error| error.error)?;
+    sync_directory(parent).await?;
+    Ok(())
+}
+
+#[cfg(unix)]
+async fn sync_directory(path: &Path) -> Result<(), io::Error> {
+    tokio::fs::File::open(path).await?.sync_all().await
+}
+
+#[cfg(windows)]
+async fn sync_directory(path: &Path) -> Result<(), io::Error> {
+    use std::os::windows::fs::OpenOptionsExt as _;
+
+    // Windows 需要该标志才能把目录作为句柄打开并刷新目录项。
+    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+    std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(path)?
+        .sync_all()
+}
+
+#[cfg(all(not(unix), not(windows)))]
+async fn sync_directory(_path: &Path) -> Result<(), io::Error> {
+    Ok(())
+}
+
+fn now_millis() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
 }
 
 async fn handle_connection(
@@ -211,7 +350,11 @@ async fn handle_connection_inner(
     let stream = stream.into_inner();
     let (reader, mut writer) = tokio::io::split(stream);
     let mut lines = tokio::io::BufReader::new(reader).lines();
-    let Some(line) = lines.next_line().await? else {
+    let line = tokio::select! {
+        () = stop.cancelled() => return Ok(()),
+        line = lines.next_line() => line?,
+    };
+    let Some(line) = line else {
         return Ok(());
     };
     let request: DaemonRequest = serde_json::from_str(&line)?;
@@ -408,4 +551,45 @@ pub async fn send_command(
         )
     })?;
     Ok(serde_json::from_str(&line)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+
+    use super::{LifecycleCheckpoint, LifecycleState, save_checkpoint_with_before_replace};
+
+    #[tokio::test]
+    async fn failed_atomic_checkpoint_replace_preserves_previous_version() {
+        let directory = tempfile::tempdir().expect("创建原子检查点测试目录");
+        let path = directory.path().join("lifecycle.json");
+        let previous = LifecycleCheckpoint {
+            version: 1,
+            state: LifecycleState::Stopped,
+            pid: 1,
+            started_at_ms: 1,
+        };
+        let previous_bytes = serde_json::to_vec(&previous).expect("序列化旧检查点");
+        tokio::fs::write(&path, &previous_bytes)
+            .await
+            .expect("写入旧检查点");
+        let replacement = LifecycleCheckpoint {
+            version: 1,
+            state: LifecycleState::Running,
+            pid: 2,
+            started_at_ms: 2,
+        };
+
+        let error = save_checkpoint_with_before_replace(&path, &replacement, |_| {
+            Err(io::Error::other("注入替换失败"))
+        })
+        .await
+        .expect_err("替换前故障必须返回错误");
+
+        assert_eq!(error.kind(), io::ErrorKind::Other);
+        assert_eq!(
+            tokio::fs::read(&path).await.expect("读取保留的旧检查点"),
+            previous_bytes
+        );
+    }
 }

@@ -163,6 +163,11 @@ impl MemoryEngine {
         Self::open_inner(config, None).await
     }
 
+    /// 显式关闭底层共享连接池。
+    pub async fn close(&self) {
+        self.repository.close().await;
+    }
+
     /// Opens a local engine with a deterministic repository failure hook.
     ///
     /// This constructor exists for crash-recovery acceptance tests and fault-injection harnesses.

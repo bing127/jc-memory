@@ -12,8 +12,9 @@
 - 控制命令支持 `status`、`stop`、`doctor`，以及 `observe`、`commit`、`recall`、`correct`、`forget`、`explain`、`stats` 七个业务子命令。
 - 绑定 Core 的守护进程支持 `execute` 控制消息，将 `MemoryRequest` 转发到共享 `CommandBus` 并返回 `ResponseEnvelope`；Commit 已覆盖该转发路径。
 - 绑定 Core 的守护进程还支持 `execute_as` 控制消息；经过本地 Token 认证的 MCP 主体可以通过该消息传到 Core，默认 `execute` 仍使用 `sidecar-local` 主体。
-- 连接按任务并发处理；收到 `stop` 后停止接收新连接，并等待已经通过认证的在途请求完成响应后退出。
+- 连接按任务并发处理；单个畸形控制消息只终止对应连接。收到 `stop` 后停止接收新连接、取消尚未认证的空闲连接，并等待已经通过认证的在途请求完成响应后退出。
 - `jcmem start` 会在当前数据目录启动 `jcmemd`；如果已有可认证的守护进程则返回 `already_running`。
+- 生命周期检查点记录 `running`、`stopped`、PID 和启动时间，并通过同目录临时文件原子替换。下一次启动可识别上次未干净停止；干净停止会显式关闭 Embedded SQLite 连接池后写入 `stopped`，关闭失败则保留 `running`。
 
 ## 启动与控制
 
@@ -44,4 +45,4 @@ JC_MEMORY_SIDECAR_DATA_DIR=/var/lib/jc-memory-sidecar \
 
 ## 尚未实现
 
-Sidecar 尚未实现非 Unix Named Pipe、服务端 API Key/TLS 转发和崩溃后的 checkpoint 恢复；`execute` 转发复用本地 Token 和 Core ACL。Commit 的权威 Fragment 批次已在 SQLite 单事务中追加，自动 Quarantine 治理事件仍沿用既有治理路径。生产部署不能把当前 Sidecar 控制接口当作完整远程 Memory API；checkpoint、完整身份转发和 Runtime 闭环完成前不会创建 M4 总 Tag。
+Sidecar 尚未实现非 Unix Named Pipe、Windows 实机传输验证和服务端 API Key/TLS 转发；`execute`/`execute_as` 转发复用本地 Token 和 Core ACL。生命周期检查点只识别干净或非干净退出，不替代 Snapshot/Restore。Commit 的权威 Fragment 批次已在 SQLite 单事务中追加，自动 Quarantine 治理事件仍沿用既有治理路径。生产部署不能把当前 Sidecar 控制接口当作完整远程 Memory API；Windows 实机、KeyProvider 生产实现和完整部署验收完成前不会创建 M4 总 Tag。
