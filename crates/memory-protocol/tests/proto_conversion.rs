@@ -6,10 +6,10 @@ use chrono::{DateTime, Utc};
 use jc_memory_protocol::{
     API_VERSION_V1, AccessScope, AgentId, BlobId, CognitiveFragment, EventId, EvidenceId,
     EvidenceRef, FragmentContent, FragmentId, FragmentKind, FragmentSource, MemoryCommand,
-    MemoryRequest, MemoryResponse, MemoryScope, NamespaceId, ObserveCommand, ObserveResult,
-    Perspective, ProjectId, ResponseEnvelope, SecurityLabel, SessionId, SourceType, TenantId,
-    TraceId, UserId, ValidityStatus, VerificationMethod,
-    generated::jiangcheng::memory::v1 as proto,
+    MemoryPacket, MemoryRequest, MemoryResponse, MemoryScope, NamespaceId, ObserveCommand,
+    ObserveResult, Perspective, ProjectId, RecallCommand, RecallLimits, RecallMode,
+    ResponseEnvelope, SecurityLabel, SessionId, SourceType, TenantId, TraceId, UserId,
+    ValidityStatus, VerificationMethod, generated::jiangcheng::memory::v1 as proto,
 };
 use prost::Message as _;
 
@@ -71,6 +71,56 @@ fn response_proto_round_trip_preserves_observe_result() {
     let round_trip = ResponseEnvelope::try_from(decoded).expect("Proto 响应转 Rust");
 
     assert_eq!(round_trip, response);
+}
+
+#[test]
+fn recall_proto_round_trip_preserves_request_and_packet() {
+    let request = MemoryRequest {
+        api_version: API_VERSION_V1.to_owned(),
+        request_id: "req-recall-round-trip".to_owned(),
+        access_scope: AccessScope::from(MemoryScope::new(NamespaceId::new())),
+        command: MemoryCommand::Recall(RecallCommand {
+            mode: RecallMode::HistoricalState,
+            text: "部署策略".to_owned(),
+            entities: vec!["疆诚记忆".to_owned(), "生产环境".to_owned()],
+            at_time: Some(timestamp("2026-07-30T08:00:00.123456789Z")),
+            limits: RecallLimits {
+                max_seeds: 3,
+                max_neighbors: 5,
+                max_hops: 2,
+                max_nodes: 8,
+                timeout_ms: 900,
+            },
+        }),
+    };
+    let mut packet = MemoryPacket::empty(
+        jc_memory_protocol::RecallId::new(),
+        RecallMode::HistoricalState,
+    );
+    packet.coverage.seed_count = 2;
+    packet.coverage.visited_nodes = 4;
+    packet.confidence = 0.75;
+    packet.recommended_context = "结构化上下文".to_owned();
+    let response = ResponseEnvelope::for_request(&request, MemoryResponse::Recall(packet));
+
+    let request_wire =
+        proto::RequestEnvelope::try_from(request.clone()).expect("Recall 请求转 Proto");
+    let request_decoded = proto::RequestEnvelope::decode(request_wire.encode_to_vec().as_slice())
+        .expect("解码 Recall 请求");
+    assert_eq!(
+        MemoryRequest::try_from(request_decoded).expect("Recall 请求转 Rust"),
+        request
+    );
+
+    let response_wire =
+        proto::ResponseEnvelope::try_from(response.clone()).expect("Recall 响应转 Proto");
+    let response_decoded =
+        proto::ResponseEnvelope::decode(response_wire.encode_to_vec().as_slice())
+            .expect("解码 Recall 响应");
+    assert_eq!(
+        ResponseEnvelope::try_from(response_decoded).expect("Recall 响应转 Rust"),
+        response
+    );
 }
 
 fn complete_request(content: FragmentContent) -> MemoryRequest {

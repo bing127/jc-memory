@@ -1,14 +1,20 @@
 //! Rust 领域协议与生成 Protobuf 类型之间的无损转换。
 
-use std::{collections::BTreeSet, str::FromStr};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    str::FromStr,
+};
 
 use chrono::{DateTime, Utc};
 
 use crate::{
-    AccessScope, CognitiveFragment, EvidenceRef, FragmentContent, FragmentKind, FragmentSource,
-    IdParseError, MemoryCommand, MemoryRequest, MemoryResponse, MemoryScope, ObserveCommand,
-    ObserveResult, Perspective, RequestValidationError, ResponseEnvelope, SecurityLabel,
-    SourceType, ValidityStatus, VerificationMethod, generated::jiangcheng::memory::v1 as proto,
+    AccessScope, CognitiveFragment, ConflictView, Coverage, EdgeKind, EpisodeView, EvidenceRef,
+    EvidenceView, FragmentContent, FragmentKind, FragmentSource, IdParseError, KnowledgeKind,
+    KnowledgeView, MemoryCommand, MemoryPacket, MemoryRequest, MemoryResponse, MemoryScope,
+    MissingEvidence, ObserveCommand, ObserveResult, Perspective, PointKind, PointView,
+    ProcedureView, RecallLimits, RecallMode, RecallPath, RequestValidationError, ResponseEnvelope,
+    SecurityLabel, SourceType, StateView, SurfaceStatus, SurfaceView, ValidityStatus,
+    VerificationMethod, generated::jiangcheng::memory::v1 as proto,
 };
 
 /// 领域协议与 Protobuf 之间的稳定转换错误。
@@ -65,6 +71,22 @@ pub enum ProtoConversionError {
         /// 尚未支持的命令或响应名称。
         kind: &'static str,
     },
+    /// 数值字段无法转换到领域类型。
+    #[error("protobuf field {field} contains an out-of-range value {value}")]
+    InvalidNumeric {
+        /// 数值字段的稳定路径。
+        field: &'static str,
+        /// 收到的无符号数值。
+        value: u64,
+    },
+    /// Protobuf repeated map 条目包含重复键。
+    #[error("protobuf field {field} contains duplicate key {key}")]
+    DuplicateMapKey {
+        /// 重复键所在字段。
+        field: &'static str,
+        /// 重复键内容。
+        key: String,
+    },
 }
 
 impl TryFrom<MemoryRequest> for proto::RequestEnvelope {
@@ -78,10 +100,14 @@ impl TryFrom<MemoryRequest> for proto::RequestEnvelope {
                     fragment: Some(command.fragment.try_into()?),
                 })
             }
-            MemoryCommand::Recall(_) => {
-                return Err(ProtoConversionError::Unsupported {
-                    kind: "recall command",
-                });
+            MemoryCommand::Recall(command) => {
+                proto::request_envelope::Command::Recall(proto::RecallCommand {
+                    mode: recall_mode_to_proto(command.mode),
+                    text: command.text,
+                    entities: command.entities,
+                    at_time: command.at_time.map(datetime_to_proto),
+                    limits: Some(recall_limits_to_proto(command.limits)),
+                })
             }
             MemoryCommand::Stats(_) => {
                 return Err(ProtoConversionError::Unsupported {
@@ -118,6 +144,9 @@ impl TryFrom<proto::RequestEnvelope> for MemoryRequest {
                     fragment: required(command.fragment, "observe.fragment")?.try_into()?,
                 })
             }
+            proto::request_envelope::Command::Recall(command) => {
+                MemoryCommand::Recall(recall_command_from_proto(command)?)
+            }
         };
         let request = Self {
             api_version: request.api_version,
@@ -138,10 +167,8 @@ impl TryFrom<ResponseEnvelope> for proto::ResponseEnvelope {
             MemoryResponse::Observe(result) => {
                 proto::response_envelope::Response::Observe(result.into())
             }
-            MemoryResponse::Recall(_) => {
-                return Err(ProtoConversionError::Unsupported {
-                    kind: "recall response",
-                });
+            MemoryResponse::Recall(packet) => {
+                proto::response_envelope::Response::Recall(memory_packet_to_proto(packet))
             }
             MemoryResponse::Stats(_) => {
                 return Err(ProtoConversionError::Unsupported {
@@ -174,6 +201,9 @@ impl TryFrom<proto::ResponseEnvelope> for ResponseEnvelope {
         let response = match required(envelope.response, "response")? {
             proto::response_envelope::Response::Observe(result) => {
                 MemoryResponse::Observe(result.try_into()?)
+            }
+            proto::response_envelope::Response::Recall(packet) => {
+                MemoryResponse::Recall(memory_packet_from_proto(packet)?)
             }
         };
         Ok(Self {
@@ -301,6 +331,515 @@ impl TryFrom<proto::ObserveResult> for ObserveResult {
             quarantined: result.quarantined,
         })
     }
+}
+
+fn recall_command_from_proto(
+    command: proto::RecallCommand,
+) -> Result<crate::RecallCommand, ProtoConversionError> {
+    Ok(crate::RecallCommand {
+        mode: recall_mode_from_proto(command.mode)?,
+        text: command.text,
+        entities: command.entities,
+        at_time: command
+            .at_time
+            .map(|value| datetime_from_proto("recall.at_time", value))
+            .transpose()?,
+        limits: recall_limits_from_proto(required(command.limits, "recall.limits")?)?,
+    })
+}
+
+fn recall_limits_to_proto(limits: RecallLimits) -> proto::RecallLimits {
+    proto::RecallLimits {
+        max_seeds: limits.max_seeds as u64,
+        max_neighbors: limits.max_neighbors as u64,
+        max_hops: limits.max_hops as u64,
+        max_nodes: limits.max_nodes as u64,
+        timeout_ms: limits.timeout_ms,
+    }
+}
+
+fn recall_limits_from_proto(
+    limits: proto::RecallLimits,
+) -> Result<RecallLimits, ProtoConversionError> {
+    Ok(RecallLimits {
+        max_seeds: numeric("recall.limits.max_seeds", limits.max_seeds)?,
+        max_neighbors: numeric("recall.limits.max_neighbors", limits.max_neighbors)?,
+        max_hops: numeric("recall.limits.max_hops", limits.max_hops)?,
+        max_nodes: numeric("recall.limits.max_nodes", limits.max_nodes)?,
+        timeout_ms: limits.timeout_ms,
+    })
+}
+
+fn memory_packet_to_proto(packet: MemoryPacket) -> proto::MemoryPacket {
+    proto::MemoryPacket {
+        query_id: packet.query_id.to_string(),
+        intent: recall_mode_to_proto(packet.intent),
+        current_states: packet
+            .current_states
+            .into_iter()
+            .map(state_view_to_proto)
+            .collect(),
+        historical_states: packet
+            .historical_states
+            .into_iter()
+            .map(state_view_to_proto)
+            .collect(),
+        activated_surfaces: packet
+            .activated_surfaces
+            .into_iter()
+            .map(surface_view_to_proto)
+            .collect(),
+        episodes: packet
+            .episodes
+            .into_iter()
+            .map(episode_view_to_proto)
+            .collect(),
+        points: packet.points.into_iter().map(point_view_to_proto).collect(),
+        paths: packet.paths.into_iter().map(recall_path_to_proto).collect(),
+        procedures: packet
+            .procedures
+            .into_iter()
+            .map(procedure_view_to_proto)
+            .collect(),
+        constraints: packet
+            .constraints
+            .into_iter()
+            .map(knowledge_view_to_proto)
+            .collect(),
+        preferences: packet
+            .preferences
+            .into_iter()
+            .map(knowledge_view_to_proto)
+            .collect(),
+        past_failures: packet
+            .past_failures
+            .into_iter()
+            .map(episode_view_to_proto)
+            .collect(),
+        evidence: packet
+            .evidence
+            .into_iter()
+            .map(|value| evidence_view_to_proto(&value))
+            .collect(),
+        conflicts: packet
+            .conflicts
+            .into_iter()
+            .map(conflict_view_to_proto)
+            .collect(),
+        missing_evidence: packet
+            .missing_evidence
+            .into_iter()
+            .map(missing_evidence_to_proto)
+            .collect(),
+        coverage: Some(coverage_to_proto(packet.coverage)),
+        confidence: packet.confidence,
+        recommended_context: packet.recommended_context,
+    }
+}
+
+fn memory_packet_from_proto(
+    packet: proto::MemoryPacket,
+) -> Result<MemoryPacket, ProtoConversionError> {
+    Ok(MemoryPacket {
+        query_id: parse_id("recall.query_id", &packet.query_id)?,
+        intent: recall_mode_from_proto(packet.intent)?,
+        current_states: packet
+            .current_states
+            .into_iter()
+            .map(state_view_from_proto)
+            .collect::<Result<_, _>>()?,
+        historical_states: packet
+            .historical_states
+            .into_iter()
+            .map(state_view_from_proto)
+            .collect::<Result<_, _>>()?,
+        activated_surfaces: packet
+            .activated_surfaces
+            .into_iter()
+            .map(surface_view_from_proto)
+            .collect::<Result<_, _>>()?,
+        episodes: packet
+            .episodes
+            .into_iter()
+            .map(episode_view_from_proto)
+            .collect::<Result<_, _>>()?,
+        points: packet
+            .points
+            .into_iter()
+            .map(point_view_from_proto)
+            .collect::<Result<_, _>>()?,
+        paths: packet
+            .paths
+            .into_iter()
+            .map(recall_path_from_proto)
+            .collect::<Result<_, _>>()?,
+        procedures: packet
+            .procedures
+            .into_iter()
+            .map(procedure_view_from_proto)
+            .collect::<Result<_, _>>()?,
+        constraints: packet
+            .constraints
+            .into_iter()
+            .map(knowledge_view_from_proto)
+            .collect::<Result<_, _>>()?,
+        preferences: packet
+            .preferences
+            .into_iter()
+            .map(knowledge_view_from_proto)
+            .collect::<Result<_, _>>()?,
+        past_failures: packet
+            .past_failures
+            .into_iter()
+            .map(episode_view_from_proto)
+            .collect::<Result<_, _>>()?,
+        evidence: packet
+            .evidence
+            .into_iter()
+            .map(evidence_view_from_proto)
+            .collect::<Result<_, _>>()?,
+        conflicts: packet
+            .conflicts
+            .into_iter()
+            .map(conflict_view_from_proto)
+            .collect::<Result<_, _>>()?,
+        missing_evidence: packet
+            .missing_evidence
+            .into_iter()
+            .map(missing_evidence_from_proto)
+            .collect::<Result<_, _>>()?,
+        coverage: coverage_from_proto(required(packet.coverage, "recall.coverage")?)?,
+        confidence: packet.confidence,
+        recommended_context: packet.recommended_context,
+    })
+}
+
+fn evidence_view_to_proto(value: &EvidenceView) -> proto::EvidenceView {
+    proto::EvidenceView {
+        fragment_id: value.fragment_id.to_string(),
+        event_id: value.event_id.map(|id| id.to_string()),
+        evidence_ref_id: value.evidence_ref_id.map(|id| id.to_string()),
+    }
+}
+
+fn evidence_view_from_proto(
+    value: proto::EvidenceView,
+) -> Result<EvidenceView, ProtoConversionError> {
+    Ok(EvidenceView {
+        fragment_id: parse_id("recall.evidence.fragment_id", &value.fragment_id)?,
+        event_id: parse_optional_id("recall.evidence.event_id", value.event_id)?,
+        evidence_ref_id: parse_optional_id(
+            "recall.evidence.evidence_ref_id",
+            value.evidence_ref_id,
+        )?,
+    })
+}
+
+fn state_view_to_proto(value: StateView) -> proto::StateView {
+    proto::StateView {
+        state_id: value.state_id.to_string(),
+        version_id: value.version_id.to_string(),
+        key: value.key,
+        value: Some(json_value_to_proto(value.value)),
+        valid_from: Some(datetime_to_proto(value.valid_from)),
+        valid_to: value.valid_to.map(datetime_to_proto),
+        validity: validity_to_proto(value.validity),
+        evidence: value.evidence.iter().map(evidence_view_to_proto).collect(),
+    }
+}
+
+fn state_view_from_proto(value: proto::StateView) -> Result<StateView, ProtoConversionError> {
+    Ok(StateView {
+        state_id: parse_id("recall.state.state_id", &value.state_id)?,
+        version_id: parse_id("recall.state.version_id", &value.version_id)?,
+        key: value.key,
+        value: json_value_from_proto(required(value.value, "recall.state.value")?)?,
+        valid_from: datetime_from_proto(
+            "recall.state.valid_from",
+            required(value.valid_from, "recall.state.valid_from")?,
+        )?,
+        valid_to: value
+            .valid_to
+            .map(|time| datetime_from_proto("recall.state.valid_to", time))
+            .transpose()?,
+        validity: validity_from_proto(value.validity)?,
+        evidence: value
+            .evidence
+            .into_iter()
+            .map(evidence_view_from_proto)
+            .collect::<Result<_, _>>()?,
+    })
+}
+
+fn surface_view_to_proto(value: SurfaceView) -> proto::SurfaceView {
+    proto::SurfaceView {
+        surface_id: value.surface_id.to_string(),
+        version: value.version,
+        status: surface_status_to_proto(value.status),
+        member_points: value
+            .member_points
+            .into_iter()
+            .map(|(point_id, weight)| proto::SurfaceMemberPoint {
+                point_id: point_id.to_string(),
+                weight,
+            })
+            .collect(),
+        confidence: value.confidence,
+        evidence: value.evidence.iter().map(evidence_view_to_proto).collect(),
+    }
+}
+
+fn surface_view_from_proto(value: proto::SurfaceView) -> Result<SurfaceView, ProtoConversionError> {
+    let mut member_points = BTreeMap::new();
+    for member in value.member_points {
+        let point_id = parse_id("recall.surface.member_points.point_id", &member.point_id)?;
+        if member_points.insert(point_id, member.weight).is_some() {
+            return Err(ProtoConversionError::DuplicateMapKey {
+                field: "recall.surface.member_points",
+                key: member.point_id,
+            });
+        }
+    }
+    Ok(SurfaceView {
+        surface_id: parse_id("recall.surface.surface_id", &value.surface_id)?,
+        version: value.version,
+        status: surface_status_from_proto(value.status)?,
+        member_points,
+        confidence: value.confidence,
+        evidence: value
+            .evidence
+            .into_iter()
+            .map(evidence_view_from_proto)
+            .collect::<Result<_, _>>()?,
+    })
+}
+
+fn episode_view_to_proto(value: EpisodeView) -> proto::EpisodeView {
+    proto::EpisodeView {
+        event_id: value.event_id.to_string(),
+        fragment_id: value.fragment_id.to_string(),
+        occurred_at: Some(datetime_to_proto(value.occurred_at)),
+        summary: value.summary,
+        evidence: value.evidence.iter().map(evidence_view_to_proto).collect(),
+    }
+}
+
+fn episode_view_from_proto(value: proto::EpisodeView) -> Result<EpisodeView, ProtoConversionError> {
+    Ok(EpisodeView {
+        event_id: parse_id("recall.episode.event_id", &value.event_id)?,
+        fragment_id: parse_id("recall.episode.fragment_id", &value.fragment_id)?,
+        occurred_at: datetime_from_proto(
+            "recall.episode.occurred_at",
+            required(value.occurred_at, "recall.episode.occurred_at")?,
+        )?,
+        summary: value.summary,
+        evidence: value
+            .evidence
+            .into_iter()
+            .map(evidence_view_from_proto)
+            .collect::<Result<_, _>>()?,
+    })
+}
+
+fn point_view_to_proto(value: PointView) -> proto::PointView {
+    proto::PointView {
+        point_id: value.point_id.to_string(),
+        kind: point_kind_to_proto(value.kind),
+        confidence: value.confidence,
+        validity: validity_to_proto(value.validity),
+        source_fragments: value
+            .source_fragments
+            .into_iter()
+            .map(|id| id.to_string())
+            .collect(),
+    }
+}
+
+fn point_view_from_proto(value: proto::PointView) -> Result<PointView, ProtoConversionError> {
+    Ok(PointView {
+        point_id: parse_id("recall.point.point_id", &value.point_id)?,
+        kind: point_kind_from_proto(value.kind)?,
+        confidence: value.confidence,
+        validity: validity_from_proto(value.validity)?,
+        source_fragments: value
+            .source_fragments
+            .into_iter()
+            .map(|id| parse_id("recall.point.source_fragments", &id))
+            .collect::<Result<_, _>>()?,
+    })
+}
+
+fn recall_path_to_proto(value: RecallPath) -> proto::RecallPath {
+    proto::RecallPath {
+        point_ids: value
+            .point_ids
+            .into_iter()
+            .map(|id| id.to_string())
+            .collect(),
+        edge_ids: value
+            .edge_ids
+            .into_iter()
+            .map(|id| id.to_string())
+            .collect(),
+        score: value.score,
+    }
+}
+
+fn recall_path_from_proto(value: proto::RecallPath) -> Result<RecallPath, ProtoConversionError> {
+    Ok(RecallPath {
+        point_ids: value
+            .point_ids
+            .into_iter()
+            .map(|id| parse_id("recall.path.point_ids", &id))
+            .collect::<Result<_, _>>()?,
+        edge_ids: value
+            .edge_ids
+            .into_iter()
+            .map(|id| parse_id("recall.path.edge_ids", &id))
+            .collect::<Result<_, _>>()?,
+        score: value.score,
+    })
+}
+
+fn procedure_view_to_proto(value: ProcedureView) -> proto::ProcedureView {
+    proto::ProcedureView {
+        procedure_key: value.procedure_key,
+        sample_count: value.sample_count,
+        success_rate: value.success_rate,
+        evidence: value.evidence.iter().map(evidence_view_to_proto).collect(),
+    }
+}
+
+fn procedure_view_from_proto(
+    value: proto::ProcedureView,
+) -> Result<ProcedureView, ProtoConversionError> {
+    Ok(ProcedureView {
+        procedure_key: value.procedure_key,
+        sample_count: value.sample_count,
+        success_rate: value.success_rate,
+        evidence: value
+            .evidence
+            .into_iter()
+            .map(evidence_view_from_proto)
+            .collect::<Result<_, _>>()?,
+    })
+}
+
+fn knowledge_view_to_proto(value: KnowledgeView) -> proto::KnowledgeView {
+    proto::KnowledgeView {
+        point_id: value.point_id.to_string(),
+        kind: knowledge_kind_to_proto(value.kind),
+        value: Some(json_value_to_proto(value.value)),
+        confidence: value.confidence,
+        validity: validity_to_proto(value.validity),
+        evidence: value.evidence.iter().map(evidence_view_to_proto).collect(),
+    }
+}
+
+fn knowledge_view_from_proto(
+    value: proto::KnowledgeView,
+) -> Result<KnowledgeView, ProtoConversionError> {
+    Ok(KnowledgeView {
+        point_id: parse_id("recall.knowledge.point_id", &value.point_id)?,
+        kind: knowledge_kind_from_proto(value.kind)?,
+        value: json_value_from_proto(required(value.value, "recall.knowledge.value")?)?,
+        confidence: value.confidence,
+        validity: validity_from_proto(value.validity)?,
+        evidence: value
+            .evidence
+            .into_iter()
+            .map(evidence_view_from_proto)
+            .collect::<Result<_, _>>()?,
+    })
+}
+
+fn conflict_view_to_proto(value: ConflictView) -> proto::ConflictView {
+    proto::ConflictView {
+        point_ids: value
+            .point_ids
+            .into_iter()
+            .map(|id| id.to_string())
+            .collect(),
+        edge_ids: value
+            .edge_ids
+            .into_iter()
+            .map(|id| id.to_string())
+            .collect(),
+        evidence: value.evidence.iter().map(evidence_view_to_proto).collect(),
+    }
+}
+
+fn conflict_view_from_proto(
+    value: proto::ConflictView,
+) -> Result<ConflictView, ProtoConversionError> {
+    Ok(ConflictView {
+        point_ids: value
+            .point_ids
+            .into_iter()
+            .map(|id| parse_id("recall.conflict.point_ids", &id))
+            .collect::<Result<_, _>>()?,
+        edge_ids: value
+            .edge_ids
+            .into_iter()
+            .map(|id| parse_id("recall.conflict.edge_ids", &id))
+            .collect::<Result<_, _>>()?,
+        evidence: value
+            .evidence
+            .into_iter()
+            .map(evidence_view_from_proto)
+            .collect::<Result<_, _>>()?,
+    })
+}
+
+fn missing_evidence_to_proto(value: MissingEvidence) -> proto::MissingEvidence {
+    proto::MissingEvidence {
+        point_id: value.point_id.to_string(),
+        expected_edge_kinds: value
+            .expected_edge_kinds
+            .into_iter()
+            .map(edge_kind_to_proto)
+            .collect(),
+        description: value.description,
+    }
+}
+
+fn missing_evidence_from_proto(
+    value: proto::MissingEvidence,
+) -> Result<MissingEvidence, ProtoConversionError> {
+    Ok(MissingEvidence {
+        point_id: parse_id("recall.missing_evidence.point_id", &value.point_id)?,
+        expected_edge_kinds: value
+            .expected_edge_kinds
+            .into_iter()
+            .map(edge_kind_from_proto)
+            .collect::<Result<_, _>>()?,
+        description: value.description,
+    })
+}
+
+fn coverage_to_proto(value: Coverage) -> proto::Coverage {
+    proto::Coverage {
+        seed_count: value.seed_count as u64,
+        visited_nodes: value.visited_nodes as u64,
+        max_depth: value.max_depth as u64,
+        evidence_count: value.evidence_count as u64,
+        missing_evidence_count: value.missing_evidence_count as u64,
+        truncated: value.truncated,
+    }
+}
+
+fn coverage_from_proto(value: proto::Coverage) -> Result<Coverage, ProtoConversionError> {
+    Ok(Coverage {
+        seed_count: numeric("recall.coverage.seed_count", value.seed_count)?,
+        visited_nodes: numeric("recall.coverage.visited_nodes", value.visited_nodes)?,
+        max_depth: numeric("recall.coverage.max_depth", value.max_depth)?,
+        evidence_count: numeric("recall.coverage.evidence_count", value.evidence_count)?,
+        missing_evidence_count: numeric(
+            "recall.coverage.missing_evidence_count",
+            value.missing_evidence_count,
+        )?,
+        truncated: value.truncated,
+    })
 }
 
 fn fragment_content_to_proto(content: FragmentContent) -> proto::FragmentContent {
@@ -505,6 +1044,162 @@ where
     T: FromStr<Err = IdParseError>,
 {
     value.map(|value| parse_id(field, &value)).transpose()
+}
+
+fn numeric<T>(field: &'static str, value: u64) -> Result<T, ProtoConversionError>
+where
+    T: TryFrom<u64>,
+{
+    T::try_from(value).map_err(|_| ProtoConversionError::InvalidNumeric { field, value })
+}
+
+fn recall_mode_to_proto(value: RecallMode) -> i32 {
+    (match value {
+        RecallMode::Exact => proto::RecallMode::Exact,
+        RecallMode::Semantic => proto::RecallMode::Semantic,
+        RecallMode::Temporal => proto::RecallMode::Temporal,
+        RecallMode::Causal => proto::RecallMode::Causal,
+        RecallMode::Entity => proto::RecallMode::Entity,
+        RecallMode::Associative => proto::RecallMode::Associative,
+        RecallMode::Procedural => proto::RecallMode::Procedural,
+        RecallMode::CurrentState => proto::RecallMode::CurrentState,
+        RecallMode::HistoricalState => proto::RecallMode::HistoricalState,
+        RecallMode::DeepReconstruction => proto::RecallMode::DeepReconstruction,
+    }) as i32
+}
+
+fn recall_mode_from_proto(value: i32) -> Result<RecallMode, ProtoConversionError> {
+    match proto::RecallMode::try_from(value).ok() {
+        Some(proto::RecallMode::Exact) => Ok(RecallMode::Exact),
+        Some(proto::RecallMode::Semantic) => Ok(RecallMode::Semantic),
+        Some(proto::RecallMode::Temporal) => Ok(RecallMode::Temporal),
+        Some(proto::RecallMode::Causal) => Ok(RecallMode::Causal),
+        Some(proto::RecallMode::Entity) => Ok(RecallMode::Entity),
+        Some(proto::RecallMode::Associative) => Ok(RecallMode::Associative),
+        Some(proto::RecallMode::Procedural) => Ok(RecallMode::Procedural),
+        Some(proto::RecallMode::CurrentState) => Ok(RecallMode::CurrentState),
+        Some(proto::RecallMode::HistoricalState) => Ok(RecallMode::HistoricalState),
+        Some(proto::RecallMode::DeepReconstruction) => Ok(RecallMode::DeepReconstruction),
+        Some(proto::RecallMode::Unspecified) | None => Err(unknown("recall.mode", value)),
+    }
+}
+
+fn point_kind_to_proto(value: PointKind) -> i32 {
+    (match value {
+        PointKind::Fact => proto::PointKind::Fact,
+        PointKind::Decision => proto::PointKind::Decision,
+        PointKind::Constraint => proto::PointKind::Constraint,
+        PointKind::StateChange => proto::PointKind::StateChange,
+        PointKind::Action => proto::PointKind::Action,
+        PointKind::Result => proto::PointKind::Result,
+        PointKind::Failure => proto::PointKind::Failure,
+        PointKind::Preference => proto::PointKind::Preference,
+        PointKind::Correction => proto::PointKind::Correction,
+    }) as i32
+}
+
+fn point_kind_from_proto(value: i32) -> Result<PointKind, ProtoConversionError> {
+    match proto::PointKind::try_from(value).ok() {
+        Some(proto::PointKind::Fact) => Ok(PointKind::Fact),
+        Some(proto::PointKind::Decision) => Ok(PointKind::Decision),
+        Some(proto::PointKind::Constraint) => Ok(PointKind::Constraint),
+        Some(proto::PointKind::StateChange) => Ok(PointKind::StateChange),
+        Some(proto::PointKind::Action) => Ok(PointKind::Action),
+        Some(proto::PointKind::Result) => Ok(PointKind::Result),
+        Some(proto::PointKind::Failure) => Ok(PointKind::Failure),
+        Some(proto::PointKind::Preference) => Ok(PointKind::Preference),
+        Some(proto::PointKind::Correction) => Ok(PointKind::Correction),
+        Some(proto::PointKind::Unspecified) | None => Err(unknown("recall.point.kind", value)),
+    }
+}
+
+fn surface_status_to_proto(value: SurfaceStatus) -> i32 {
+    (match value {
+        SurfaceStatus::Active => proto::SurfaceStatus::Active,
+        SurfaceStatus::Frozen => proto::SurfaceStatus::Frozen,
+        SurfaceStatus::Inactive => proto::SurfaceStatus::Inactive,
+        SurfaceStatus::Split => proto::SurfaceStatus::Split,
+        SurfaceStatus::Merged => proto::SurfaceStatus::Merged,
+    }) as i32
+}
+
+fn surface_status_from_proto(value: i32) -> Result<SurfaceStatus, ProtoConversionError> {
+    match proto::SurfaceStatus::try_from(value).ok() {
+        Some(proto::SurfaceStatus::Active) => Ok(SurfaceStatus::Active),
+        Some(proto::SurfaceStatus::Frozen) => Ok(SurfaceStatus::Frozen),
+        Some(proto::SurfaceStatus::Inactive) => Ok(SurfaceStatus::Inactive),
+        Some(proto::SurfaceStatus::Split) => Ok(SurfaceStatus::Split),
+        Some(proto::SurfaceStatus::Merged) => Ok(SurfaceStatus::Merged),
+        Some(proto::SurfaceStatus::Unspecified) | None => {
+            Err(unknown("recall.surface.status", value))
+        }
+    }
+}
+
+fn knowledge_kind_to_proto(value: KnowledgeKind) -> i32 {
+    (match value {
+        KnowledgeKind::Fact => proto::KnowledgeKind::Fact,
+        KnowledgeKind::Preference => proto::KnowledgeKind::Preference,
+        KnowledgeKind::Constraint => proto::KnowledgeKind::Constraint,
+    }) as i32
+}
+
+fn knowledge_kind_from_proto(value: i32) -> Result<KnowledgeKind, ProtoConversionError> {
+    match proto::KnowledgeKind::try_from(value).ok() {
+        Some(proto::KnowledgeKind::Fact) => Ok(KnowledgeKind::Fact),
+        Some(proto::KnowledgeKind::Preference) => Ok(KnowledgeKind::Preference),
+        Some(proto::KnowledgeKind::Constraint) => Ok(KnowledgeKind::Constraint),
+        Some(proto::KnowledgeKind::Unspecified) | None => {
+            Err(unknown("recall.knowledge.kind", value))
+        }
+    }
+}
+
+fn edge_kind_to_proto(value: EdgeKind) -> i32 {
+    (match value {
+        EdgeKind::TemporalBefore => proto::EdgeKind::TemporalBefore,
+        EdgeKind::TemporalAfter => proto::EdgeKind::TemporalAfter,
+        EdgeKind::Causes => proto::EdgeKind::Causes,
+        EdgeKind::CausedBy => proto::EdgeKind::CausedBy,
+        EdgeKind::Supports => proto::EdgeKind::Supports,
+        EdgeKind::Contradicts => proto::EdgeKind::Contradicts,
+        EdgeKind::Supersedes => proto::EdgeKind::Supersedes,
+        EdgeKind::DependsOn => proto::EdgeKind::DependsOn,
+        EdgeKind::PartOf => proto::EdgeKind::PartOf,
+        EdgeKind::SameEntity => proto::EdgeKind::SameEntity,
+        EdgeKind::CoActivated => proto::EdgeKind::CoActivated,
+        EdgeKind::PredictedBy => proto::EdgeKind::PredictedBy,
+        EdgeKind::ValidatedBy => proto::EdgeKind::ValidatedBy,
+        EdgeKind::DisprovedBy => proto::EdgeKind::DisprovedBy,
+        EdgeKind::RecalledBy => proto::EdgeKind::RecalledBy,
+        EdgeKind::UsedInDecision => proto::EdgeKind::UsedInDecision,
+        EdgeKind::ExecutedAs => proto::EdgeKind::ExecutedAs,
+        EdgeKind::ResultedIn => proto::EdgeKind::ResultedIn,
+    }) as i32
+}
+
+fn edge_kind_from_proto(value: i32) -> Result<EdgeKind, ProtoConversionError> {
+    match proto::EdgeKind::try_from(value).ok() {
+        Some(proto::EdgeKind::TemporalBefore) => Ok(EdgeKind::TemporalBefore),
+        Some(proto::EdgeKind::TemporalAfter) => Ok(EdgeKind::TemporalAfter),
+        Some(proto::EdgeKind::Causes) => Ok(EdgeKind::Causes),
+        Some(proto::EdgeKind::CausedBy) => Ok(EdgeKind::CausedBy),
+        Some(proto::EdgeKind::Supports) => Ok(EdgeKind::Supports),
+        Some(proto::EdgeKind::Contradicts) => Ok(EdgeKind::Contradicts),
+        Some(proto::EdgeKind::Supersedes) => Ok(EdgeKind::Supersedes),
+        Some(proto::EdgeKind::DependsOn) => Ok(EdgeKind::DependsOn),
+        Some(proto::EdgeKind::PartOf) => Ok(EdgeKind::PartOf),
+        Some(proto::EdgeKind::SameEntity) => Ok(EdgeKind::SameEntity),
+        Some(proto::EdgeKind::CoActivated) => Ok(EdgeKind::CoActivated),
+        Some(proto::EdgeKind::PredictedBy) => Ok(EdgeKind::PredictedBy),
+        Some(proto::EdgeKind::ValidatedBy) => Ok(EdgeKind::ValidatedBy),
+        Some(proto::EdgeKind::DisprovedBy) => Ok(EdgeKind::DisprovedBy),
+        Some(proto::EdgeKind::RecalledBy) => Ok(EdgeKind::RecalledBy),
+        Some(proto::EdgeKind::UsedInDecision) => Ok(EdgeKind::UsedInDecision),
+        Some(proto::EdgeKind::ExecutedAs) => Ok(EdgeKind::ExecutedAs),
+        Some(proto::EdgeKind::ResultedIn) => Ok(EdgeKind::ResultedIn),
+        Some(proto::EdgeKind::Unspecified) | None => Err(unknown("recall.edge_kind", value)),
+    }
 }
 
 fn fragment_kind_to_proto(value: FragmentKind) -> i32 {

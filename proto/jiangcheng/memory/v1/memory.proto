@@ -171,6 +171,39 @@ message ObserveCommand {
   CognitiveFragment fragment = 1 [json_name = "fragment"];
 }
 
+// RecallMode 定义有界 Recall 的选择与遍历意图。
+enum RecallMode {
+  RECALL_MODE_UNSPECIFIED = 0;
+  RECALL_MODE_EXACT = 1;
+  RECALL_MODE_SEMANTIC = 2;
+  RECALL_MODE_TEMPORAL = 3;
+  RECALL_MODE_CAUSAL = 4;
+  RECALL_MODE_ENTITY = 5;
+  RECALL_MODE_ASSOCIATIVE = 6;
+  RECALL_MODE_PROCEDURAL = 7;
+  RECALL_MODE_CURRENT_STATE = 8;
+  RECALL_MODE_HISTORICAL_STATE = 9;
+  RECALL_MODE_DEEP_RECONSTRUCTION = 10;
+}
+
+// RecallLimits 保存本次请求的硬执行预算。
+message RecallLimits {
+  uint64 max_seeds = 1 [json_name = "maxSeeds"];
+  uint64 max_neighbors = 2 [json_name = "maxNeighbors"];
+  uint64 max_hops = 3 [json_name = "maxHops"];
+  uint64 max_nodes = 4 [json_name = "maxNodes"];
+  uint64 timeout_ms = 5 [json_name = "timeoutMs"];
+}
+
+// RecallCommand 是模型无关的有界检索请求。
+message RecallCommand {
+  RecallMode mode = 1 [json_name = "mode"];
+  string text = 2 [json_name = "text"];
+  repeated string entities = 3 [json_name = "entities"];
+  optional google.protobuf.Timestamp at_time = 4 [json_name = "atTime"];
+  RecallLimits limits = 5 [json_name = "limits"];
+}
+
 // RequestEnvelope 是所有命令共享的稳定请求外壳。
 message RequestEnvelope {
   string api_version = 1 [json_name = "apiVersion"];
@@ -179,6 +212,7 @@ message RequestEnvelope {
 
   oneof command {
     ObserveCommand observe = 10 [json_name = "observe"];
+    RecallCommand recall = 11 [json_name = "recall"];
   }
 }
 
@@ -192,6 +226,181 @@ message ObserveResult {
   bool quarantined = 6 [json_name = "quarantined"];
 }
 
+// EvidenceView 指向支撑派生结果的权威记录。
+message EvidenceView {
+  string fragment_id = 1 [json_name = "fragmentId"];
+  optional string event_id = 2 [json_name = "eventId"];
+  optional string evidence_ref_id = 3 [json_name = "evidenceRefId"];
+}
+
+// StateView 保存一个有效状态版本及其证据。
+message StateView {
+  string state_id = 1 [json_name = "stateId"];
+  string version_id = 2 [json_name = "versionId"];
+  string key = 3 [json_name = "key"];
+  JsonValue value = 4 [json_name = "value"];
+  google.protobuf.Timestamp valid_from = 5 [json_name = "validFrom"];
+  optional google.protobuf.Timestamp valid_to = 6 [json_name = "validTo"];
+  ValidityStatus validity = 7 [json_name = "validity"];
+  repeated EvidenceView evidence = 8 [json_name = "evidence"];
+}
+
+// SurfaceMemberPoint 保存 Surface 成员 Point 及其权重。
+message SurfaceMemberPoint {
+  string point_id = 1 [json_name = "pointId"];
+  float weight = 2 [json_name = "weight"];
+}
+
+// SurfaceView 保存一个激活的 Surface 版本。
+message SurfaceView {
+  string surface_id = 1 [json_name = "surfaceId"];
+  uint64 version = 2 [json_name = "version"];
+  SurfaceStatus status = 3 [json_name = "status"];
+  repeated SurfaceMemberPoint member_points = 4 [json_name = "memberPoints"];
+  float confidence = 5 [json_name = "confidence"];
+  repeated EvidenceView evidence = 6 [json_name = "evidence"];
+}
+
+enum SurfaceStatus {
+  SURFACE_STATUS_UNSPECIFIED = 0;
+  SURFACE_STATUS_ACTIVE = 1;
+  SURFACE_STATUS_FROZEN = 2;
+  SURFACE_STATUS_INACTIVE = 3;
+  SURFACE_STATUS_SPLIT = 4;
+  SURFACE_STATUS_MERGED = 5;
+}
+
+// EpisodeView 保存一个权威 Event 及其可重建摘要。
+message EpisodeView {
+  string event_id = 1 [json_name = "eventId"];
+  string fragment_id = 2 [json_name = "fragmentId"];
+  google.protobuf.Timestamp occurred_at = 3 [json_name = "occurredAt"];
+  string summary = 4 [json_name = "summary"];
+  repeated EvidenceView evidence = 5 [json_name = "evidence"];
+}
+
+enum PointKind {
+  POINT_KIND_UNSPECIFIED = 0;
+  POINT_KIND_FACT = 1;
+  POINT_KIND_DECISION = 2;
+  POINT_KIND_CONSTRAINT = 3;
+  POINT_KIND_STATE_CHANGE = 4;
+  POINT_KIND_ACTION = 5;
+  POINT_KIND_RESULT = 6;
+  POINT_KIND_FAILURE = 7;
+  POINT_KIND_PREFERENCE = 8;
+  POINT_KIND_CORRECTION = 9;
+}
+
+// PointView 保存派生 Point 及其权威来源。
+message PointView {
+  string point_id = 1 [json_name = "pointId"];
+  PointKind kind = 2 [json_name = "kind"];
+  float confidence = 3 [json_name = "confidence"];
+  ValidityStatus validity = 4 [json_name = "validity"];
+  repeated string source_fragments = 5 [json_name = "sourceFragments"];
+}
+
+// RecallPath 保存一次有界图遍历路径。
+message RecallPath {
+  repeated string point_ids = 1 [json_name = "pointIds"];
+  repeated string edge_ids = 2 [json_name = "edgeIds"];
+  float score = 3 [json_name = "score"];
+}
+
+// ProcedureView 保存证据支撑的程序结果统计。
+message ProcedureView {
+  string procedure_key = 1 [json_name = "procedureKey"];
+  uint32 sample_count = 2 [json_name = "sampleCount"];
+  double success_rate = 3 [json_name = "successRate"];
+  repeated EvidenceView evidence = 4 [json_name = "evidence"];
+}
+
+enum KnowledgeKind {
+  KNOWLEDGE_KIND_UNSPECIFIED = 0;
+  KNOWLEDGE_KIND_FACT = 1;
+  KNOWLEDGE_KIND_PREFERENCE = 2;
+  KNOWLEDGE_KIND_CONSTRAINT = 3;
+}
+
+// KnowledgeView 保存一个带证据的结构化知识项。
+message KnowledgeView {
+  string point_id = 1 [json_name = "pointId"];
+  KnowledgeKind kind = 2 [json_name = "kind"];
+  JsonValue value = 3 [json_name = "value"];
+  float confidence = 4 [json_name = "confidence"];
+  ValidityStatus validity = 5 [json_name = "validity"];
+  repeated EvidenceView evidence = 6 [json_name = "evidence"];
+}
+
+// ConflictView 保存可见的冲突关系及证据。
+message ConflictView {
+  repeated string point_ids = 1 [json_name = "pointIds"];
+  repeated string edge_ids = 2 [json_name = "edgeIds"];
+  repeated EvidenceView evidence = 3 [json_name = "evidence"];
+}
+
+enum EdgeKind {
+  EDGE_KIND_UNSPECIFIED = 0;
+  EDGE_KIND_TEMPORAL_BEFORE = 1;
+  EDGE_KIND_TEMPORAL_AFTER = 2;
+  EDGE_KIND_CAUSES = 3;
+  EDGE_KIND_CAUSED_BY = 4;
+  EDGE_KIND_SUPPORTS = 5;
+  EDGE_KIND_CONTRADICTS = 6;
+  EDGE_KIND_SUPERSEDES = 7;
+  EDGE_KIND_DEPENDS_ON = 8;
+  EDGE_KIND_PART_OF = 9;
+  EDGE_KIND_SAME_ENTITY = 10;
+  EDGE_KIND_CO_ACTIVATED = 11;
+  EDGE_KIND_PREDICTED_BY = 12;
+  EDGE_KIND_VALIDATED_BY = 13;
+  EDGE_KIND_DISPROVED_BY = 14;
+  EDGE_KIND_RECALLED_BY = 15;
+  EDGE_KIND_USED_IN_DECISION = 16;
+  EDGE_KIND_EXECUTED_AS = 17;
+  EDGE_KIND_RESULTED_IN = 18;
+}
+
+// MissingEvidence 描述尚未补足的证据关系。
+message MissingEvidence {
+  string point_id = 1 [json_name = "pointId"];
+  repeated EdgeKind expected_edge_kinds = 2 [json_name = "expectedEdgeKinds"];
+  string description = 3 [json_name = "description"];
+}
+
+// Coverage 保存 Recall 的有界覆盖与截断信息。
+message Coverage {
+  uint64 seed_count = 1 [json_name = "seedCount"];
+  uint64 visited_nodes = 2 [json_name = "visitedNodes"];
+  uint64 max_depth = 3 [json_name = "maxDepth"];
+  uint64 evidence_count = 4 [json_name = "evidenceCount"];
+  uint64 missing_evidence_count = 5 [json_name = "missingEvidenceCount"];
+  bool truncated = 6 [json_name = "truncated"];
+}
+
+// MemoryPacket 是模型无关且证据关联的 Recall 结果。
+message MemoryPacket {
+  string query_id = 1 [json_name = "queryId"];
+  RecallMode intent = 2 [json_name = "intent"];
+  repeated StateView current_states = 3 [json_name = "currentStates"];
+  repeated StateView historical_states = 4 [json_name = "historicalStates"];
+  repeated SurfaceView activated_surfaces = 5 [json_name = "activatedSurfaces"];
+  repeated EpisodeView episodes = 6 [json_name = "episodes"];
+  repeated PointView points = 7 [json_name = "points"];
+  repeated RecallPath paths = 8 [json_name = "paths"];
+  repeated ProcedureView procedures = 9 [json_name = "procedures"];
+  repeated KnowledgeView constraints = 10 [json_name = "constraints"];
+  repeated KnowledgeView preferences = 11 [json_name = "preferences"];
+  repeated EpisodeView past_failures = 12 [json_name = "pastFailures"];
+  repeated EvidenceView evidence = 13 [json_name = "evidence"];
+  repeated ConflictView conflicts = 14 [json_name = "conflicts"];
+  repeated MissingEvidence missing_evidence = 15 [json_name = "missingEvidence"];
+  Coverage coverage = 16 [json_name = "coverage"];
+  float confidence = 17 [json_name = "confidence"];
+  string recommended_context = 18 [json_name = "recommendedContext"];
+}
+
 // ResponseEnvelope 把业务响应关联回原协议版本和请求标识。
 message ResponseEnvelope {
   string api_version = 1 [json_name = "apiVersion"];
@@ -199,6 +408,7 @@ message ResponseEnvelope {
 
   oneof response {
     ObserveResult observe = 10 [json_name = "observe"];
+    MemoryPacket recall = 11 [json_name = "recall"];
   }
 }
 
