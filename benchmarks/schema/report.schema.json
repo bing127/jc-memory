@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jcmem.private/schema/benchmark-audit-v1.json",
+  "title": "Jiangcheng Memory Benchmark Audit Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "benchmark",
+    "git",
+    "platform",
+    "data",
+    "config",
+    "timing",
+    "raw_counts",
+    "derived_metrics",
+    "smoke",
+    "non_release"
+  ],
+  "properties": {
+    "schema_version": {"const": "jcmem.benchmark.audit.v1"},
+    "benchmark": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1}
+      }
+    },
+    "git": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "dirty"],
+      "properties": {
+        "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "dirty": {"type": "boolean"}
+      }
+    },
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rust", "python", "os", "cpu"],
+      "properties": {
+        "rust": {"type": "string", "minLength": 1},
+        "python": {"type": "string", "minLength": 1},
+        "os": {"type": "string", "minLength": 1},
+        "cpu": {"type": "string", "minLength": 1}
+      }
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "canonical", "digest", "case_count"],
+      "properties": {
+        "source": {"type": "string", "minLength": 1},
+        "canonical": {"type": "string", "minLength": 1},
+        "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "case_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canonical", "digest"],
+      "properties": {
+        "canonical": {"type": "string", "minLength": 1},
+        "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["started_at", "finished_at"],
+      "properties": {
+        "started_at": {"type": "string", "minLength": 1},
+        "finished_at": {"type": "string", "minLength": 1}
+      }
+    },
+    "raw_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cases", "fragments", "evidence", "results"],
+      "properties": {
+        "cases": {"type": "integer", "minimum": 0},
+        "fragments": {"type": "integer", "minimum": 0},
+        "evidence": {"type": "integer", "minimum": 0},
+        "results": {"type": "integer", "minimum": 0}
+      }
+    },
+    "derived_metrics": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"type": ["number", "null"]}
+    },
+    "smoke": {"type": "boolean"},
+    "non_release": {"type": "boolean"}
+  }
+}
