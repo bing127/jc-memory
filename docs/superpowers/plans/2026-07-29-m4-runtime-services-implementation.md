@@ -146,7 +146,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - 已接入可配置请求 deadline；`JC_MEMORY_REQUEST_TIMEOUT_MS` 默认 30000，HTTP 超时返回 504，gRPC 超时返回 `DeadlineExceeded`，并保留请求标识。
 - 已完成 Recall、Stats、Correct、Forget、Explain 的强类型 Protobuf 请求/响应扩展，所有领域字段通过编解码往返测试保持无损；真实 TCP gRPC 已覆盖 Recall Execute。
 - 已完成按文件加载的 gRPC TLS、YAML/环境变量配置、请求超时、共享并发门禁和按 API Key 速率限制；Docker/Kubernetes 仅完成静态资源与契约验证。
-- Task 7 仍不代表 M4 完成：KeyProvider 生产实现、Sidecar、独立 MCP Server 和完整 Embedded/REST/gRPC/MCP 跨协议 E2E 仍待完成。
+- Task 7 仍不代表 M4 完成：KeyProvider 生产实现、Sidecar 到 MCP 的身份转发链和完整 Embedded/REST/gRPC/Sidecar/MCP 跨协议 E2E 仍待完成。
 
 ## Task 8：实现本地 Sidecar
 
@@ -196,7 +196,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 
 **文件：** `tests/e2e/runtime_loop.rs`、`tests/e2e/protocol_parity.rs`、部署与协议文档、README/CHANGELOG。
 
-- [ ] **步骤 1：确定性 Model/Tool 完成完整循环，实际失败否定“测试会通过”的 Prediction。**
+- [x] **步骤 1：确定性 Model/Tool 完成完整循环，实际失败否定“测试会通过”的 Prediction。** 已增加 Runtime 集成测试，覆盖 ModelProvider、Parser、ToolLoop、DisprovedBy 隔离和 RuntimeRunner 完成状态。
 - [x] **步骤 2：同一 Fixture 经 Embedded、REST、gRPC、MCP 调用，canonical Memory Packet 和 Evidence 集合一致。**
 - [x] **步骤 3：编写 Runtime、Capability、Server、Sidecar、MCP、故障恢复和配置文档。**
 - [x] **步骤 4：运行全仓 Rust 门禁、服务 E2E 和 `git diff --check`。**
@@ -207,6 +207,7 @@ pub trait CapabilityRegistry { fn register(&self, descriptor: CapabilityDescript
 - 已完成协议包、Server、Sidecar、MCP 和 Workspace 的 fmt、严格 Clippy、测试、rustdoc 与 `git diff --check` 门禁。
 - 已有 REST/gRPC Adapter 一致性、TCP gRPC Recall、MCP structuredContent 和 Runtime Fixture 契约测试。
 - 已补充真实临时 SQLite Fixture：同一 Fragment 的 Recall 经 Embedded、REST、TCP gRPC 与 MCP 后，规范化去除每次请求随机的 `query_id` 后，完整 Memory Packet 保持一致。
+- 已增加确定性 Runtime 循环验收：模型返回 ToolRequest，失败工具只执行一次并生成 `DisprovedBy`，不写入 Fact，Runtime 状态从 Observe 路径提交到 Completed。
 - 已补齐 Runtime、Capability、Server、Sidecar、MCP、故障恢复、配置和部署中文文档，并在 README 中文入口中列出。
 - Sidecar 完整身份转发、Runtime 完整闭环和部署级跨协议 E2E 仍待实现，因此不创建 M4 总 Tag。
 
