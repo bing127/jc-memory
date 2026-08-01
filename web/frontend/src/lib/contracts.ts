@@ -52,6 +52,22 @@ export interface PerformanceSnapshot {
   operations: PerformanceOperation[];
 }
 
+export type InstanceStreamSubscription =
+  | { topic: "overview" }
+  | { topic: "metrics" }
+  | { topic: "runtime.list" }
+  | { topic: "runtime.detail"; runId: string };
+
+export type InstanceStreamTopic = InstanceStreamSubscription["topic"];
+
+export type InstanceTransportState = "connecting" | "connected" | "disconnected";
+
+export interface InstanceStreamTopicState<T = unknown> {
+  data: T | null;
+  sampledAt: string | null;
+  error: string | null;
+}
+
 export interface ApiErrorBody {
   code: string;
   message: string;
