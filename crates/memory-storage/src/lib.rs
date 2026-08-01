@@ -15,8 +15,8 @@ pub use config::SqliteConfig;
 pub use error::StorageError;
 pub use export::{SnapshotBlob, SnapshotError, SnapshotFile, SnapshotManifest};
 pub use projection::{
-    ProjectionCheckpoint, ProjectionFailpoint, ProjectionTarget, ProjectorKind,
-    SqliteProjectionStore,
+    ProjectedStateSet, ProjectionCheckpoint, ProjectionFailpoint, ProjectionTarget, ProjectorKind,
+    SqliteProjectionStore, StateSelector,
 };
 pub use recovery::{
     DerivedRebuildReport, GcPolicy, GcReport, IntegrityReport, RebuildReport, RebuildStage,
