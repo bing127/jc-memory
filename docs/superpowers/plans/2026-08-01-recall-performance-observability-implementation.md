@@ -100,7 +100,7 @@ git commit -m "perf(storage): 批量读取 Recall 权威记录" -m "以精确 Sc
 - Modify: `crates/memory-core/src/recall.rs`
 - Modify: `crates/memory-core/tests/recall_bounds.rs`
 
-- [ ] **Step 1: 写结果一致性与完整超时红灯测试**
+- [x] **Step 1: 写结果一致性与完整超时红灯测试**
 
 在 `recall_bounds.rs` 新增多个候选 Recall 的 Packet 与 Evidence 一致性测试；在 `recall.rs` 的内部测试模块中，把完整执行包装函数传入超过预算的 Future，要求返回 `RecallEngineError::TimedOut`。
 
@@ -114,23 +114,23 @@ let error = run_with_recall_timeout(1, async {
 assert!(matches!(error, MemoryError::Recall(RecallEngineError::TimedOut)));
 ```
 
-- [ ] **Step 2: 运行测试并确认包装函数缺失**
+- [x] **Step 2: 运行测试并确认包装函数缺失**
 
 Run: `CARGO_INCREMENTAL=0 cargo test -p jc-memory-core --test recall_bounds --offline`
 
 Expected: FAIL，提示完整 Deadline 行为缺失。
 
-- [ ] **Step 3: 实现最小 Core 优化**
+- [x] **Step 3: 实现最小 Core 优化**
 
 `execute_recall` 在授权后保存 `timeout_ms`，通过 `tokio::time::timeout` 包裹 `execute_recall_inner`。Inner 合并候选后收集 ID，一次调用 `get_fragments_in_scope`，按 ID Map 与候选 Hit 组合，不再循环调用 `get_fragment_in_scope`。激活引擎获得剩余毫秒预算，避免重新获得完整预算。
 
-- [ ] **Step 4: 运行 Core Recall、隔离和污染测试**
+- [x] **Step 4: 运行 Core Recall、隔离和污染测试**
 
 Run: `CARGO_INCREMENTAL=0 cargo test -p jc-memory-core --test recall_bounds --test tenant_isolation --test poisoning --test quarantine_security --offline`
 
 Expected: 全部退出码 0。
 
-- [ ] **Step 5: 提交 Core 优化**
+- [x] **Step 5: 提交 Core 优化**
 
 ```bash
 git add crates/memory-core/src/recall.rs crates/memory-core/tests/recall_bounds.rs

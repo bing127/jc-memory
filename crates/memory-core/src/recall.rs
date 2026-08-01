@@ -2,10 +2,14 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
+    future::Future,
     str::FromStr as _,
+    time::{Duration, Instant},
 };
 
-use jc_memory_activation::{ExplainTrace, IndexedPoint, RecallEngine, RecallQuery, RecallResult};
+use jc_memory_activation::{
+    ExplainTrace, IndexedPoint, RecallEngine, RecallEngineError, RecallQuery, RecallResult,
+};
 use jc_memory_graph::CognitivePoint;
 use jc_memory_protocol::{
     AccessContext, EpisodeView, EvidenceView, FragmentId, MemoryPacket, MemoryScope,
@@ -91,6 +95,23 @@ impl MemoryEngine {
         query: RecallQuery,
     ) -> Result<CoreRecall, MemoryError> {
         crate::security::authorize(context, operation, &query.scope)?;
+        let timeout = Duration::from_millis(query.limits.timeout_ms);
+        let deadline = Instant::now() + timeout;
+        with_recall_deadline(
+            deadline,
+            self.execute_recall_inner(context, operation, query, deadline),
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_lines)]
+    async fn execute_recall_inner(
+        &self,
+        context: &AccessContext,
+        operation: Operation,
+        query: RecallQuery,
+        deadline: Instant,
+    ) -> Result<CoreRecall, MemoryError> {
         let search_limit = u32::try_from(query.limits.max_nodes).unwrap_or(u32::MAX);
         let mut hits_by_fragment: BTreeMap<_, _> = self
             .repository
@@ -121,11 +142,23 @@ impl MemoryEngine {
             .collect();
         let mut episodes = Vec::new();
         let mut evidence = Vec::new();
-        for hit in hits_by_fragment.into_values() {
-            let mut fragment = self
-                .repository
-                .get_fragment_in_scope(&query.scope, hit.fragment_id)
-                .await?;
+        let hits = hits_by_fragment.into_values().collect::<Vec<_>>();
+        let fragment_ids = hits.iter().map(|hit| hit.fragment_id).collect::<Vec<_>>();
+        let fragments = self
+            .repository
+            .get_fragments_in_scope(&query.scope, &fragment_ids)
+            .await?;
+        let mut fragments_by_id = fragments
+            .into_iter()
+            .map(|fragment| (fragment.id, fragment))
+            .collect::<BTreeMap<_, _>>();
+        for hit in hits {
+            let mut fragment = fragments_by_id.remove(&hit.fragment_id).ok_or_else(|| {
+                MemoryError::Storage(jc_memory_storage::StorageError::NotFound {
+                    entity: "fragment",
+                    id: hit.fragment_id.to_string(),
+                })
+            })?;
             fragment_scopes.insert(fragment.id, fragment.scope.clone());
             if fragment.validity == ValidityStatus::Quarantined {
                 match self
@@ -173,7 +206,15 @@ impl MemoryEngine {
         let points_by_id = point_candidates.clone();
         let engine =
             RecallEngine::try_from_parts(point_candidates.into_values(), derived_edges, [])?;
-        let result = engine.recall(query.clone()).await?;
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(MemoryError::Recall(RecallEngineError::TimedOut));
+        }
+        let mut activation_query = query.clone();
+        activation_query.limits.timeout_ms = u64::try_from(remaining.as_millis())
+            .unwrap_or(u64::MAX)
+            .max(1);
+        let result = engine.recall(activation_query).await?;
         let explain = engine.explain(&result, query.limits);
         let packet = build_packet(&query, &result, &points_by_id, episodes, evidence)?;
         crate::security::validate_packet(
@@ -185,6 +226,15 @@ impl MemoryEngine {
         )?;
         Ok(CoreRecall { packet, explain })
     }
+}
+
+async fn with_recall_deadline<T, F>(deadline: Instant, future: F) -> Result<T, MemoryError>
+where
+    F: Future<Output = Result<T, MemoryError>>,
+{
+    tokio::time::timeout_at(deadline.into(), future)
+        .await
+        .map_err(|_| MemoryError::Recall(RecallEngineError::TimedOut))?
 }
 
 fn build_packet(
@@ -276,4 +326,27 @@ fn fragment_entities(metadata: &serde_json::Map<String, serde_json::Value>) -> V
         .filter_map(serde_json::Value::as_str)
         .map(ToOwned::to_owned)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::with_recall_deadline;
+    use std::time::{Duration, Instant};
+
+    #[tokio::test]
+    async fn recall_deadline_covers_the_full_async_pipeline() {
+        let deadline = Instant::now() + Duration::from_millis(1);
+        let result = with_recall_deadline(deadline, async {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            Ok::<_, crate::MemoryError>(())
+        })
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(crate::MemoryError::Recall(
+                jc_memory_activation::RecallEngineError::TimedOut
+            ))
+        ));
+    }
 }
