@@ -145,7 +145,7 @@ git commit -m "perf(recall): 消除候选串行读取并统一超时" -m "Recall
 - Create: `benchmarks/schema/load-test.schema.json`
 - Create: `docs/benchmarks/http-load.md`
 
-- [ ] **Step 1: 写百分位与安全边界红灯测试**
+- [x] **Step 1: 写百分位与安全边界红灯测试**
 
 测试 `nearestRank`、计数一致性、本机 URL 默认允许、外部 URL 默认拒绝、报告 JSON 不包含 `JC_MEMORY_API_KEY`：
 
@@ -155,13 +155,13 @@ assert.throws(() => assertLoadTarget(new URL("https://memory.example.com"), fals
 assert.equal(JSON.stringify(report).includes(process.env.JC_MEMORY_API_KEY ?? "never"), false);
 ```
 
-- [ ] **Step 2: 运行 Node 测试并确认模块缺失**
+- [x] **Step 2: 运行 Node 测试并确认模块缺失**
 
 Run: `node --test scripts/benchmark/tests/http-load.test.mjs`
 
 Expected: FAIL，提示 `http-load.mjs` 不存在。
 
-- [ ] **Step 3: 实现执行器与 Schema**
+- [x] **Step 3: 实现执行器与 Schema**
 
 配置 JSON 包含 `base_url`、`warmup_requests` 和场景数组；场景包含 `name`、`method`、`path`、`requests`、`concurrency`、可选 `body_file`。API Key 只从 `JC_MEMORY_API_KEY` 读取。输出固定字段：
 
@@ -176,7 +176,7 @@ Expected: FAIL，提示 `http-load.mjs` 不存在。
 }
 ```
 
-- [ ] **Step 4: 验证测试、Schema 和中文文档**
+- [x] **Step 4: 验证测试、Schema 和中文文档**
 
 Run: `node --test scripts/benchmark/tests/http-load.test.mjs`
 
@@ -186,7 +186,7 @@ Run: `git diff --check`
 
 Expected: 全部退出码 0。
 
-- [ ] **Step 5: 提交压测工具**
+- [x] **Step 5: 提交压测工具**
 
 ```bash
 git add scripts/benchmark/http-load.mjs scripts/benchmark/tests/http-load.test.mjs benchmarks/schema/load-test.schema.json docs/benchmarks/http-load.md
