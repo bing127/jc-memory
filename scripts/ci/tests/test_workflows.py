@@ -78,6 +78,7 @@ class WorkflowContractTests(unittest.TestCase):
         workspace_test = 'cargo +"$RUST_TOOLCHAIN" test --workspace'
         self.assertIn(install, workflow)
         self.assertIn(f'version: "{BUF_VERSION}"', workflow)
+        self.assertIn("github_token: ${{ github.token }}", workflow)
         self.assertLess(workflow.index(install), workflow.index(workspace_test))
 
     def test_rust_quality_bounds_cargo_disk_usage(self) -> None:
