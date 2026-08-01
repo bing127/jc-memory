@@ -37,6 +37,11 @@ jobs:
       - name: 严格 Clippy
         shell: bash
         run: cargo +"$RUST_TOOLCHAIN" clippy --workspace --all-targets --all-features -- -D warnings
+      - name: 安装固定 Buf
+        shell: bash
+        run: |
+          go install github.com/bufbuild/buf/cmd/buf@v1.64.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Workspace 测试
         shell: bash
         run: cargo +"$RUST_TOOLCHAIN" test --workspace --all-features --exclude jc-memory-python

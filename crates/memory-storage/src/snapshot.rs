@@ -456,8 +456,8 @@ async fn sync_directory(path: &Path) -> Result<(), SnapshotError> {
 }
 
 #[cfg(not(unix))]
-async fn sync_directory(_path: &Path) -> Result<(), SnapshotError> {
-    Ok(())
+fn sync_directory(_path: &Path) -> std::future::Ready<Result<(), SnapshotError>> {
+    std::future::ready(Ok(()))
 }
 
 fn unique_sibling(parent: &Path, prefix: &str) -> PathBuf {

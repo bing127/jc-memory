@@ -37,6 +37,7 @@ WORKFLOWS = {
 }
 CHECKOUT_SHA = "11bd71901bbe5b1630ceea73d27597364c9af683"
 PNPM_VERSION = "9.15.9"
+BUF_VERSION = "1.64.0"
 PUSH_WORKFLOWS = (
     "benchmarks.yml",
     "mobile.yml",
@@ -59,6 +60,22 @@ class WorkflowContractTests(unittest.TestCase):
         for filename in PUSH_WORKFLOWS:
             workflow = (WORKFLOW_DIR / filename).read_text(encoding="utf-8")
             self.assertIn(expected_branch_filter, workflow, f"{filename} 未监听 master push")
+
+    def test_non_unix_directory_sync_helpers_use_ready_futures(self) -> None:
+        for relative_path in (
+            "crates/memory-storage/src/blob/store.rs",
+            "crates/memory-storage/src/snapshot.rs",
+        ):
+            source = (ROOT / relative_path).read_text(encoding="utf-8")
+            self.assertNotIn("#[cfg(not(unix))]\nasync fn sync_directory", source, relative_path)
+            self.assertIn("std::future::ready(Ok(()))", source, relative_path)
+
+    def test_rust_quality_installs_fixed_buf_before_workspace_tests(self) -> None:
+        workflow = (WORKFLOW_DIR / "rust.yml").read_text(encoding="utf-8")
+        install = f"go install github.com/bufbuild/buf/cmd/buf@v{BUF_VERSION}"
+        workspace_test = 'cargo +"$RUST_TOOLCHAIN" test --workspace'
+        self.assertIn(install, workflow)
+        self.assertLess(workflow.index(install), workflow.index(workspace_test))
 
     def test_every_action_reference_uses_a_full_commit_sha(self) -> None:
         references = []

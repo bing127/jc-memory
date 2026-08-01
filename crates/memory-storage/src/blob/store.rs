@@ -163,6 +163,6 @@ async fn sync_directory(path: &Path) -> Result<(), std::io::Error> {
 }
 
 #[cfg(not(unix))]
-async fn sync_directory(_path: &Path) -> Result<(), std::io::Error> {
-    Ok(())
+fn sync_directory(_path: &Path) -> std::future::Ready<Result<(), std::io::Error>> {
+    std::future::ready(Ok(()))
 }
