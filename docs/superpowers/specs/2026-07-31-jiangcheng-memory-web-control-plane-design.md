@@ -105,8 +105,8 @@ Sidecar 当前提供 `status`、`stop`、`doctor`，并能转发上述七类业�
 - HTTP 没有内建 TLS，生产访问必须位于 HTTPS Ingress、Service Mesh、反向代理或受保护网络后；gRPC 已支持文件型 TLS；
 - Runtime、Approval、Consolidation、Quarantine 审查、Snapshot、Restore、Rebuild、Retention、Export 和 Hard Delete 尚未形成完整 Web 服务契约；
 - Memory Packet 的类型定义完整，但状态、语义知识和 Surface 尚未全部汇入当前 Core 返回路径；空数组不能被界面解释为系统不存在该类记忆；
-- M4 仍缺同一真实 Fixture 贯穿 Embedded、REST、gRPC、Sidecar 和 MCP 的完整 E2E；
-- M5 SDK/Adapter 与 M6 ONNX/Benchmark/Release 尚未实现，不得在官网写为已经交付。
+- M4 已有同一真实 Fixture 贯穿 Embedded、REST、gRPC、Sidecar 和 MCP 的 Recall 一致性测试；Web 控制面另有 Fixture 和真实本地 Rust Server 两类 Playwright 主路径；
+- M5 SDK/Adapter 与 M6 ONNX/Benchmark/Release 的仓库实现和契约测试已经存在；未经过当前环境验证的外部平台、第三方服务和私有发布产物仍不得标记为实机验证或已经发布。
 
 ## 4. 参考站点的取舍
 
