@@ -74,7 +74,7 @@ export type RecallRequest = MemoryRequest<RecallPayload>;
 export type ObserveRequest = MemoryRequest<ObservePayload>;
 export type CommitRequest = MemoryRequest<CommitPayload>;
 export type MutationRequest = MemoryRequest<MutationPayload>;
-export type StatsRequest = MemoryRequest<Record<string, never>>;
+export type StatsRequest = MemoryRequest<null>;
 export type ExplainRequest = RecallRequest;
 
 export interface ClientRequestOptions {

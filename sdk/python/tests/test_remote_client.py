@@ -116,7 +116,7 @@ def test_embedded_client_exposes_the_same_command_methods() -> None:
         "api_version": fixture["request"]["api_version"],
         "request_id": fixture["request"]["request_id"],
         "access_scope": fixture["request"]["access_scope"],
-        "command": {"command": "stats", "payload": {}},
+        "command": {"command": "stats", "payload": None},
     }
     assert client.stats(stats_request) == fixture["response"]
     client.close()

@@ -72,7 +72,7 @@ describe("RemoteMemoryClient", () => {
       },
       command: {
         command: "stats",
-        payload: {},
+        payload: null,
       },
     } as const;
     const expected = {
