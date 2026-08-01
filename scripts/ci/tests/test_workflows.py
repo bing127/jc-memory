@@ -135,11 +135,13 @@ class WorkflowContractTests(unittest.TestCase):
 
         self.assertNotIn("#[cfg(not(unix))]\nasync fn restrict_permissions", token)
         self.assertIn("std::future::ready(Ok(()))", token)
+        self.assertNotIn("#[cfg(windows)]\nasync fn sync_directory", lifecycle)
         self.assertRegex(
             lifecycle,
-            r"#\[cfg\(windows\)\]\s*#\[expect\(\s*clippy::unused_async,\s*"
-            r'reason = "[^"]+"\s*\)\]\s*async fn sync_directory',
+            r"#\[cfg\(not\(unix\)\)\]\s*fn sync_directory\([^)]*\)\s*"
+            r"-> std::future::Ready<Result<\(\), io::Error>>",
         )
+        self.assertIn("std::future::ready(Ok(()))", lifecycle)
         for function in ("bind", "connect"):
             self.assertRegex(
                 transport,

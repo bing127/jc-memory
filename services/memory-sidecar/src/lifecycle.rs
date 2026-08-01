@@ -301,26 +301,9 @@ async fn sync_directory(path: &Path) -> Result<(), io::Error> {
     tokio::fs::File::open(path).await?.sync_all().await
 }
 
-#[cfg(windows)]
-#[expect(
-    clippy::unused_async,
-    reason = "The cross-platform directory synchronization contract is asynchronous"
-)]
-async fn sync_directory(path: &Path) -> Result<(), io::Error> {
-    use std::os::windows::fs::OpenOptionsExt as _;
-
-    // Windows 需要该标志才能把目录作为句柄打开并刷新目录项。
-    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
-    std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
-        .open(path)?
-        .sync_all()
-}
-
-#[cfg(all(not(unix), not(windows)))]
-async fn sync_directory(_path: &Path) -> Result<(), io::Error> {
-    Ok(())
+#[cfg(not(unix))]
+fn sync_directory(_path: &Path) -> std::future::Ready<Result<(), io::Error>> {
+    std::future::ready(Ok(()))
 }
 
 fn now_millis() -> u128 {
