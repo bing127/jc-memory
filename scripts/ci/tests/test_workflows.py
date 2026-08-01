@@ -63,6 +63,38 @@ class WorkflowContractTests(unittest.TestCase):
             workflow = (WORKFLOW_DIR / filename).read_text(encoding="utf-8")
             self.assertIn(expected_branch_filter, workflow, f"{filename} 未监听 master push")
 
+    def test_rust_quality_supports_windows_only_manual_dispatch(self) -> None:
+        workflow = (WORKFLOW_DIR / "rust.yml").read_text(encoding="utf-8")
+        self.assertIn("windows_only:", workflow)
+        self.assertIn("type: boolean", workflow)
+        self.assertIn("default: false", workflow)
+        self.assertIn('["windows-latest"]', workflow)
+        self.assertIn(
+            '["ubuntu-latest","windows-latest","macos-latest"]', workflow
+        )
+
+    def test_private_release_publishes_only_after_all_packages_succeed(self) -> None:
+        workflow = (WORKFLOW_DIR / "release.yml").read_text(encoding="utf-8")
+        self.assertIn("contents: write", workflow)
+        self.assertIn("publish:", workflow)
+        self.assertRegex(workflow, r"needs:\s*\[validate, native, sdks, mobile\]")
+        self.assertIn("actions/download-artifact@", workflow)
+        self.assertIn("gh release create", workflow)
+        self.assertIn("gh release upload", workflow)
+        self.assertIn("gh release edit", workflow)
+
+    def test_private_release_uses_draft_as_atomic_publish_boundary(self) -> None:
+        workflow = (WORKFLOW_DIR / "release.yml").read_text(encoding="utf-8")
+        for command in ("gh release create", "gh release upload", "gh release edit"):
+            self.assertIn(command, workflow)
+        create = workflow.index("gh release create")
+        upload = workflow.index("gh release upload")
+        publish = workflow.index('gh release edit "$tag" --draft=false')
+        self.assertLess(create, upload)
+        self.assertLess(upload, publish)
+        self.assertIn("isDraft", workflow)
+        self.assertIn("--clobber", workflow)
+
     def test_non_unix_directory_sync_helpers_use_ready_futures(self) -> None:
         for relative_path in (
             "crates/memory-storage/src/blob/store.rs",

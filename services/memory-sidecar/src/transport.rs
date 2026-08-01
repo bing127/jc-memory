@@ -338,10 +338,11 @@ mod tests {
         assert_ne!(same, other);
         assert!(same.starts_with(r"\\.\pipe\jc-memory-"));
         assert!(same.len() <= 256);
-        assert!(
-            same.rsplit_once('\\')
-                .is_some_and(|(_, suffix)| suffix.chars().all(|value| value.is_ascii_hexdigit()))
-        );
+        let suffix = same
+            .strip_prefix(r"\\.\pipe\jc-memory-")
+            .expect("Named Pipe 名称必须保留固定前缀");
+        assert_eq!(suffix.len(), 16);
+        assert!(suffix.chars().all(|value| value.is_ascii_hexdigit()));
     }
 
     #[cfg(all(not(unix), not(windows)))]

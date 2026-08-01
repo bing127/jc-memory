@@ -5,6 +5,12 @@ on:
     branches: [main, master, "feat/**"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      windows_only:
+        description: "仅运行 windows-latest，供 Windows 专项排障"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -27,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: ${{ fromJSON(inputs.windows_only && '["windows-latest"]' || '["ubuntu-latest","windows-latest","macos-latest"]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683

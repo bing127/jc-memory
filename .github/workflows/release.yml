@@ -18,7 +18,7 @@ on:
         type: boolean
 
 permissions:
-  contents: read
+  contents: write
   actions: write
 
 jobs:
@@ -153,3 +153,50 @@ jobs:
           path: target/private-release/${{ matrix.target }}
           if-no-files-found: error
           retention-days: 30
+
+  publish:
+    name: Publish GitHub Release
+    needs: [validate, native, sdks, mobile]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: 下载全部私有 Release Artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          path: target/release-downloads
+      - name: 封装 GitHub Release 附件
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/github-release
+          found=0
+          for directory in target/release-downloads/jcmem-${{ inputs.version }}-*; do
+            test -d "$directory"
+            name="$(basename "$directory")"
+            tar -C "$directory" -czf "target/github-release/${name}.tar.gz" .
+            found=1
+          done
+          test "$found" = 1
+      - name: 自动发布 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v${{ inputs.version }}"
+          if release_state="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            test "$release_state" = true
+          else
+            create_args=("$tag" --verify-tag --draft --title "JiangCheng Memory $tag" --generate-notes)
+            if [[ '${{ inputs.prerelease }}' == 'true' ]]; then
+              create_args+=(--prerelease)
+            fi
+            gh release create "${create_args[@]}"
+          fi
+          gh release upload "$tag" target/github-release/*.tar.gz --clobber
+          if [[ '${{ inputs.prerelease }}' == 'true' ]]; then
+            gh release edit "$tag" --draft=false --prerelease
+          else
+            gh release edit "$tag" --draft=false
+          fi
