@@ -159,6 +159,7 @@ export function appendPerformanceHistory(
   snapshot: PerformanceSnapshot | null,
   sampledAt = snapshot?.sampledAt ?? new Date().toISOString(),
 ): PerformanceHistoryEntry[] {
+  if (snapshot === null && history.at(-1)?.snapshot === null) return history;
   return [...history, { sampledAt, snapshot }].slice(-PERFORMANCE_HISTORY_LIMIT);
 }
 

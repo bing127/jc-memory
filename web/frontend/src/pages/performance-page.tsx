@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, BarChart3, FileJson, Gauge, Radio, Upload } from "lucide-react";
 import {
   Bar,
@@ -29,6 +29,11 @@ import {
   type LoadTestReport,
   type PerformanceHistoryEntry,
 } from "../lib/performance.js";
+import {
+  useInstanceStreamSubscription,
+  useInstanceStreamTopic,
+  useInstanceTransportState,
+} from "../lib/instance-stream.js";
 
 export function PerformancePage({ instance }: { instance: InstanceSummary }) {
   const [report, setReport] = useState<LoadTestReport | null>(null);
@@ -36,61 +41,31 @@ export function PerformancePage({ instance }: { instance: InstanceSummary }) {
   const [tab, setTab] = useState<"static" | "live">("static");
   const [operation, setOperation] = useState<PerformanceOperationName>("recall");
   const [history, setHistory] = useState<PerformanceHistoryEntry[]>([]);
+  const lastSnapshotAtRef = useRef<string | null>(null);
+  const channelFailedRef = useRef(false);
   const summary = report ? summarizeLoadTestReport(report) : null;
   const chartData = report ? reportChartData(report) : null;
-  const [streamState, setStreamState] = useState<"idle" | "connecting" | "connected" | "error">("idle");
+  useInstanceStreamSubscription(tab === "live" ? { topic: "metrics" } : null);
+  const transportState = useInstanceTransportState();
+  const metrics = useInstanceStreamTopic<PerformanceSnapshot>("metrics");
 
   useEffect(() => {
-    if (tab !== "live") {
-      setStreamState("idle");
-      return;
-    }
-    let disposed = false;
-    let reconnectAttempt = 0;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let socket: WebSocket | null = null;
+    if (tab !== "live" || !metrics.data) return;
+    if (lastSnapshotAtRef.current === metrics.data.sampledAt) return;
+    lastSnapshotAtRef.current = metrics.data.sampledAt;
+    channelFailedRef.current = false;
+    setHistory((current) => appendPerformanceHistory(current, metrics.data));
+  }, [metrics.data, tab]);
 
-    const connect = () => {
-      if (disposed) return;
-      setStreamState("connecting");
-      socket = new WebSocket(metricsStreamUrl(instance.id));
-      socket.addEventListener("open", () => {
-        reconnectAttempt = 0;
-        setStreamState("connected");
-      });
-      socket.addEventListener("message", (event) => {
-        try {
-          const message = JSON.parse(String(event.data)) as MetricsStreamMessage;
-          if (message.type === "snapshot") {
-            setStreamState("connected");
-            setHistory((current) => appendPerformanceHistory(current, message.snapshot));
-          } else if (message.type === "gap") {
-            setStreamState("error");
-            setHistory((current) => appendPerformanceHistory(current, null, message.sampledAt));
-          }
-        } catch {
-          setStreamState("error");
-        }
-      });
-      socket.addEventListener("error", () => setStreamState("error"));
-      socket.addEventListener("close", () => {
-        socket = null;
-        if (disposed) return;
-        setStreamState("error");
-        const delay = Math.min(500 * (2 ** reconnectAttempt), 5_000);
-        reconnectAttempt += 1;
-        reconnectTimer = setTimeout(connect, delay);
-      });
-    };
-
-    connect();
-    return () => {
-      disposed = true;
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      socket?.close();
-      socket = null;
-    };
-  }, [instance.id, tab]);
+  useEffect(() => {
+    if (tab !== "live" || !metrics.error || channelFailedRef.current) return;
+    channelFailedRef.current = true;
+    setHistory((current) => appendPerformanceHistory(
+      current,
+      null,
+      metrics.sampledAt ?? new Date().toISOString(),
+    ));
+  }, [metrics.error, metrics.sampledAt, tab]);
 
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -150,22 +125,13 @@ export function PerformancePage({ instance }: { instance: InstanceSummary }) {
           operation={operation}
           onOperationChange={setOperation}
           history={history}
-          pending={streamState === "connecting"}
-          failed={streamState === "error"}
-          connected={streamState === "connected"}
+          pending={transportState === "connecting"}
+          channelError={metrics.error}
+          connected={transportState === "connected"}
         />
       ) : null}
     </main>
   );
-}
-
-type MetricsStreamMessage =
-  | { type: "snapshot"; snapshot: PerformanceSnapshot }
-  | { type: "gap"; sampledAt: string; message: string };
-
-function metricsStreamUrl(instanceId: string): string {
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}/api/v1/instances/${instanceId}/metrics/stream`;
 }
 
 const operationLabels: Record<PerformanceOperationName, string> = {
@@ -179,12 +145,12 @@ const operationLabels: Record<PerformanceOperationName, string> = {
   command: "Command",
 };
 
-function LiveMonitor({ operation, onOperationChange, history, pending, failed, connected }: {
+function LiveMonitor({ operation, onOperationChange, history, pending, channelError, connected }: {
   operation: PerformanceOperationName;
   onOperationChange(operation: PerformanceOperationName): void;
   history: PerformanceHistoryEntry[];
   pending: boolean;
-  failed: boolean;
+  channelError: string | null;
   connected: boolean;
 }) {
   const series = deriveOperationSeries(history, operation);
@@ -207,11 +173,17 @@ function LiveMonitor({ operation, onOperationChange, history, pending, failed, c
         </span>
       </header>
 
-      {failed ? (
-        <div className="error-band" role="alert">
-          <AlertTriangle aria-hidden="true" />实时采样中断，图表已保留最后成功数据且缺口不会补零。
-        </div>
-      ) : null}
+      <div
+        className={`live-channel-status ${channelError ? "" : "is-empty"}`}
+        data-testid="metrics-channel-status"
+        aria-live="polite"
+      >
+        {channelError ? (
+          <div className="error-band" role="alert">
+            <AlertTriangle aria-hidden="true" />指标采样失败，图表保留最后成功数据且缺口不会补零。
+          </div>
+        ) : null}
+      </div>
       {pending && !lastSuccess ? (
         <div className="performance-empty"><Radio aria-hidden="true" /><span>正在读取实例实时指标。</span></div>
       ) : (

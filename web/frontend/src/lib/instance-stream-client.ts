@@ -163,7 +163,7 @@ export class InstanceStreamClient {
         ...this.snapshot,
         topics: {
           ...this.snapshot.topics,
-          [message.topic]: { ...current, error: message.message },
+          [message.topic]: { ...current, sampledAt: message.sampledAt, error: message.message },
         },
       };
       this.emitChange();

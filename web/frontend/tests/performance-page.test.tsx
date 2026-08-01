@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
+import { InstanceStreamProvider } from "../src/lib/instance-stream.js";
 import { PerformancePage } from "../src/pages/performance-page.js";
 import {
   appendPerformanceHistory,
@@ -52,13 +53,19 @@ function report(overrides: Record<string, unknown> = {}) {
   };
 }
 
+let instanceSequence = 0;
+
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const selectedInstance = { ...instance, id: `performance-instance-${++instanceSequence}` };
   return {
     client,
+    instance: selectedInstance,
     ...render(
       <QueryClientProvider client={client}>
-        <PerformancePage instance={instance} />
+        <InstanceStreamProvider instanceId={selectedInstance.id}>
+          <PerformancePage instance={selectedInstance} />
+        </InstanceStreamProvider>
       </QueryClientProvider>,
     ),
   };
@@ -81,29 +88,51 @@ function snapshot(sampledAt: string, total: number, success: number): Performanc
 }
 
 class FakeWebSocket {
+  static readonly CONNECTING = 0;
   static readonly OPEN = 1;
+  static readonly CLOSED = 3;
   static readonly instances: FakeWebSocket[] = [];
-  readonly readyState = FakeWebSocket.OPEN;
+  readonly sent: string[] = [];
+  readyState = FakeWebSocket.CONNECTING;
   readonly url: string;
-  private readonly listeners = new Map<string, Array<(event: MessageEvent) => void>>();
+  private readonly listeners = new Map<string, Set<EventListener>>();
 
-  constructor(url: string) {
-    this.url = url;
+  constructor(url: string | URL) {
+    this.url = String(url);
     FakeWebSocket.instances.push(this);
   }
 
-  addEventListener(type: string, listener: (event: MessageEvent) => void): void {
-    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+  addEventListener(type: string, listener: EventListener): void {
+    const listeners = this.listeners.get(type) ?? new Set<EventListener>();
+    listeners.add(listener);
+    this.listeners.set(type, listeners);
   }
 
-  close(): void {}
+  send(data: string): void {
+    this.sent.push(data);
+  }
+
+  close(): void {
+    this.readyState = FakeWebSocket.CLOSED;
+  }
+
+  emitOpen(): void {
+    this.readyState = FakeWebSocket.OPEN;
+    this.dispatch("open", new Event("open"));
+  }
 
   emitMessage(message: unknown): void {
-    for (const listener of this.listeners.get("message") ?? []) {
-      listener(new MessageEvent("message", { data: JSON.stringify(message) }));
-    }
+    this.dispatch("message", new MessageEvent("message", { data: JSON.stringify(message) }));
+  }
+
+  private dispatch(type: string, event: Event): void {
+    for (const listener of this.listeners.get(type) ?? []) listener(event);
   }
 }
+
+beforeEach(() => {
+  vi.stubGlobal("WebSocket", FakeWebSocket);
+});
 
 afterEach(() => {
   FakeWebSocket.instances.length = 0;
@@ -175,6 +204,7 @@ test("累计快照差分生成RPS且失败样本保留为缺口", () => {
   let history = appendPerformanceHistory([], snapshot("2026-08-01T00:00:00.000Z", 100, 95));
   history = appendPerformanceHistory(history, snapshot("2026-08-01T00:00:10.000Z", 150, 145));
   history = appendPerformanceHistory(history, null, "2026-08-01T00:00:15.000Z");
+  history = appendPerformanceHistory(history, null, "2026-08-01T00:00:16.000Z");
 
   expect(deriveOperationSeries(history, "recall").map((point) => point.rps)).toEqual([
     null,
@@ -182,6 +212,7 @@ test("累计快照差分生成RPS且失败样本保留为缺口", () => {
     null,
   ]);
   expect(history[2]?.snapshot).toBeNull();
+  expect(history).toHaveLength(3);
   expect(liveTimelineDomain(deriveOperationSeries(history, "recall"))).toEqual([
     Date.parse("2026-08-01T00:00:00.000Z"),
     Date.parse("2026-08-01T00:00:59.000Z"),
@@ -210,44 +241,88 @@ test("实时序列使用递增时间戳并在六十秒后滚动窗口", () => {
   ]);
 });
 
-test("实时采样失败后显示最后成功数据和采样缺口", async () => {
-  vi.stubGlobal("WebSocket", FakeWebSocket);
-  const user = userEvent.setup();
+test("静态报告不订阅 metrics Topic", async () => {
   renderPage();
-
-  await user.click(screen.getByRole("tab", { name: "实时监控" }));
-  const socket = FakeWebSocket.instances.at(-1);
-  socket?.emitMessage({ type: "snapshot", snapshot: snapshot("2026-08-01T00:00:00.000Z", 100, 95) });
-  expect(await screen.findByText("95.0%")).not.toBeNull();
-  socket?.emitMessage({ type: "snapshot", snapshot: snapshot("2026-08-01T00:00:10.000Z", 150, 145) });
-  expect(await screen.findByText("5 req/s")).not.toBeNull();
-  socket?.emitMessage({
-    type: "gap",
-    sampledAt: "2026-08-01T00:00:15.000Z",
-    message: "实例指标采样失败",
+  const socket = FakeWebSocket.instances[0];
+  await act(async () => {
+    socket?.emitOpen();
+    await Promise.resolve();
   });
 
-  expect(await screen.findByRole("alert")).not.toBeNull();
-  expect(screen.getByText(/最后成功采样/)).not.toBeNull();
-  await waitFor(() => expect(screen.getByText("采样缺口 1")).not.toBeNull());
-  expect(screen.getByText("5 req/s")).not.toBeNull();
+  expect(socket?.sent.map(parseMessage)).toEqual([{
+    version: 1,
+    type: "subscribe",
+    subscriptions: [],
+  }]);
 });
 
-test("实时监控通过 WebSocket 按时间顺序接收快照", async () => {
-  vi.stubGlobal("WebSocket", FakeWebSocket);
-  const fetch = vi.fn();
-  vi.stubGlobal("fetch", fetch);
+test("连续指标错误只记录一个缺口且恢复前后保持单连接和稳定状态槽", async () => {
   const user = userEvent.setup();
   renderPage();
+  const socket = FakeWebSocket.instances[0];
+  act(() => socket?.emitOpen());
 
   await user.click(screen.getByRole("tab", { name: "实时监控" }));
-  const socket = FakeWebSocket.instances.at(-1);
-  expect(socket?.url).toContain(`/api/v1/instances/${instance.id}/metrics/stream`);
-  socket?.emitMessage({ type: "snapshot", snapshot: snapshot("2026-08-01T00:00:00.000Z", 100, 95) });
-  expect(await screen.findByText("95.0%")).not.toBeNull();
-  socket?.emitMessage({ type: "snapshot", snapshot: snapshot("2026-08-01T00:00:01.000Z", 105, 100) });
+  await flushEffects();
+  expect(socket?.sent.map(parseMessage).at(-1)).toEqual({
+    version: 1,
+    type: "subscribe",
+    subscriptions: [{ topic: "metrics" }],
+  });
+  const statusSlot = screen.getByTestId("metrics-channel-status");
+  expect(statusSlot.classList.contains("is-empty")).toBe(true);
 
+  act(() => socket?.emitMessage(streamSnapshot(snapshot("2026-08-01T00:00:00.000Z", 100, 95))));
+  expect(await screen.findByText("95.0%")).not.toBeNull();
+  act(() => socket?.emitMessage(streamSnapshot(snapshot("2026-08-01T00:00:01.000Z", 105, 100))));
   expect(await screen.findByText("5 req/s")).not.toBeNull();
   expect(screen.getByLabelText("样本 2 / 60")).not.toBeNull();
-  expect(fetch).not.toHaveBeenCalled();
+
+  act(() => {
+    socket?.emitMessage(channelError("2026-08-01T00:00:02.000Z"));
+    socket?.emitMessage(channelError("2026-08-01T00:00:03.000Z"));
+  });
+
+  expect(screen.getByText("实时流已连接")).not.toBeNull();
+  expect(screen.getByText("指标采样失败，图表保留最后成功数据且缺口不会补零。")).not.toBeNull();
+  expect(screen.getByText("采样缺口 1")).not.toBeNull();
+  expect(statusSlot.classList.contains("is-empty")).toBe(false);
+  expect(FakeWebSocket.instances).toHaveLength(1);
+
+  act(() => socket?.emitMessage(streamSnapshot(snapshot("2026-08-01T00:00:04.000Z", 120, 115))));
+  expect(statusSlot.classList.contains("is-empty")).toBe(true);
+  expect(screen.getByText("采样缺口 1")).not.toBeNull();
+  expect(screen.getByLabelText("样本 4 / 60")).not.toBeNull();
+  expect(FakeWebSocket.instances).toHaveLength(1);
 });
+
+function streamSnapshot(data: PerformanceSnapshot) {
+  return {
+    version: 1,
+    type: "snapshot",
+    topic: "metrics",
+    sampledAt: data.sampledAt,
+    data,
+  };
+}
+
+function channelError(sampledAt: string) {
+  return {
+    version: 1,
+    type: "channel_error",
+    topic: "metrics",
+    sampledAt,
+    code: "upstream_unavailable",
+    message: "实例指标采样失败",
+  };
+}
+
+function parseMessage(value: string): unknown {
+  return JSON.parse(value);
+}
+
+async function flushEffects(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+  });
+}
