@@ -1,6 +1,6 @@
 # 统一实例 WebSocket 设计
 
-- **状态：** 已确认
+- **状态：** 已实施并验收
 - **日期：** 2026-08-02
 - **产品名称：** 疆诚记忆
 - **英文名称：** Jiangcheng Memory
@@ -249,3 +249,28 @@ Playwright 在桌面和移动端验证：
 - 所有频道均保留最后成功数据，失败不补零、不伪造权威记录；
 - 桌面与移动端测试、类型检查、生产构建和 `git diff --check` 全部通过；
 - 中文实施文档、提交记录和远端分支同步完成。
+
+## 13. 实施与验收记录
+
+2026-08-02 已按本设计完成实施，阶段提交如下：
+
+- `7c8ba19 feat(web): 增加统一实例订阅流`；
+- `deda963 feat(web): 共享实例 WebSocket 连接`；
+- `1712c8a refactor(web): 总览改用实例订阅流`；
+- `25e86f5 refactor(web): Runtime 改用实例订阅流`；
+- `267806d fix(web): 消除实时性能页面闪动`；
+- `e132573 test(web): 验证实例单连接与无轮询`。
+
+最终验收证据：
+
+- 后端 Vitest 单 worker：6 个测试文件、35 项测试通过；
+- 前端 Vitest 单 worker：9 个测试文件、28 项测试通过；
+- Web 工作区 TypeScript 类型检查通过；
+- BFF 与前端生产构建通过，Vite 仍报告既有主 chunk 超过 500 kB 的非阻断提示；
+- Playwright 使用单 worker 串行完成 `desktop-chromium` 与 `mobile-chromium`，2 项完整链路测试通过；
+- 浏览器跨总览、Runtime 和性能页只构造一个实例 `/stream`，未构造旧 `/metrics/stream`；
+- Fixture 请求计数证明 BFF 只采样当前订阅 Topic，浏览器未发起旧总览和 Runtime 周期读取；
+- 指标失败与恢复前后 `.live-monitor` 和图表顶部坐标保持不变，SVG 折线非空且从左向右推进；
+- 源码轮询残留检索与 `git diff --check` 均无输出。
+
+上述 Playwright 验收使用真实 Chromium、真实 BFF WebSocket 和版本化 Memory Server Fixture。它证明本仓库控制面链路与协议契约，不等同于外部真实 Rust Server、生产反向代理或 Kubernetes Ingress 的实机验证；发布到这些环境时仍必须验证 WebSocket Upgrade、Session Cookie、Origin 和超时配置。

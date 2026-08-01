@@ -8,6 +8,8 @@
 
 **Tech Stack:** Node.js 22、Fastify 5、`@fastify/websocket`、`ws`、React 19、TypeScript、Zod、TanStack Query、Vitest、Testing Library、Playwright。
 
+**执行状态：** 已完成并通过本地完整门禁，验收日期为 2026-08-02。
+
 ---
 
 ## 文件结构
@@ -32,6 +34,7 @@
 - Modify: `web/frontend/src/index.css`：实时错误区域稳定尺寸。
 - Modify: `web/e2e/control-plane.spec.ts`：单连接、跨页订阅、零周期 GET 和图表稳定性验收。
 - Modify: `web/e2e/fixture-memory-server.mjs`：为各频道提供递增 Fixture，并支持指标失败/恢复场景。
+- Modify: `web/playwright.config.ts`：单 worker 串行桌面与移动项目，隔离共享 Fixture 计数。
 - Modify: `docs/superpowers/specs/2026-08-02-unified-instance-websocket-design.md`：记录已确认状态和 `refresh` 协议。
 - Modify: `docs/superpowers/plans/2026-08-02-unified-instance-websocket-implementation.md`：逐项勾选实际完成步骤。
 
@@ -44,7 +47,7 @@
 - Create: `web/backend/tests/instance-stream.test.ts`
 - Modify: `web/backend/tests/app.test.ts`
 
-- [ ] **Step 1: 写多 Topic 单连接红灯测试**
+- [x] **Step 1: 写多 Topic 单连接红灯测试**
 
 在 `instance-stream.test.ts` 启动真实 Fastify TCP 服务，登录并创建实例，使用 `ws` 连接统一地址后发送：
 
@@ -73,13 +76,13 @@ expect(new Set(messages.map((message) => message.topic))).toEqual(new Set([
 expect(messages.every((message) => message.version === 1)).toBe(true);
 ```
 
-- [ ] **Step 2: 运行后端红灯测试**
+- [x] **Step 2: 运行后端红灯测试**
 
 Run: `cd web/backend && corepack pnpm test -- instance-stream.test.ts`
 
 Expected: FAIL，统一 `/stream` 路由返回 `404`。
 
-- [ ] **Step 3: 实现版本化协议解析和频道采样器**
+- [x] **Step 3: 实现版本化协议解析和频道采样器**
 
 在 `instance-stream.ts` 定义严格 Zod Schema：
 
@@ -142,7 +145,7 @@ await upstream.execute(connection, {
 });
 ```
 
-- [ ] **Step 4: 注册统一路由并删除旧指标流**
+- [x] **Step 4: 注册统一路由并删除旧指标流**
 
 在 `instances.ts` 注册：
 
@@ -168,7 +171,7 @@ app.get(
 
 删除 `/api/v1/instances/:id/metrics/stream` 和 `METRICS_STREAM_INTERVAL_MS`，HTTP `/metrics` 诊断接口保留。
 
-- [ ] **Step 5: 补订阅幂等、刷新、错误去重和清理红灯测试**
+- [x] **Step 5: 补订阅幂等、刷新、错误去重和清理红灯测试**
 
 增加以下独立用例和核心断言：
 
@@ -188,13 +191,13 @@ expect(receivedAfterInvalidSubscription).toContainEqual(expect.objectContaining(
 }));
 ```
 
-- [ ] **Step 6: 运行后端聚焦测试并重构**
+- [x] **Step 6: 运行后端聚焦测试并重构**
 
 Run: `cd web/backend && corepack pnpm test -- instance-stream.test.ts app.test.ts`
 
 Expected: PASS，所有 WebSocket 在 `afterEach` 中关闭，测试服务器无悬挂句柄。
 
-- [ ] **Step 7: 提交后端统一流**
+- [x] **Step 7: 提交后端统一流**
 
 ```bash
 git add web/backend/src/instance-stream.ts web/backend/src/routes/instances.ts web/backend/src/routes/memory.ts web/backend/tests/instance-stream.test.ts web/backend/tests/app.test.ts
@@ -210,7 +213,7 @@ git commit -m "feat(web): 增加统一实例订阅流" -m "BFF 通过单条 WebS
 - Create: `web/frontend/tests/instance-stream.test.tsx`
 - Modify: `web/frontend/src/components/app-shell.tsx`
 
-- [ ] **Step 1: 写单连接和订阅合并红灯测试**
+- [x] **Step 1: 写单连接和订阅合并红灯测试**
 
 在 React `StrictMode` 中使用可控 `FakeWebSocket` 渲染 Provider 和两个测试消费者：
 
@@ -237,13 +240,13 @@ expect(socket.sent.map(JSON.parse)).toEqual([{
 
 卸载一个消费者后断言仍复用原连接并发送缩减后的完整集合。
 
-- [ ] **Step 2: 运行 Provider 红灯测试**
+- [x] **Step 2: 运行 Provider 红灯测试**
 
 Run: `cd web/frontend && corepack pnpm test -- instance-stream.test.tsx`
 
 Expected: FAIL，`InstanceStreamProvider` 和订阅 Hook 尚不存在。
 
-- [ ] **Step 3: 实现协议类型、Provider 和 Hooks**
+- [x] **Step 3: 实现协议类型、Provider 和 Hooks**
 
 在 `contracts.ts` 增加：
 
@@ -276,7 +279,7 @@ Provider 用消费者 token 到订阅的 Map 合并需求；在微任务中统�
 
 当 `runtime.detail` 的订阅 key 从旧 `runId` 切换为新 `runId` 时，Provider 立即清除该 Topic 的旧 `data`、`sampledAt` 和 `error`，避免新快照到达前展示上一个 Run。
 
-- [ ] **Step 4: 补频道状态和重连红灯测试**
+- [x] **Step 4: 补频道状态和重连红灯测试**
 
 增加用例并使用以下核心断言证明：
 
@@ -305,7 +308,7 @@ expect(socket.sent.map(JSON.parse)).not.toContainEqual({
 expect(socket.sent.map(JSON.parse).at(-1)).toEqual(expectedRouteSubscriptions);
 ```
 
-- [ ] **Step 5: 在 AppShell 挂载 Provider**
+- [x] **Step 5: 在 AppShell 挂载 Provider**
 
 将当前实例 ID 传给 Provider，并让整个实例内容区共享连接。保留现有顶部栏结构：
 
@@ -333,7 +336,7 @@ expect(socket.sent.map(JSON.parse).at(-1)).toEqual(expectedRouteSubscriptions);
 
 Provider 不因 `children` 路由变化重建；只有实例 ID 改变或退出实例区域时关闭旧连接。
 
-- [ ] **Step 6: 运行前端聚焦测试并提交**
+- [x] **Step 6: 运行前端聚焦测试并提交**
 
 Run: `cd web/frontend && corepack pnpm test -- instance-stream.test.tsx`
 
@@ -352,7 +355,7 @@ git commit -m "feat(web): 共享实例 WebSocket 连接" -m "AppShell 为当前�
 - Modify: `web/frontend/src/pages/overview-page.tsx`
 - Modify: `web/frontend/tests/overview-page.test.tsx`
 
-- [ ] **Step 1: 写总览零轮询红灯测试**
+- [x] **Step 1: 写总览零轮询红灯测试**
 
 在 Provider 测试壳中渲染 `OverviewPage`，打开 WebSocket 后推送：
 
@@ -371,13 +374,13 @@ socket.emitMessage({
 
 断言显示 `3`、`5`、三个正常状态，并在推进 30 秒假时钟后 `fetch` 调用数仍为零。
 
-- [ ] **Step 2: 运行红灯测试**
+- [x] **Step 2: 运行红灯测试**
 
 Run: `cd web/frontend && corepack pnpm test -- overview-page.test.tsx`
 
 Expected: FAIL，页面仍调用 HTTP Query。
 
-- [ ] **Step 3: 替换为 overview 频道**
+- [x] **Step 3: 替换为 overview 频道**
 
 删除 `useQuery`、`api.instanceStatus`、`api.memory(stats)` 和 `emptyScope`。页面调用：
 
@@ -388,7 +391,7 @@ const overview = useInstanceStreamTopic<OverviewSnapshot>("overview");
 
 使用 `overview.data.status` 与 `overview.data.stats` 渲染原 UI。频道错误时保留最后数据，并在固定错误区域显示“无法刷新实例状态”。
 
-- [ ] **Step 4: 运行测试并提交**
+- [x] **Step 4: 运行测试并提交**
 
 Run: `cd web/frontend && corepack pnpm test -- overview-page.test.tsx instance-stream.test.tsx`
 
@@ -405,7 +408,7 @@ git commit -m "refactor(web): 总览改用实例订阅流" -m "总览状态和�
 - Modify: `web/frontend/src/pages/runtime-page.tsx`
 - Modify: `web/frontend/tests/runtime-page.test.tsx`
 
-- [ ] **Step 1: 写 Runtime 订阅红灯测试**
+- [x] **Step 1: 写 Runtime 订阅红灯测试**
 
 渲染页面后断言订阅集合先包含 `runtime.list`；选择 Run 后包含：
 
@@ -418,7 +421,7 @@ git commit -m "refactor(web): 总览改用实例订阅流" -m "总览状态和�
 
 推进 20 秒假时钟后断言没有 Runtime GET `fetch`。推送列表和详情快照，断言原列表、状态、Transition 和 JSON 均正常显示。
 
-- [ ] **Step 2: 写 Runtime Start 刷新红灯测试**
+- [x] **Step 2: 写 Runtime Start 刷新红灯测试**
 
 HTTP POST 成功返回 `newRunId` 后断言：
 
@@ -433,13 +436,13 @@ expect(socket.sent.map(JSON.parse)).toContainEqual({
 
 并断言随后订阅切换到 `runtime.detail:newRunId`。
 
-- [ ] **Step 3: 运行红灯测试**
+- [x] **Step 3: 运行红灯测试**
 
 Run: `cd web/frontend && corepack pnpm test -- runtime-page.test.tsx`
 
 Expected: FAIL，页面仍包含 `refetchInterval`，且没有订阅或刷新消息。
 
-- [ ] **Step 4: 替换 Runtime 读取链路**
+- [x] **Step 4: 替换 Runtime 读取链路**
 
 保留 `useMutation` 处理 Runtime Start，删除两个 `useQuery` 和 QueryClient invalidation。增加：
 
@@ -455,7 +458,7 @@ const refresh = useInstanceStreamRefresh();
 
 mutation 成功时先设置 `run` 查询参数，再调用 `refresh(["runtime.list"])`。删除“每 10 秒刷新”文案，替换为“实时订阅”。
 
-- [ ] **Step 5: 运行测试并提交**
+- [x] **Step 5: 运行测试并提交**
 
 Run: `cd web/frontend && corepack pnpm test -- runtime-page.test.tsx instance-stream.test.tsx`
 
@@ -474,7 +477,7 @@ git commit -m "refactor(web): Runtime 改用实例订阅流" -m "Run 列表和�
 - Modify: `web/frontend/tests/performance-page.test.tsx`
 - Modify: `web/frontend/src/index.css`
 
-- [ ] **Step 1: 写频道错误不触发重连红灯测试**
+- [x] **Step 1: 写频道错误不触发重连红灯测试**
 
 在共享 Provider 下打开实时 Tab，推送一次指标快照后连续推送两次 `channel_error`。断言：
 
@@ -487,7 +490,7 @@ expect(FakeWebSocket.instances).toHaveLength(1);
 
 再推送恢复快照，断言错误隐藏、历史继续且连接数不变。
 
-- [ ] **Step 2: 写布局稳定红灯测试**
+- [x] **Step 2: 写布局稳定红灯测试**
 
 错误槽始终存在并带稳定测试标识：
 
@@ -500,13 +503,13 @@ expect(slot.classList.contains("is-empty")).toBe(false);
 
 测试不比较 JSDOM 几何尺寸；Playwright 再比较错误前后 `.live-monitor` 顶部与图表顶部坐标保持不变。
 
-- [ ] **Step 3: 运行红灯测试**
+- [x] **Step 3: 运行红灯测试**
 
 Run: `cd web/frontend && corepack pnpm test -- performance-page.test.tsx`
 
 Expected: FAIL，性能页仍自己创建 WebSocket，并把 gap 设置为传输错误。
 
-- [ ] **Step 4: 使用共享 metrics 频道并去重 gap**
+- [x] **Step 4: 使用共享 metrics 频道并去重 gap**
 
 删除性能页中的 `new WebSocket`、重连定时器和 `MetricsStreamMessage`。实时 Tab 订阅：
 
@@ -532,7 +535,7 @@ const metrics = useInstanceStreamTopic<PerformanceSnapshot>("metrics");
 
 CSS 为 `.live-channel-status` 设置稳定 `min-height`，空状态使用同等占位，不让后续指标卡和图表上下移动。
 
-- [ ] **Step 5: 运行聚焦测试并提交**
+- [x] **Step 5: 运行聚焦测试并提交**
 
 Run: `cd web/frontend && corepack pnpm test -- performance-page.test.tsx instance-stream.test.tsx`
 
@@ -548,8 +551,9 @@ git commit -m "fix(web): 消除实时性能页面闪动" -m "性能页复用实�
 **Files:**
 - Modify: `web/e2e/fixture-memory-server.mjs`
 - Modify: `web/e2e/control-plane.spec.ts`
+- Modify: `web/playwright.config.ts`
 
-- [ ] **Step 1: 扩展 Fixture 可观测信号**
+- [x] **Step 1: 扩展 Fixture 可观测信号**
 
 Fixture 为 status、Stats、Runtime 和 metrics 维护独立请求计数。增加仅测试环境使用的读取端点：
 
@@ -559,7 +563,7 @@ GET /__fixture/requests
 
 返回各上游路径的调用次数，不包含 API Key、请求体或用户输入。该端点只存在于 `fixture-memory-server.mjs`，不进入生产 BFF。
 
-- [ ] **Step 2: 写 Playwright 单连接与页面切换断言**
+- [x] **Step 2: 写 Playwright 单连接与页面切换断言**
 
 在页面初始化脚本中包装原生 WebSocket，只记录构造次数和 URL，不读取消息内容：
 
@@ -580,22 +584,22 @@ await page.addInitScript(() => {
 
 登录后依次切换总览、Runtime 和性能页，断言 `/stream` URL 只有一次，并且旧 `/metrics/stream` 从未创建。
 
-- [ ] **Step 3: 写零周期 GET 和布局稳定断言**
+- [x] **Step 3: 写零周期 GET 和布局稳定断言**
 
 记录浏览器请求，等待覆盖 15 秒旧总览周期后断言不存在重复的 status、memory/stats、runtime list 和 runtime detail GET。通过 Fixture 计数确认 BFF 仅按当前订阅 Topic 调用上游。
 
 性能错误/恢复 Fixture 场景中记录 `.live-monitor` 和 `.performance-chart-grid` 的边界坐标，断言错误出现及恢复后图表顶部坐标不变；等待至少两个成功样本并检查 SVG 折线非空且从左向右推进。
 
-- [ ] **Step 4: 运行桌面和移动端 E2E**
+- [x] **Step 4: 运行桌面和移动端 E2E**
 
 Run: `cd web && corepack pnpm test:e2e`
 
 Expected: `desktop-chromium` 与 `mobile-chromium` 全部 PASS，并生成实时性能截图。
 
-- [ ] **Step 5: 提交 E2E 验收**
+- [x] **Step 5: 提交 E2E 验收**
 
 ```bash
-git add web/e2e/fixture-memory-server.mjs web/e2e/control-plane.spec.ts
+git add web/e2e/fixture-memory-server.mjs web/e2e/control-plane.spec.ts web/playwright.config.ts
 git commit -m "test(web): 验证实例单连接与无轮询" -m "Playwright 覆盖跨页面复用 WebSocket、按 Topic 采样、零周期 GET、指标失败恢复和桌面移动端布局稳定。"
 ```
 
@@ -605,13 +609,13 @@ git commit -m "test(web): 验证实例单连接与无轮询" -m "Playwright 覆�
 - Modify: `docs/superpowers/specs/2026-08-02-unified-instance-websocket-design.md`
 - Modify: `docs/superpowers/plans/2026-08-02-unified-instance-websocket-implementation.md`
 
-- [ ] **Step 1: 检索并移除控制台轮询残留**
+- [x] **Step 1: 检索并移除控制台轮询残留**
 
 Run: `rg -n "refetchInterval|metrics/stream|每 10 秒刷新" web/frontend/src web/backend/src`
 
 Expected: 无总览、Runtime 或性能实时读取残留；`json-viewer` 的复制提示 `setTimeout` 和 Provider 的断线退避不属于周期轮询。
 
-- [ ] **Step 2: 运行 Web 全量测试**
+- [x] **Step 2: 运行 Web 全量测试**
 
 Run: `cd web/backend && corepack pnpm exec vitest run --maxWorkers=1 --no-file-parallelism`
 
@@ -619,7 +623,7 @@ Run: `cd web/frontend && corepack pnpm exec vitest run --maxWorkers=1 --no-file-
 
 Expected: 全部测试 PASS。单 worker 避免当前高负载开发机让无关 5 秒用例产生资源竞争超时。
 
-- [ ] **Step 3: 运行类型检查和生产构建**
+- [x] **Step 3: 运行类型检查和生产构建**
 
 Run: `cd web && corepack pnpm typecheck`
 
@@ -627,7 +631,7 @@ Run: `cd web && corepack pnpm build`
 
 Expected: 退出码 0；如仍存在既有 Vite 大 chunk 提示，记录但不得描述为构建失败。
 
-- [ ] **Step 4: 运行最终 E2E 与差异检查**
+- [x] **Step 4: 运行最终 E2E 与差异检查**
 
 Run: `cd web && corepack pnpm test:e2e`
 
@@ -635,7 +639,7 @@ Run: `git diff --check`
 
 Expected: 桌面和移动端 E2E 通过，差异检查无输出。
 
-- [ ] **Step 5: 勾选完成项并提交文档**
+- [x] **Step 5: 勾选完成项并提交文档**
 
 只勾选有实际命令证据的步骤，记录 Fixture 与真实部署边界：
 
@@ -644,7 +648,7 @@ git add docs/superpowers/specs/2026-08-02-unified-instance-websocket-design.md d
 git commit -m "docs(web): 记录统一实例流验收" -m "勾选已完成步骤并记录单连接、零轮询、频道错误恢复、桌面与移动端验证结果和实机边界。"
 ```
 
-- [ ] **Step 6: 推送当前分支**
+- [x] **Step 6: 推送当前分支**
 
 Run: `git push origin feat/performance-observability`
 
