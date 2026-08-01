@@ -152,61 +152,14 @@ describe("control-plane BFF", () => {
     await app.close();
   });
 
-  test("streams metrics over an authenticated WebSocket from oldest to newest sample", async () => {
-    let sample = 0;
-    const upstreamFetch = vi.fn(async () => {
-      sample += 1;
-      return new Response([
-        `jc_memory_requests_total{operation="recall",transport="http"} ${sample}`,
-        `jc_memory_requests_total{operation="recall",transport="http",outcome="success"} ${sample}`,
-        `jc_memory_request_duration_seconds_bucket{operation="recall",transport="http",le="0.025"} ${sample}`,
-        `jc_memory_request_duration_seconds_bucket{operation="recall",transport="http",le="+Inf"} ${sample}`,
-        "jc_memory_requests_in_flight 1",
-        "jc_memory_server_ready 1",
-      ].join("\n"));
-    });
-    const app = await createApp(upstreamFetch);
-    const cookie = await login(app);
-    const instanceId = await createInstance(app, cookie);
-    await app.listen({ host: "127.0.0.1", port: 0 });
-    const address = app.server.address();
-    if (!address || typeof address === "string") throw new Error("测试服务器未监听 TCP 地址");
-
-    const socket = new WebSocket(
-      `ws://127.0.0.1:${address.port}/api/v1/instances/${instanceId}/metrics/stream`,
-      { headers: { cookie, origin } },
-    );
-    const messages = await new Promise<Array<{ type: string; snapshot?: { sampledAt: string } }>>((resolve, reject) => {
-      const received: Array<{ type: string; snapshot?: { sampledAt: string } }> = [];
-      socket.on("message", (payload) => {
-        received.push(JSON.parse(payload.toString()) as { type: string; snapshot?: { sampledAt: string } });
-        if (received.length === 2) resolve(received);
-      });
-      socket.once("error", reject);
-    });
-
-    expect(messages[0]?.type).toBe("snapshot");
-    expect(messages[1]?.type).toBe("snapshot");
-    expect(messages[0]?.snapshot?.sampledAt).not.toBe(messages[1]?.snapshot?.sampledAt);
-    expect(upstreamFetch.mock.calls.length).toBeGreaterThanOrEqual(2);
-    await new Promise<void>((resolve) => {
-      socket.once("close", () => resolve());
-      socket.close();
-    });
-    const callsAfterClose = upstreamFetch.mock.calls.length;
-    await new Promise((resolve) => setTimeout(resolve, 1_100));
-    expect(upstreamFetch).toHaveBeenCalledTimes(callsAfterClose);
-    await app.close();
-  }, 10_000);
-
-  test("closes an unauthenticated metrics WebSocket with a policy violation", async () => {
+  test("closes an unauthenticated instance WebSocket with a policy violation", async () => {
     const app = await createApp(vi.fn());
     await app.listen({ host: "127.0.0.1", port: 0 });
     const address = app.server.address();
     if (!address || typeof address === "string") throw new Error("测试服务器未监听 TCP 地址");
 
     const socket = new WebSocket(
-      `ws://127.0.0.1:${address.port}/api/v1/instances/00000000-0000-0000-0000-000000000001/metrics/stream`,
+      `ws://127.0.0.1:${address.port}/api/v1/instances/00000000-0000-0000-0000-000000000001/stream`,
     );
     const close = await new Promise<{ code: number; reason: string }>((resolve, reject) => {
       socket.once("close", (code, reason) => resolve({ code, reason: reason.toString() }));

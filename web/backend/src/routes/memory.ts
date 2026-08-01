@@ -205,7 +205,7 @@ function parseOperation(
   };
 }
 
-function toAccessScope(
+export function toAccessScope(
   namespaceId: string,
   scope: z.infer<typeof scopeSchema>,
 ): AccessScope {

@@ -3,14 +3,13 @@ import type WebSocket from "ws";
 import { z } from "zod";
 
 import type { AuthService } from "../auth.js";
+import { attachInstanceStream } from "../instance-stream.js";
 import type { InstanceStore } from "../instances.js";
 import { parseServerMetrics } from "../metrics.js";
 import { uuidStringSchema } from "../protocol.js";
 import type { UpstreamClient } from "../upstream.js";
 import { validateBaseUrl } from "../upstream.js";
 import { requireAllowedOrigin, requireSession } from "./guards.js";
-
-const METRICS_STREAM_INTERVAL_MS = 1_000;
 
 const instanceInputSchema = z.strictObject({
   name: z.string().trim().min(1).max(80),
@@ -96,7 +95,7 @@ export async function registerInstanceRoutes(
   });
 
   app.get(
-    "/api/v1/instances/:id/metrics/stream",
+    "/api/v1/instances/:id/stream",
     { websocket: true },
     (socket: WebSocket, request) => {
       if (!auth.sessionFromRequest(request) || !auth.isAllowedOrigin(request.headers.origin)) {
@@ -109,43 +108,7 @@ export async function registerInstanceRoutes(
         socket.close(1008, "instance_not_found");
         return;
       }
-      const activeConnection = connection;
-
-      let closed = false;
-      let sampling = false;
-      const timer = setInterval(() => void sample(), METRICS_STREAM_INTERVAL_MS);
-      timer.unref?.();
-      const stop = () => {
-        if (closed) return;
-        closed = true;
-        clearInterval(timer);
-      };
-      socket.once("close", stop);
-      socket.once("error", stop);
-
-      async function sample(): Promise<void> {
-        if (closed || sampling || socket.readyState !== 1) return;
-        sampling = true;
-        const sampledAt = new Date().toISOString();
-        try {
-          const snapshot = parseServerMetrics(await upstream.metrics(activeConnection), sampledAt);
-          if (!closed && socket.readyState === 1) {
-            socket.send(JSON.stringify({ type: "snapshot", snapshot }));
-          }
-        } catch {
-          if (!closed && socket.readyState === 1) {
-            socket.send(JSON.stringify({
-              type: "gap",
-              sampledAt,
-              message: "实例指标采样失败",
-            }));
-          }
-        } finally {
-          sampling = false;
-        }
-      }
-
-      void sample();
+      attachInstanceStream(socket, connection, upstream);
     },
   );
 }
