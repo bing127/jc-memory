@@ -346,12 +346,13 @@ async fn export_writes_manifest_canonical_jsonl_and_referenced_blobs() {
         .await
         .expect("读取导出 Blob 字节");
     assert_eq!(manifest_value["blobs"][0]["id"], blob.id.as_str());
-    assert_eq!(
-        manifest_value["blobs"][0]["path"],
-        blob_path(std::path::Path::new("blobs"), blob.id.as_str())
-            .to_string_lossy()
-            .as_ref()
+    let expected_manifest_path = format!(
+        "blobs/{}/{}/{}.jcb",
+        &blob.id.as_str()[..2],
+        &blob.id.as_str()[2..4],
+        blob.id.as_str()
     );
+    assert_eq!(manifest_value["blobs"][0]["path"], expected_manifest_path);
     assert_eq!(
         manifest_value["blobs"][0]["sha256"],
         hex::encode(Sha256::digest(&exported_blob_bytes))
