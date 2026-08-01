@@ -303,9 +303,8 @@ mod tests {
         });
         tokio::time::sleep(Duration::from_millis(25)).await;
         pending.abort();
-        let cancellation = match pending.await {
-            Ok(_) => panic!("accept 应被取消"),
-            Err(error) => error,
+        let Err(cancellation) = pending.await else {
+            panic!("accept 应被取消");
         };
         assert!(
             cancellation.is_cancelled(),
