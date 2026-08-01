@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     fmt::{self, Display},
     str::FromStr as _,
     sync::Arc,
@@ -16,7 +17,7 @@ use jc_memory_protocol::{
 };
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
-use sqlx::{Decode, Row, Sqlite, SqlitePool, Transaction, Type, sqlite::SqliteRow};
+use sqlx::{Decode, QueryBuilder, Row, Sqlite, SqlitePool, Transaction, Type, sqlite::SqliteRow};
 
 use crate::{SqliteStore, StorageError};
 
@@ -93,6 +94,13 @@ pub trait MemoryRepository: Send + Sync {
         scope: &MemoryScope,
         id: FragmentId,
     ) -> Result<CognitiveFragment, StorageError>;
+
+    /// 在一次有界查询中按输入顺序重建同一精确 Scope 内的权威 Fragment。
+    async fn get_fragments_in_scope(
+        &self,
+        scope: &MemoryScope,
+        ids: &[FragmentId],
+    ) -> Result<Vec<CognitiveFragment>, StorageError>;
 
     /// 只判断 `FragmentId` 是否属于精确 Scope，不解码正文。
     async fn contains_fragment_in_scope(
@@ -473,6 +481,65 @@ impl MemoryRepository for SqliteMemoryRepository {
         })?;
 
         decode_fragment(&self.pool, &row, &id_string).await
+    }
+
+    async fn get_fragments_in_scope(
+        &self,
+        scope: &MemoryScope,
+        ids: &[FragmentId],
+    ) -> Result<Vec<CognitiveFragment>, StorageError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let scope_key = scope_key(scope)?;
+        let mut query = QueryBuilder::<Sqlite>::new(
+            "SELECT
+                f.id, f.scope_key, f.namespace_id, f.tenant_id, f.user_id, f.agent_id,
+                f.project_id, f.session_id, f.trace_id, f.kind, f.content_id,
+                f.source_json, f.perspective, f.occurred_at_us, f.observed_at_us,
+                f.confidence, f.importance, f.validity, f.security_label, f.metadata_json,
+                c.id AS stored_content_id, c.storage_kind, c.inline_value, c.blob_id,
+                c.media_type, c.byte_len AS content_byte_len, c.sha256 AS content_sha256,
+                e.payload_json AS authoritative_payload_json
+             FROM fragments AS f
+             LEFT JOIN fragment_contents AS c ON c.id = f.content_id
+             LEFT JOIN events AS e ON e.fragment_id = f.id
+             WHERE f.scope_key = ",
+        );
+        query.push_bind(scope_key).push(" AND f.id IN (");
+        {
+            let mut separated = query.separated(", ");
+            for id in ids {
+                separated.push_bind(id.to_string());
+            }
+        }
+        query.push(")");
+        let rows = query.build().fetch_all(&self.pool).await?;
+        let row_ids = rows
+            .iter()
+            .map(|row| column::<String>(row, "id", "fragments", "batch"))
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut evidence_by_fragment = decode_evidence_batch(&self.pool, &row_ids).await?;
+        let mut fragments_by_id = BTreeMap::new();
+        for row in rows {
+            let row_id = column::<String>(&row, "id", "fragments", "batch")?;
+            let evidence = evidence_by_fragment.remove(&row_id).unwrap_or_default();
+            let fragment = decode_fragment_with_evidence(&row, &row_id, evidence)?;
+            fragments_by_id.insert(fragment.id, fragment);
+        }
+
+        ids.iter()
+            .map(|id| {
+                fragments_by_id
+                    .get(id)
+                    .cloned()
+                    .ok_or_else(|| StorageError::NotFound {
+                        entity: "fragment",
+                        id: id.to_string(),
+                    })
+            })
+            .collect()
     }
 
     async fn contains_fragment_in_scope(
@@ -1083,6 +1150,15 @@ async fn decode_fragment(
     row: &SqliteRow,
     row_id: &str,
 ) -> Result<CognitiveFragment, StorageError> {
+    let evidence = decode_evidence(pool, row_id).await?;
+    decode_fragment_with_evidence(row, row_id, evidence)
+}
+
+fn decode_fragment_with_evidence(
+    row: &SqliteRow,
+    row_id: &str,
+    evidence: Vec<EvidenceRef>,
+) -> Result<CognitiveFragment, StorageError> {
     let stored_content_id =
         column::<Option<String>>(row, "stored_content_id", "fragments", row_id)?.ok_or_else(
             || {
@@ -1117,7 +1193,6 @@ async fn decode_fragment(
     let content = decode_content(row, row_id, &stored_content_id)?;
     let (source, metadata) = decode_source_and_metadata(row, row_id)?;
     let scalars = decode_fragment_scalars(row, row_id)?;
-    let evidence = decode_evidence(pool, row_id).await?;
     let fragment = CognitiveFragment {
         id: parse_id::<FragmentId>(
             &column::<String>(row, "id", "fragments", row_id)?,
@@ -1399,81 +1474,112 @@ async fn decode_evidence(
     .await?;
 
     rows.into_iter()
-        .map(|row| {
-            let evidence_id_raw: String = row.try_get("id").map_err(|error| {
-                corrupt(
-                    "evidence_refs",
-                    owner_fragment_id,
-                    format!("invalid evidence id column: {error}"),
-                )
-            })?;
-            let fragment_raw: Option<String> =
-                row.try_get("referenced_fragment_id").map_err(|error| {
-                    corrupt(
-                        "evidence_refs",
-                        &evidence_id_raw,
-                        format!("invalid fragment reference: {error}"),
-                    )
-                })?;
-            let event_raw: Option<String> =
-                row.try_get("referenced_event_id").map_err(|error| {
-                    corrupt(
-                        "evidence_refs",
-                        &evidence_id_raw,
-                        format!("invalid event reference: {error}"),
-                    )
-                })?;
-            if fragment_raw.is_some() == event_raw.is_some() {
-                return Err(corrupt(
-                    "evidence_refs",
-                    &evidence_id_raw,
-                    "evidence must reference exactly one target",
-                ));
-            }
-            let method_raw: String = row.try_get("verification_method").map_err(|error| {
-                corrupt(
-                    "evidence_refs",
-                    &evidence_id_raw,
-                    format!("invalid verification method: {error}"),
-                )
-            })?;
-            let method = decode_verification_method(&method_raw).ok_or_else(|| {
-                corrupt(
-                    "evidence_refs",
-                    &evidence_id_raw,
-                    "unknown verification method",
-                )
-            })?;
-            Ok(EvidenceRef {
-                id: parse_id::<EvidenceId>(
-                    &evidence_id_raw,
-                    "evidence_refs",
-                    &evidence_id_raw,
-                    "id",
-                )?,
-                fragment_id: parse_optional_id::<FragmentId>(
-                    fragment_raw,
-                    "evidence_refs",
-                    &evidence_id_raw,
-                    "referenced_fragment_id",
-                )?,
-                event_id: parse_optional_id::<EventId>(
-                    event_raw,
-                    "evidence_refs",
-                    &evidence_id_raw,
-                    "referenced_event_id",
-                )?,
-                method,
-                note: row.try_get("note").map_err(|error| {
-                    corrupt(
-                        "evidence_refs",
-                        &evidence_id_raw,
-                        format!("invalid note: {error}"),
-                    )
-                })?,
-            })
-        })
+        .map(|row| decode_evidence_row(&row, owner_fragment_id))
         .collect()
+}
+
+async fn decode_evidence_batch(
+    pool: &SqlitePool,
+    owner_fragment_ids: &[String],
+) -> Result<BTreeMap<String, Vec<EvidenceRef>>, StorageError> {
+    if owner_fragment_ids.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+    let mut query = QueryBuilder::<Sqlite>::new(
+        "SELECT owner_fragment_id, id, referenced_fragment_id, referenced_event_id,
+                verification_method, note
+         FROM evidence_refs WHERE owner_fragment_id IN (",
+    );
+    {
+        let mut separated = query.separated(", ");
+        for owner_fragment_id in owner_fragment_ids {
+            separated.push_bind(owner_fragment_id);
+        }
+    }
+    query.push(") ORDER BY owner_fragment_id, rowid");
+    let rows = query.build().fetch_all(pool).await?;
+    let mut evidence_by_fragment = BTreeMap::<String, Vec<EvidenceRef>>::new();
+    for row in rows {
+        let owner_fragment_id =
+            column::<String>(&row, "owner_fragment_id", "evidence_refs", "batch")?;
+        let evidence = decode_evidence_row(&row, &owner_fragment_id)?;
+        evidence_by_fragment
+            .entry(owner_fragment_id)
+            .or_default()
+            .push(evidence);
+    }
+    Ok(evidence_by_fragment)
+}
+
+fn decode_evidence_row(
+    row: &SqliteRow,
+    owner_fragment_id: &str,
+) -> Result<EvidenceRef, StorageError> {
+    let evidence_id_raw: String = row.try_get("id").map_err(|error| {
+        corrupt(
+            "evidence_refs",
+            owner_fragment_id,
+            format!("invalid evidence id column: {error}"),
+        )
+    })?;
+    let fragment_raw: Option<String> = row.try_get("referenced_fragment_id").map_err(|error| {
+        corrupt(
+            "evidence_refs",
+            &evidence_id_raw,
+            format!("invalid fragment reference: {error}"),
+        )
+    })?;
+    let event_raw: Option<String> = row.try_get("referenced_event_id").map_err(|error| {
+        corrupt(
+            "evidence_refs",
+            &evidence_id_raw,
+            format!("invalid event reference: {error}"),
+        )
+    })?;
+    if fragment_raw.is_some() == event_raw.is_some() {
+        return Err(corrupt(
+            "evidence_refs",
+            &evidence_id_raw,
+            "evidence must reference exactly one target",
+        ));
+    }
+    let method_raw: String = row.try_get("verification_method").map_err(|error| {
+        corrupt(
+            "evidence_refs",
+            &evidence_id_raw,
+            format!("invalid verification method: {error}"),
+        )
+    })?;
+    let method = decode_verification_method(&method_raw).ok_or_else(|| {
+        corrupt(
+            "evidence_refs",
+            &evidence_id_raw,
+            "unknown verification method",
+        )
+    })?;
+    Ok(EvidenceRef {
+        id: parse_id::<EvidenceId>(&evidence_id_raw, "evidence_refs", &evidence_id_raw, "id")?,
+        fragment_id: parse_optional_id::<FragmentId>(
+            fragment_raw,
+            "evidence_refs",
+            &evidence_id_raw,
+            "referenced_fragment_id",
+        )?,
+        event_id: parse_optional_id::<EventId>(
+            event_raw,
+            "evidence_refs",
+            &evidence_id_raw,
+            "referenced_event_id",
+        )?,
+        method,
+        note: row.try_get("note").map_err(|error| {
+            corrupt(
+                "evidence_refs",
+                &evidence_id_raw,
+                format!("invalid note: {error}"),
+            )
+        })?,
+    })
 }
 
 struct ContentRecord {

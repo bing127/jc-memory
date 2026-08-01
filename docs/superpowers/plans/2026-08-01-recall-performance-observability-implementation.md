@@ -40,7 +40,7 @@
 - Modify: `crates/memory-storage/src/repository.rs`
 - Modify: `crates/memory-storage/tests/repository.rs`
 
-- [ ] **Step 1: 写批量读取红灯测试**
+- [x] **Step 1: 写批量读取红灯测试**
 
 新增测试，写入两个同 Scope Fragment 和一个外部 Scope Fragment，要求输入逆序时仍按输入 ID 返回，并拒绝混入外部 ID：
 
@@ -59,13 +59,13 @@ let error = harness.repository
 assert!(matches!(error, StorageError::NotFound { entity: "fragment", .. }));
 ```
 
-- [ ] **Step 2: 运行测试并确认因方法缺失失败**
+- [x] **Step 2: 运行测试并确认因方法缺失失败**
 
 Run: `CARGO_INCREMENTAL=0 cargo test -p jc-memory-storage --test repository batch_fragment_lookup --offline`
 
 Expected: FAIL，提示 `get_fragments_in_scope` 不存在。
 
-- [ ] **Step 3: 实现两次查询的批量读取**
+- [x] **Step 3: 实现两次查询的批量读取**
 
 在 Trait 增加：
 
@@ -79,7 +79,7 @@ async fn get_fragments_in_scope(
 
 实现使用 `sqlx::QueryBuilder<Sqlite>` 参数化生成 `f.id IN (?1, ?2)` 形式的查询，主查询一次读取 Fragment/Content/Event 投影；第二次按 owner ID 批量读取 Evidence。把 `decode_fragment` 拆为接收已解码 Evidence 的纯投影校验函数，单条读取继续复用同一函数。结果先放入 `BTreeMap<FragmentId, CognitiveFragment>`，再按输入顺序取出；任何 ID 缺失均返回现有 `NotFound`。
 
-- [ ] **Step 4: 运行存储测试和静态门禁**
+- [x] **Step 4: 运行存储测试和静态门禁**
 
 Run: `CARGO_INCREMENTAL=0 cargo test -p jc-memory-storage --test repository --offline`
 
@@ -87,7 +87,7 @@ Run: `cargo fmt --all -- --check && CARGO_INCREMENTAL=0 cargo clippy -p jc-memor
 
 Expected: 全部退出码 0。
 
-- [ ] **Step 5: 提交批量读取**
+- [x] **Step 5: 提交批量读取**
 
 ```bash
 git add crates/memory-storage/src/repository.rs crates/memory-storage/tests/repository.rs
