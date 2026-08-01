@@ -1,7 +1,12 @@
-use jc_memory_protocol::{CognitiveFragment, FragmentContent, FragmentKind, ValidityStatus};
+use jc_memory_protocol::{
+    CognitiveFragment, FragmentContent, FragmentKind, StateDeclaration, ValidityStatus,
+};
 use thiserror::Error;
 
 const MAX_CLOCK_SKEW: chrono::Duration = chrono::Duration::minutes(5);
+const MAX_STATE_KEY_BYTES: usize = 256;
+const MAX_STATE_REASON_CHARS: usize = 2_048;
+const MAX_STATE_VALUE_BYTES: usize = 1_048_576;
 
 /// A violated cognitive fragment invariant.
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -36,6 +41,21 @@ pub enum FragmentValidationError {
     /// An evidence reference does not have exactly one target.
     #[error("evidence must reference exactly one fragment or event")]
     EvidenceTargetCount,
+    /// State metadata 不是完整的 `StateDeclaration` 对象。
+    #[error("state metadata must be a valid state declaration")]
+    InvalidStateShape,
+    /// State key 为空、过长或包含不允许的字符。
+    #[error("state key must be 1 to 256 bytes of ASCII letters, digits, '.', '_' or '-'")]
+    InvalidStateKey,
+    /// State reason 为空或超过字符上限。
+    #[error("state reason must be 1 to 2048 characters")]
+    InvalidStateReason,
+    /// State value 的 JSON 编码超过大小上限。
+    #[error("state value must not exceed 1048576 bytes")]
+    StateValueTooLarge,
+    /// 当前 Fragment Kind 不能声明事实状态。
+    #[error("state metadata is only allowed on fact, state_transition or correction fragments")]
+    StateKindNotAllowed,
 }
 
 /// Validates all invariants required before a fragment can become an event.
@@ -67,6 +87,56 @@ pub fn validate_fragment(fragment: &CognitiveFragment) -> Result<(), FragmentVal
         .any(|evidence| evidence.fragment_id.is_some() == evidence.event_id.is_some())
     {
         return Err(FragmentValidationError::EvidenceTargetCount);
+    }
+    validate_state_metadata(fragment)?;
+    Ok(())
+}
+
+/// 解析并校验 Fragment 中调用方显式提供的 State metadata。
+///
+/// # Errors
+///
+/// 当 State 结构、key、reason、value 大小或 Fragment Kind 不符合契约时返回稳定错误。
+pub fn validate_state_metadata(
+    fragment: &CognitiveFragment,
+) -> Result<Option<StateDeclaration>, FragmentValidationError> {
+    let Some(raw) = fragment.metadata.get("state") else {
+        return Ok(None);
+    };
+    let declaration: StateDeclaration = serde_json::from_value(raw.clone())
+        .map_err(|_| FragmentValidationError::InvalidStateShape)?;
+    validate_state_declaration(fragment.kind, &declaration)?;
+    Ok(Some(declaration))
+}
+
+fn validate_state_declaration(
+    kind: FragmentKind,
+    declaration: &StateDeclaration,
+) -> Result<(), FragmentValidationError> {
+    let key = declaration.key.as_bytes();
+    if key.is_empty()
+        || key.len() > MAX_STATE_KEY_BYTES
+        || !key
+            .iter()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+    {
+        return Err(FragmentValidationError::InvalidStateKey);
+    }
+    if declaration.reason.trim().is_empty()
+        || declaration.reason.chars().count() > MAX_STATE_REASON_CHARS
+    {
+        return Err(FragmentValidationError::InvalidStateReason);
+    }
+    let value_bytes = serde_json::to_vec(&declaration.value)
+        .map_err(|_| FragmentValidationError::InvalidStateShape)?;
+    if value_bytes.len() > MAX_STATE_VALUE_BYTES {
+        return Err(FragmentValidationError::StateValueTooLarge);
+    }
+    if !matches!(
+        kind,
+        FragmentKind::Fact | FragmentKind::StateTransition | FragmentKind::Correction
+    ) {
+        return Err(FragmentValidationError::StateKindNotAllowed);
     }
     Ok(())
 }
