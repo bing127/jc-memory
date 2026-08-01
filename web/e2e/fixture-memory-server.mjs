@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 
 const namespaceId = "00000000-0000-0000-0000-000000000001";
-const apiKey = "fixture-instance-api-key";
+const apiKey = "sk-jcmemory-87s92kdp5vqz4mnh3cr0xfbj6gwy1aue7t";
 const runtimeRunId = "00000000-0000-7000-8000-000000000701";
 const memoryPort = Number(process.env.JC_WEB_E2E_MEMORY_PORT ?? 8787);
 let fragmentCount = 0;

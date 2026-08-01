@@ -4,6 +4,6 @@
 
 ```bash
 export JC_MEMORY_URL=http://127.0.0.1:8080
-export JC_MEMORY_API_KEY=change-me
+export JC_MEMORY_API_KEY="sk-jcmemory-$(openssl rand -hex 17)"
 node examples/node-electron/index.mjs
 ```

@@ -7,7 +7,7 @@ import { buildApp } from "../src/app.js";
 
 const origin = "http://127.0.0.1:5173";
 const namespaceId = "00000000-0000-0000-0000-000000000001";
-const apiKey = "server-side-instance-key";
+const apiKey = "sk-jcmemory-87s92kdp5vqz4mnh3cr0xfbj6gwy1aue7t";
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
@@ -19,6 +19,31 @@ afterEach(async () => {
 });
 
 describe("control-plane BFF", () => {
+  test("rejects an instance API Key outside the branded format", async () => {
+    const app = await createApp(vi.fn());
+    const cookie = await login(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/instances",
+      headers: { cookie, origin },
+      payload: {
+        name: "invalid key",
+        baseUrl: "http://127.0.0.1:8787",
+        namespaceId,
+        apiKey: "server-side-instance-key",
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(await app.inject({
+      method: "GET",
+      url: "/api/v1/instances",
+      headers: { cookie },
+    }).then((result) => result.json())).toEqual([]);
+    await app.close();
+  });
+
   test("protects instance routes and proxies Stats without exposing credentials", async () => {
     const upstreamFetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       expect(String(input)).toBe("http://127.0.0.1:8787/v1/memory/stats");

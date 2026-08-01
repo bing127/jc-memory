@@ -13,7 +13,7 @@ use jc_memory_protocol::{
 };
 use serde_json::{Value, json};
 
-const API_KEY: &str = "binary-e2e-api-key";
+const API_KEY: &str = "sk-jcmemory-87s92kdp5vqz4mnh3cr0xfbj6gwy1aue7t";
 const NAMESPACE_ID: &str = "00000000-0000-7000-8000-000000000003";
 
 struct ServerProcess {

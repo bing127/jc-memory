@@ -51,7 +51,7 @@ if [[ "${JC_MEMORY_SDK_CONTRACTS_SKIP_SERVER:-0}" != "1" ]]; then
   JC_MEMORY_BIND="127.0.0.1:18787" \
   JC_MEMORY_GRPC_BIND="127.0.0.1:18788" \
   JC_MEMORY_DATA_DIR="$server_data" \
-  JC_MEMORY_API_KEY="fixture-only-token" \
+  JC_MEMORY_API_KEY="sk-jcmemory-87s92kdp5vqz4mnh3cr0xfbj6gwy1aue7t" \
   JC_MEMORY_NAMESPACE_ID="00000000-0000-7000-8000-000000000001" \
     cargo run -p jc-memory-server >/tmp/jc-memory-sdk-contracts-server.log 2>&1 &
   server_pid=$!

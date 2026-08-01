@@ -11,6 +11,9 @@ use std::{
 use jc_memory_protocol::NamespaceId;
 use serde::Deserialize;
 
+const API_KEY_PREFIX: &str = "sk-jcmemory-";
+const API_KEY_SECRET_LENGTH: usize = 34;
+
 /// 可从环境变量构造的本地 Server 配置。
 #[derive(Clone, Eq, PartialEq)]
 pub struct ServerConfig {
@@ -199,8 +202,7 @@ impl ServerConfig {
                 .or(partial.data_dir)
                 .unwrap_or_else(|| "./data/jc-memory".into()),
         );
-        let api_key = string_value(&lookup, "JC_MEMORY_API_KEY")
-            .ok_or(ConfigError::Missing("JC_MEMORY_API_KEY"))?;
+        let api_key = api_key_value(&lookup)?;
         let namespace_id = string_value(&lookup, "JC_MEMORY_NAMESPACE_ID")
             .or(partial.namespace_id)
             .ok_or(ConfigError::Missing("JC_MEMORY_NAMESPACE_ID"))?
@@ -261,6 +263,31 @@ impl ServerConfig {
             request_timeout_ms,
             runtime_provider,
         })
+    }
+}
+
+fn valid_api_key(api_key: &str) -> bool {
+    api_key.strip_prefix(API_KEY_PREFIX).is_some_and(|secret| {
+        secret.len() == API_KEY_SECRET_LENGTH
+            && secret
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+    })
+}
+
+fn api_key_value<F>(lookup: &F) -> Result<String, ConfigError>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let api_key = string_value(lookup, "JC_MEMORY_API_KEY")
+        .ok_or(ConfigError::Missing("JC_MEMORY_API_KEY"))?;
+    if valid_api_key(&api_key) {
+        Ok(api_key)
+    } else {
+        Err(ConfigError::Invalid(
+            "JC_MEMORY_API_KEY",
+            "must match sk-jcmemory- followed by 34 lowercase alphanumeric characters".into(),
+        ))
     }
 }
 
@@ -326,6 +353,8 @@ mod tests {
 
     use super::*;
 
+    const API_KEY: &str = "sk-jcmemory-87s92kdp5vqz4mnh3cr0xfbj6gwy1aue7t";
+
     fn values(entries: &[(&str, &str)]) -> BTreeMap<String, String> {
         entries
             .iter()
@@ -334,9 +363,41 @@ mod tests {
     }
 
     #[test]
+    fn api_key_requires_the_branded_secret_format() {
+        let invalid = values(&[
+            ("JC_MEMORY_API_KEY", "test-key"),
+            (
+                "JC_MEMORY_NAMESPACE_ID",
+                "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37001",
+            ),
+        ]);
+
+        let error = ServerConfig::from_lookup(|name| invalid.get(name).cloned()).unwrap_err();
+
+        assert_eq!(
+            error,
+            ConfigError::Invalid(
+                "JC_MEMORY_API_KEY",
+                "must match sk-jcmemory- followed by 34 lowercase alphanumeric characters".into(),
+            )
+        );
+
+        let valid = values(&[
+            ("JC_MEMORY_API_KEY", API_KEY),
+            (
+                "JC_MEMORY_NAMESPACE_ID",
+                "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37001",
+            ),
+        ]);
+
+        let config = ServerConfig::from_lookup(|name| valid.get(name).cloned()).unwrap();
+        assert_eq!(config.api_key, API_KEY);
+    }
+
+    #[test]
     fn tls_paths_are_loaded_as_a_pair_without_reading_private_material() {
         let settings = values(&[
-            ("JC_MEMORY_API_KEY", "test-key"),
+            ("JC_MEMORY_API_KEY", API_KEY),
             (
                 "JC_MEMORY_NAMESPACE_ID",
                 "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37001",
@@ -359,7 +420,7 @@ mod tests {
     #[test]
     fn tls_configuration_requires_both_files() {
         let settings = values(&[
-            ("JC_MEMORY_API_KEY", "test-key"),
+            ("JC_MEMORY_API_KEY", API_KEY),
             (
                 "JC_MEMORY_NAMESPACE_ID",
                 "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37001",
@@ -375,7 +436,7 @@ mod tests {
     #[test]
     fn missing_tls_files_keep_local_grpc_insecure_mode() {
         let settings = values(&[
-            ("JC_MEMORY_API_KEY", "test-key"),
+            ("JC_MEMORY_API_KEY", API_KEY),
             (
                 "JC_MEMORY_NAMESPACE_ID",
                 "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37001",
@@ -390,7 +451,7 @@ mod tests {
     #[test]
     fn request_rate_limit_is_positive_and_configurable() {
         let settings = values(&[
-            ("JC_MEMORY_API_KEY", "test-key"),
+            ("JC_MEMORY_API_KEY", API_KEY),
             (
                 "JC_MEMORY_NAMESPACE_ID",
                 "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37001",
@@ -406,7 +467,7 @@ mod tests {
     #[test]
     fn zero_request_rate_limit_is_rejected() {
         let settings = values(&[
-            ("JC_MEMORY_API_KEY", "test-key"),
+            ("JC_MEMORY_API_KEY", API_KEY),
             (
                 "JC_MEMORY_NAMESPACE_ID",
                 "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37001",
@@ -428,7 +489,7 @@ mod tests {
     #[test]
     fn zero_request_timeout_is_rejected() {
         let settings = values(&[
-            ("JC_MEMORY_API_KEY", "test-key"),
+            ("JC_MEMORY_API_KEY", API_KEY),
             (
                 "JC_MEMORY_NAMESPACE_ID",
                 "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37001",
@@ -493,7 +554,7 @@ mod tests {
         )
         .unwrap();
         let settings = values(&[
-            ("JC_MEMORY_API_KEY", "test-key"),
+            ("JC_MEMORY_API_KEY", API_KEY),
             ("JC_MEMORY_BIND", "   "),
             ("JC_MEMORY_MAX_IN_FLIGHT", "48"),
             ("JC_MEMORY_REQUEST_TIMEOUT_MS", "17"),
@@ -507,26 +568,26 @@ mod tests {
         assert_eq!(config.max_in_flight, 48);
         assert_eq!(config.max_requests_per_second, 99);
         assert_eq!(config.request_timeout_ms, 17);
-        assert_eq!(config.api_key, "test-key");
+        assert_eq!(config.api_key, API_KEY);
     }
 
     #[test]
     fn merge_reports_missing_config_file_without_exposing_secrets() {
         let path = PathBuf::from("/missing/jc-memory/server.yaml");
-        let settings = values(&[("JC_MEMORY_API_KEY", "do-not-print-this-key")]);
+        let settings = values(&[("JC_MEMORY_API_KEY", API_KEY)]);
 
         let error = ServerConfig::from_sources(Some(&path), |name| settings.get(name).cloned())
             .unwrap_err();
 
         assert!(matches!(error, ConfigError::File { .. }));
         assert!(error.to_string().contains("/missing/jc-memory/server.yaml"));
-        assert!(!error.to_string().contains("do-not-print-this-key"));
+        assert!(!error.to_string().contains(API_KEY));
     }
 
     #[test]
     fn runtime_provider_requires_endpoint_and_model_and_redacts_secrets() {
         let base = [
-            ("JC_MEMORY_API_KEY", "server-secret"),
+            ("JC_MEMORY_API_KEY", API_KEY),
             (
                 "JC_MEMORY_NAMESPACE_ID",
                 "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37001",
@@ -556,7 +617,7 @@ mod tests {
         let provider = config.runtime_provider.as_ref().unwrap();
         assert_eq!(provider.model, "fixture-model");
         let debug = format!("{config:?}");
-        assert!(!debug.contains("server-secret"));
+        assert!(!debug.contains(API_KEY));
         assert!(!debug.contains("provider-secret"));
     }
 

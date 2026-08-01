@@ -14,7 +14,12 @@ const schema = z.object({
   name: z.string().trim().min(1, "请输入实例名称").max(80),
   baseUrl: z.url("请输入有效 URL"),
   namespaceId: z.string().regex(/^[0-9a-f-]{36}$/i, "请输入 Namespace UUID"),
-  apiKey: z.string().min(1, "请输入 API Key"),
+  apiKey: z
+    .string()
+    .regex(
+      /^sk-jcmemory-[a-z0-9]{34}$/,
+      "API Key 必须以 sk-jcmemory- 开头，并包含 34 位小写字母或数字",
+    ),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -48,7 +53,7 @@ export function GetStartedPage({ instances }: { instances: InstanceSummary[] }) 
           <Field label="实例名称" error={form.formState.errors.name?.message}><Input {...form.register("name")} /></Field>
           <Field label="Server URL" error={form.formState.errors.baseUrl?.message}><Input inputMode="url" {...form.register("baseUrl")} /></Field>
           <Field label="Namespace ID" error={form.formState.errors.namespaceId?.message}><Input {...form.register("namespaceId")} /></Field>
-          <Field label="API Key" error={form.formState.errors.apiKey?.message}><Input type="password" autoComplete="off" {...form.register("apiKey")} /></Field>
+          <Field label="API Key" error={form.formState.errors.apiKey?.message}><Input type="password" autoComplete="off" placeholder="sk-jcmemory-..." {...form.register("apiKey")} /></Field>
           {create.error ? <p className="form-error" role="alert">{create.error instanceof ApiError ? create.error.message : "连接保存失败"}</p> : null}
           <Button type="submit" disabled={create.isPending}>保存并检查连接<ArrowRight aria-hidden="true" size={16} /></Button>
           <div className="boundary-list" aria-label="连接边界">

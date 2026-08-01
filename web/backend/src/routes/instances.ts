@@ -12,7 +12,7 @@ const instanceInputSchema = z.strictObject({
   name: z.string().trim().min(1).max(80),
   baseUrl: z.url().max(2_048),
   namespaceId: uuidStringSchema,
-  apiKey: z.string().min(1).max(1_024),
+  apiKey: z.string().regex(/^sk-jcmemory-[a-z0-9]{34}$/),
 });
 
 const instanceParamsSchema = z.strictObject({ id: uuidStringSchema });

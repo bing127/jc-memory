@@ -7,14 +7,14 @@
 - 当前可运行二进制名为 `jc-memory-server`。
 - HTTP 默认端口为 `8787`，gRPC 默认端口为 `8788`。
 - `/healthz` 用于存活检查，`/readyz` 用于就绪检查。
-- API Key 必须通过环境变量或 Secret 注入，不得写入镜像、ConfigMap 或仓库配置。
+- API Key 必须匹配 `^sk-jcmemory-[a-z0-9]{34}$`，并通过环境变量或 Secret 注入，不得写入镜像、ConfigMap 或仓库配置。
 - 单个 Embedded 数据目录采用单写者边界；Kubernetes 模板使用一个副本和 `Recreate` 策略。
 
 ## 本地二进制
 
 ```bash
 export JC_MEMORY_CONFIG_FILE=./server.yaml
-export JC_MEMORY_API_KEY='replace-with-a-random-secret'
+export JC_MEMORY_API_KEY="sk-jcmemory-$(openssl rand -hex 17)"
 cargo run --locked -p jc-memory-server
 ```
 
@@ -30,7 +30,7 @@ curl --fail http://127.0.0.1:8787/readyz
 Compose 使用 [server.yaml.example](../deploy/docker/config/server.yaml.example) 作为非秘密配置，并将数据保存到命名卷 `jc-memory-data`。
 
 ```bash
-export JC_MEMORY_API_KEY='replace-with-a-random-secret'
+export JC_MEMORY_API_KEY="sk-jcmemory-$(openssl rand -hex 17)"
 export JC_MEMORY_NAMESPACE_ID='00000000-0000-7000-8000-000000000003'
 docker compose -f deploy/docker/compose.yaml build
 docker compose -f deploy/docker/compose.yaml up -d
@@ -65,7 +65,7 @@ docker compose -f deploy/docker/compose.yaml down
 
 ```bash
 kubectl create secret generic jc-memory-server-secret \
-  --from-literal=JC_MEMORY_API_KEY='replace-with-a-random-secret' \
+  --from-literal=JC_MEMORY_API_KEY="sk-jcmemory-$(openssl rand -hex 17)" \
   --from-file=tls.crt=./server.crt \
   --from-file=tls.key=./server.key
 ```

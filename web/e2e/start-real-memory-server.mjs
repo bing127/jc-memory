@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const namespaceId = "00000000-0000-0000-0000-000000000001";
-const apiKey = "fixture-instance-api-key";
+const apiKey = "sk-jcmemory-87s92kdp5vqz4mnh3cr0xfbj6gwy1aue7t";
 const providerKey = "fixture-provider-api-key";
 const memoryPort = Number(process.env.JC_WEB_E2E_MEMORY_PORT ?? 8787);
 const grpcPort = Number(process.env.JC_WEB_E2E_GRPC_PORT ?? 8788);

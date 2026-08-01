@@ -57,7 +57,7 @@ corepack pnpm dev
 
 前端公开入口为 `/`，展示项目定位、当前 `LIVE` 能力和不虚构金额的部署方向；`Get Started` 进入 `/login`，登录后才进入实例、Memory Lab、Runtime 与能力矩阵控制台。公开页面与控制台使用 Tailwind CSS 4 和 shadcn-compatible 组件约定。
 
-前端开发服务器把 `/api` 代理到 BFF。实例 API Key 只通过登录后的实例连接表单发送给 BFF；之后浏览器只使用实例 ID。
+前端开发服务器把 `/api` 代理到 BFF。实例 API Key 必须匹配 `^sk-jcmemory-[a-z0-9]{34}$`，只通过登录后的实例连接表单发送给 BFF；之后浏览器只使用实例 ID。
 
 ## 验证
 

@@ -38,19 +38,19 @@ YAML 禁止未知字段。API Key 不允许写入 YAML，必须由 `JC_MEMORY_AP
 | `request_timeout_ms` | `JC_MEMORY_REQUEST_TIMEOUT_MS` | `30000` | 单个请求执行 deadline，单位毫秒，必须大于 0 |
 | `tls.cert_file` | `JC_MEMORY_TLS_CERT_FILE` | 无 | PEM 证书链文件路径 |
 | `tls.key_file` | `JC_MEMORY_TLS_KEY_FILE` | 无 | PEM 私钥文件路径 |
-| 无 | `JC_MEMORY_API_KEY` | 无 | 服务端 API Key，必须通过 Secret 注入 |
+| 无 | `JC_MEMORY_API_KEY` | 无 | 服务端 API Key，格式为 `sk-jcmemory-` 加 34 位小写字母或数字，必须通过 Secret 注入 |
 | 无 | `JC_MEMORY_RUNTIME_PROVIDER_ENDPOINT` | 无 | OpenAI Compatible Chat Completions 地址，与 MODEL 成对配置 |
 | 无 | `JC_MEMORY_RUNTIME_PROVIDER_MODEL` | 无 | Runtime 模型标识，与 ENDPOINT 成对配置 |
 | 无 | `JC_MEMORY_RUNTIME_PROVIDER_API_KEY` | 无 | 可选 Bearer Token，只通过 Secret 注入 |
 | 无 | `JC_MEMORY_CONFIG_FILE` | 无 | YAML 配置文件路径 |
 
-`namespace_id` 和 `JC_MEMORY_API_KEY` 是必填项。TLS 证书与私钥必须成对配置；两者都未配置时使用本机明文 gRPC 开发模式。
+`namespace_id` 和 `JC_MEMORY_API_KEY` 是必填项。`JC_MEMORY_API_KEY` 必须匹配 `^sk-jcmemory-[a-z0-9]{34}$`。TLS 证书与私钥必须成对配置；两者都未配置时使用本机明文 gRPC 开发模式。
 
 ## 本地启动
 
 ```bash
 export JC_MEMORY_CONFIG_FILE=./server.yaml
-export JC_MEMORY_API_KEY='replace-with-a-random-secret'
+export JC_MEMORY_API_KEY="sk-jcmemory-$(openssl rand -hex 17)"
 cargo run -p jc-memory-server
 ```
 
@@ -58,7 +58,7 @@ cargo run -p jc-memory-server
 
 ```bash
 export JC_MEMORY_CONFIG_FILE=./server.yaml
-export JC_MEMORY_API_KEY='replace-with-a-random-secret'
+export JC_MEMORY_API_KEY="sk-jcmemory-$(openssl rand -hex 17)"
 export JC_MEMORY_BIND=127.0.0.1:9787
 cargo run -p jc-memory-server
 ```
