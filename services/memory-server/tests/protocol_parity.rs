@@ -9,12 +9,13 @@ use axum::{
 };
 use http_body_util::BodyExt as _;
 use jc_memory_core::{CommandBus, CommandError, EmbeddedCommandBus, MemoryConfig, MemoryEngine};
-use jc_memory_mcp::{McpServer, SidecarCommandBus};
+use jc_memory_mcp::McpServer;
 use jc_memory_protocol::{
-    API_VERSION_V1, AccessContext, AccessScope, CommitCommand, CommitResult, ExplainResult,
-    MemoryCommand, MemoryPacket, MemoryRequest, MemoryResponse, MemoryScope, MutationAction,
-    MutationCommand, MutationResult, ObserveResult, Operation, RecallCommand, RecallId,
-    RecallLimits, RecallMode, ResponseEnvelope, StatsCommand, StatsResult,
+    API_VERSION_V1, AccessContext, AccessScope, CommitCommand, CommitResult, EvidenceId,
+    EvidenceRef, ExplainResult, FragmentId, FragmentKind, MemoryCommand, MemoryPacket,
+    MemoryRequest, MemoryResponse, MemoryScope, MutationAction, MutationCommand, MutationResult,
+    ObserveResult, Operation, RecallCommand, RecallId, RecallLimits, RecallMode, ResponseEnvelope,
+    StateDeclaration, StatsCommand, StatsResult, VerificationMethod,
 };
 use jc_memory_server::{ApiKey, GrpcAdapter, ServerError, ServerState, router, serve_grpc};
 use jc_memory_sidecar::{DaemonCommand, SidecarConfig, SidecarDaemon, send_command};
@@ -133,6 +134,120 @@ async fn rest_and_grpc_adapter_return_the_same_canonical_envelope() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn grpc_tcp_observes_two_state_versions_before_recall() {
+    use jc_memory_protocol::generated::jiangcheng::memory::v1::memory_service_client::MemoryServiceClient;
+
+    let directory = tempfile::tempdir().unwrap();
+    let engine = MemoryEngine::open(MemoryConfig::local(directory.path()))
+        .await
+        .unwrap();
+    let bus = EmbeddedCommandBus::new(engine);
+    let blue = state_observe_request(
+        "grpc-state-blue",
+        "00000000-0000-7000-8000-000000000021",
+        "blue_green",
+        "生产环境先使用蓝绿发布",
+        "2026-07-30T00:00:00Z",
+        None,
+    );
+    let canary_evidence_id = "00000000-0000-7000-8000-000000000061"
+        .parse::<EvidenceId>()
+        .unwrap();
+    let canary = state_observe_request(
+        "grpc-state-canary",
+        "00000000-0000-7000-8000-000000000022",
+        "canary",
+        "验证通过后切换为金丝雀发布",
+        "2026-07-31T00:00:00Z",
+        Some((
+            canary_evidence_id,
+            "00000000-0000-7000-8000-000000000021".parse().unwrap(),
+        )),
+    );
+    let scope: MemoryScope = blue.access_scope.clone().into();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let shutdown = CancellationToken::new();
+    let key = ApiKey::for_scope(
+        "test-key",
+        "grpc-state",
+        scope,
+        [Operation::Observe, Operation::Recall],
+    );
+    let task = tokio::spawn(serve_grpc(
+        listener,
+        ServerState::new(bus, vec![key]),
+        shutdown.clone().cancelled_owned(),
+    ));
+    let endpoint = tonic::transport::Endpoint::from_shared(format!("http://{address}"))
+        .unwrap()
+        .connect_timeout(Duration::from_secs(2));
+    let mut client = MemoryServiceClient::connect(endpoint).await.unwrap();
+
+    let mut blue_request = tonic::Request::new(blue.try_into().unwrap());
+    blue_request
+        .metadata_mut()
+        .insert("x-api-key", "test-key".parse().unwrap());
+    let blue: ResponseEnvelope = client
+        .execute(blue_request)
+        .await
+        .unwrap()
+        .into_inner()
+        .try_into()
+        .unwrap();
+    let mut canary_request = tonic::Request::new(canary.try_into().unwrap());
+    canary_request
+        .metadata_mut()
+        .insert("x-api-key", "test-key".parse().unwrap());
+    let canary: ResponseEnvelope = client
+        .execute(canary_request)
+        .await
+        .unwrap()
+        .into_inner()
+        .try_into()
+        .unwrap();
+    let blue_event_id = observe_event_id(&blue);
+    let canary_event_id = observe_event_id(&canary);
+
+    let mut recall = request();
+    recall.request_id = "grpc-state-recall".to_owned();
+    recall.command = MemoryCommand::Recall(RecallCommand {
+        mode: RecallMode::CurrentState,
+        text: "project.deployment_strategy".to_owned(),
+        entities: Vec::new(),
+        at_time: None,
+        limits: RecallLimits {
+            max_seeds: 4,
+            max_neighbors: 4,
+            max_hops: 2,
+            max_nodes: 8,
+            timeout_ms: 500,
+        },
+    });
+    let mut recall_request = tonic::Request::new(recall.try_into().unwrap());
+    recall_request
+        .metadata_mut()
+        .insert("x-api-key", "test-key".parse().unwrap());
+    let recalled: ResponseEnvelope = client
+        .execute(recall_request)
+        .await
+        .unwrap()
+        .into_inner()
+        .try_into()
+        .unwrap();
+    let packet = canonical_packet(serde_json::to_value(recalled).unwrap());
+    assert_state_contract(&packet, blue_event_id, canary_event_id, canary_evidence_id);
+    assert_eq!(
+        state_shape(&packet),
+        state_shape(&contract_packet("recall-current-state.json"))
+    );
+
+    shutdown.cancel();
+    task.await.unwrap().unwrap();
+}
+
+#[tokio::test]
 // 五种协议在同一个真实 Fixture 上比较，保持测试步骤线性便于审查。
 #[allow(clippy::too_many_lines)]
 async fn real_engine_recall_matches_across_embedded_rest_grpc_sidecar_and_mcp() {
@@ -143,20 +258,45 @@ async fn real_engine_recall_matches_across_embedded_rest_grpc_sidecar_and_mcp() 
         .await
         .unwrap();
     let bus = EmbeddedCommandBus::new(engine);
-    let observe_request = request();
-    let scope: MemoryScope = observe_request.access_scope.clone().into();
+    let blue = state_observe_request(
+        "cross-protocol-blue",
+        "00000000-0000-7000-8000-000000000011",
+        "blue_green",
+        "生产环境先使用蓝绿发布",
+        "2026-07-30T00:00:00Z",
+        None,
+    );
+    let canary_evidence_id = "00000000-0000-7000-8000-000000000051"
+        .parse::<EvidenceId>()
+        .unwrap();
+    let canary = state_observe_request(
+        "cross-protocol-canary",
+        "00000000-0000-7000-8000-000000000012",
+        "canary",
+        "验证通过后切换为金丝雀发布",
+        "2026-07-31T00:00:00Z",
+        Some((
+            canary_evidence_id,
+            "00000000-0000-7000-8000-000000000011".parse().unwrap(),
+        )),
+    );
+    let scope: MemoryScope = blue.access_scope.clone().into();
     let mut observe_access = AccessContext::new("e2e", scope.clone());
-    observe_access.request_id = observe_request.request_id.clone();
     observe_access
         .grants
         .insert(Grant::for_scope(Operation::Observe, &scope));
-    bus.execute(&observe_access, observe_request).await.unwrap();
+    observe_access.request_id = blue.request_id.clone();
+    let blue_result = bus.execute(&observe_access, blue).await.unwrap();
+    observe_access.request_id = canary.request_id.clone();
+    let canary_result = bus.execute(&observe_access, canary).await.unwrap();
+    let blue_event_id = observe_event_id(&blue_result);
+    let canary_event_id = observe_event_id(&canary_result);
 
     let mut recall = request();
     recall.request_id = "cross-protocol-recall".into();
     recall.command = MemoryCommand::Recall(RecallCommand {
-        mode: RecallMode::Exact,
-        text: "fixture".into(),
+        mode: RecallMode::CurrentState,
+        text: "project.deployment_strategy".into(),
         entities: Vec::new(),
         at_time: None,
         limits: RecallLimits {
@@ -230,7 +370,7 @@ async fn real_engine_recall_matches_across_embedded_rest_grpc_sidecar_and_mcp() 
     shutdown.cancel();
     task.await.unwrap().unwrap();
 
-    let mcp = McpServer::new(bus);
+    let mcp = McpServer::new(bus.clone());
     let mcp_response = mcp
         .handle(json!({
             "jsonrpc":"2.0",
@@ -252,18 +392,15 @@ async fn real_engine_recall_matches_across_embedded_rest_grpc_sidecar_and_mcp() 
     .unwrap();
     let sidecar_token = sidecar_daemon.token().clone();
     let sidecar_task = tokio::spawn(sidecar_daemon.run());
-    let sidecar_mcp = McpServer::new(SidecarCommandBus::new(
-        sidecar_config.clone(),
-        sidecar_token.clone(),
-    ));
-    let sidecar_mcp_response = sidecar_mcp
-        .handle(json!({
-            "jsonrpc":"2.0",
-            "id":2,
-            "method":"tools/call",
-            "params":{"name":"memory_recall","arguments":{"request":recall}}
-        }))
-        .await;
+    let sidecar_response = send_command(
+        &sidecar_config,
+        &sidecar_token,
+        DaemonCommand::Execute {
+            request: Box::new(recall),
+        },
+    )
+    .await;
+    let sidecar_response = sidecar_response.unwrap().response.unwrap();
     send_command(&sidecar_config, &sidecar_token, DaemonCommand::Stop)
         .await
         .unwrap();
@@ -273,11 +410,122 @@ async fn real_engine_recall_matches_across_embedded_rest_grpc_sidecar_and_mcp() 
     let rest = canonical_packet(rest);
     let grpc = canonical_packet(serde_json::to_value(grpc).unwrap());
     let mcp = canonical_packet(mcp_response["result"]["structuredContent"].clone());
-    let sidecar_mcp = canonical_packet(sidecar_mcp_response["result"]["structuredContent"].clone());
+    let sidecar = canonical_packet(serde_json::to_value(sidecar_response).unwrap());
+    assert_state_contract(
+        &embedded,
+        blue_event_id,
+        canary_event_id,
+        canary_evidence_id,
+    );
+    assert_eq!(
+        state_shape(&embedded),
+        state_shape(&contract_packet("recall-current-state.json"))
+    );
     assert_eq!(embedded, rest);
     assert_eq!(embedded, grpc);
     assert_eq!(embedded, mcp);
-    assert_eq!(embedded, sidecar_mcp);
+    assert_eq!(embedded, sidecar);
+}
+
+fn state_observe_request(
+    request_id: &str,
+    fragment_id: &str,
+    value: &str,
+    reason: &str,
+    occurred_at: &str,
+    evidence: Option<(EvidenceId, FragmentId)>,
+) -> MemoryRequest {
+    let mut request = request();
+    request_id.clone_into(&mut request.request_id);
+    let MemoryCommand::Observe(command) = &mut request.command else {
+        unreachable!("基础请求必须是 Observe")
+    };
+    command.fragment.id = fragment_id.parse().unwrap();
+    command.fragment.kind = FragmentKind::Fact;
+    command.fragment.occurred_at = occurred_at.parse().unwrap();
+    command.fragment.observed_at = command.fragment.occurred_at;
+    command.fragment.metadata.insert(
+        "state".to_owned(),
+        serde_json::to_value(StateDeclaration {
+            key: "project.deployment_strategy".to_owned(),
+            value: json!(value),
+            reason: reason.to_owned(),
+        })
+        .unwrap(),
+    );
+    command.fragment.evidence = evidence
+        .into_iter()
+        .map(|(id, fragment_id)| EvidenceRef {
+            id,
+            fragment_id: Some(fragment_id),
+            event_id: None,
+            method: VerificationMethod::Manual,
+            note: Some("人工确认部署策略变更".to_owned()),
+        })
+        .collect();
+    request
+}
+
+fn observe_event_id(response: &ResponseEnvelope) -> jc_memory_protocol::EventId {
+    let MemoryResponse::Observe(result) = &response.response else {
+        panic!("State Observe 必须返回 ObserveResult")
+    };
+    result.event_id
+}
+
+fn assert_state_contract(
+    packet: &Value,
+    blue_event_id: jc_memory_protocol::EventId,
+    canary_event_id: jc_memory_protocol::EventId,
+    canary_evidence_id: EvidenceId,
+) {
+    assert_eq!(
+        packet["current_states"][0]["key"],
+        "project.deployment_strategy"
+    );
+    assert_eq!(packet["current_states"][0]["value"], "canary");
+    assert_eq!(packet["historical_states"][0]["value"], "blue_green");
+    assert_eq!(
+        packet["current_states"][0]["reason"],
+        "验证通过后切换为金丝雀发布"
+    );
+    assert_eq!(
+        packet["current_states"][0]["source_event_id"],
+        canary_event_id.to_string()
+    );
+    assert_eq!(
+        packet["historical_states"][0]["source_event_id"],
+        blue_event_id.to_string()
+    );
+    assert_eq!(
+        packet["current_states"][0]["evidence"][0]["evidence_ref_id"],
+        canary_evidence_id.to_string()
+    );
+}
+
+fn contract_packet(name: &str) -> Value {
+    let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../sdk/contracts/fixtures")
+        .join(name);
+    let fixture: Value = serde_json::from_slice(&std::fs::read(source).unwrap()).unwrap();
+    fixture["response"]["response"]["payload"].clone()
+}
+
+fn state_shape(packet: &Value) -> Value {
+    json!({
+        "current": packet["current_states"].as_array().unwrap().iter().map(state_item_shape).collect::<Vec<_>>(),
+        "history": packet["historical_states"].as_array().unwrap().iter().map(state_item_shape).collect::<Vec<_>>(),
+    })
+}
+
+fn state_item_shape(state: &Value) -> Value {
+    json!({
+        "key": state["key"],
+        "value": state["value"],
+        "reason": state["reason"],
+        "has_source_event_id": state["source_event_id"].as_str().is_some_and(|value| !value.is_empty()),
+        "has_evidence_id": state["evidence"].as_array().is_some_and(|evidence| evidence.iter().any(|item| item["evidence_ref_id"].as_str().is_some_and(|value| !value.is_empty()))),
+    })
 }
 
 fn canonical_packet(mut envelope: Value) -> Value {

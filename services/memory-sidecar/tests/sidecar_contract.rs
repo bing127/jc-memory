@@ -9,9 +9,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use async_trait::async_trait;
 use jc_memory_core::{CommandBus, CommandError, EmbeddedCommandBus, MemoryConfig, MemoryEngine};
 use jc_memory_protocol::{
-    API_VERSION_V1, AccessScope, CommandErrorCode, CommitCommand, FragmentContent, FragmentKind,
-    FragmentSource, MemoryCommand, MemoryRequest, MemoryScope, NamespaceId, Perspective,
-    SecurityLabel, SourceType, StatsCommand, ValidityStatus,
+    API_VERSION_V1, AccessScope, CognitiveFragment, CommandErrorCode, CommitCommand, EvidenceId,
+    EvidenceRef, FragmentContent, FragmentId, FragmentKind, FragmentSource, MemoryCommand,
+    MemoryRequest, MemoryResponse, MemoryScope, NamespaceId, ObserveCommand, Perspective,
+    RecallCommand, RecallLimits, RecallMode, ResponseEnvelope, SecurityLabel, SourceType,
+    StatsCommand, ValidityStatus, VerificationMethod,
 };
 use jc_memory_sidecar::{
     DaemonCommand, InstanceLock, LockError, SidecarConfig, SidecarDaemon, SidecarStream,
@@ -283,6 +285,96 @@ async fn authenticated_execute_forwards_commit_to_shared_command_bus() {
 }
 
 #[tokio::test]
+async fn sidecar_recall_preserves_non_empty_current_and_historical_state() {
+    let directory = tempfile::tempdir().expect("创建 Sidecar State 目录");
+    let config = SidecarConfig::local(directory.path().join("control"));
+    let engine = MemoryEngine::open(MemoryConfig::local(directory.path()))
+        .await
+        .expect("打开 Sidecar State 引擎");
+    let daemon =
+        SidecarDaemon::bind_with_bus(config.clone(), Arc::new(EmbeddedCommandBus::new(engine)))
+            .await
+            .expect("绑定 Sidecar State Daemon");
+    let token = daemon.token().clone();
+    let task = tokio::spawn(daemon.run());
+    let scope = MemoryScope::new(NamespaceId::new());
+    let blue_fragment_id = "00000000-0000-7000-8000-000000000111"
+        .parse::<FragmentId>()
+        .unwrap();
+    let canary_evidence_id = "00000000-0000-7000-8000-000000000151"
+        .parse::<EvidenceId>()
+        .unwrap();
+
+    let blue = sidecar_execute(
+        &config,
+        &token,
+        state_observe_request(
+            &scope,
+            "sidecar-state-blue",
+            blue_fragment_id,
+            "blue_green",
+            "生产环境先使用蓝绿发布",
+            "2026-07-30T00:00:00Z",
+            None,
+        ),
+    )
+    .await;
+    let canary = sidecar_execute(
+        &config,
+        &token,
+        state_observe_request(
+            &scope,
+            "sidecar-state-canary",
+            "00000000-0000-7000-8000-000000000112".parse().unwrap(),
+            "canary",
+            "验证通过后切换为金丝雀发布",
+            "2026-07-31T00:00:00Z",
+            Some((canary_evidence_id, blue_fragment_id)),
+        ),
+    )
+    .await;
+    let blue_event_id = observe_event_id(&blue);
+    let canary_event_id = observe_event_id(&canary);
+    let recalled = sidecar_execute(
+        &config,
+        &token,
+        state_recall_request(&scope, "sidecar-state-recall"),
+    )
+    .await;
+    let MemoryResponse::Recall(packet) = recalled.response else {
+        panic!("Sidecar State Recall 必须返回 MemoryPacket")
+    };
+
+    assert_eq!(packet.current_states[0].key, "project.deployment_strategy");
+    assert_eq!(packet.current_states[0].value, serde_json::json!("canary"));
+    assert_eq!(
+        packet.historical_states[0].value,
+        serde_json::json!("blue_green")
+    );
+    assert_eq!(
+        packet.current_states[0].source_event_id,
+        Some(canary_event_id)
+    );
+    assert_eq!(
+        packet.historical_states[0].source_event_id,
+        Some(blue_event_id)
+    );
+    assert_eq!(
+        packet.current_states[0].evidence[0].evidence_ref_id,
+        Some(canary_evidence_id)
+    );
+    let contract = contract_state_values("recall-current-state.json");
+    assert_eq!(contract, serde_json::json!(["canary", "blue_green"]));
+
+    send_command(&config, &token, DaemonCommand::Stop)
+        .await
+        .expect("停止 Sidecar State Daemon");
+    task.await
+        .expect("等待 Sidecar State Daemon")
+        .expect("Sidecar State Daemon 正常退出");
+}
+
+#[tokio::test]
 async fn execute_as_forwards_the_authenticated_principal_to_core() {
     let directory = tempfile::tempdir().expect("创建身份转发目录");
     let config = SidecarConfig::local(directory.path());
@@ -542,4 +634,125 @@ async fn stop_is_accepted_while_an_execute_is_in_flight_and_waits_for_release() 
         .await
         .expect("等待 Sidecar 优雅关闭")
         .expect("Sidecar 正常关闭");
+}
+
+async fn sidecar_execute(
+    config: &SidecarConfig,
+    token: &TokenStore,
+    request: MemoryRequest,
+) -> ResponseEnvelope {
+    let response = send_command(
+        config,
+        token,
+        DaemonCommand::Execute {
+            request: Box::new(request),
+        },
+    )
+    .await
+    .expect("执行 Sidecar State 命令");
+    assert!(response.ok, "Sidecar State 命令失败: {}", response.status);
+    response.response.expect("Sidecar State 命令必须返回响应")
+}
+
+fn state_observe_request(
+    scope: &MemoryScope,
+    request_id: &str,
+    fragment_id: FragmentId,
+    value: &str,
+    reason: &str,
+    occurred_at: &str,
+    evidence: Option<(EvidenceId, FragmentId)>,
+) -> MemoryRequest {
+    let occurred_at = occurred_at.parse().unwrap();
+    let mut metadata = serde_json::Map::new();
+    metadata.insert(
+        "state".to_owned(),
+        serde_json::json!({
+            "key": "project.deployment_strategy",
+            "value": value,
+            "reason": reason,
+        }),
+    );
+    let fragment = CognitiveFragment {
+        id: fragment_id,
+        scope: scope.clone(),
+        session_id: None,
+        trace_id: None,
+        kind: FragmentKind::Fact,
+        content: FragmentContent::Text {
+            text: format!("部署策略 {value}"),
+        },
+        source: FragmentSource {
+            source_type: SourceType::User,
+            source_id: "sidecar-state-contract".to_owned(),
+            actor_id: None,
+            observer_id: None,
+            tool_id: None,
+            uri: None,
+        },
+        perspective: Perspective::FirstPerson,
+        occurred_at,
+        observed_at: occurred_at,
+        confidence: 1.0,
+        importance: 0.5,
+        validity: ValidityStatus::Unverified,
+        security_label: SecurityLabel::Internal,
+        evidence: evidence
+            .into_iter()
+            .map(|(id, fragment_id)| EvidenceRef {
+                id,
+                fragment_id: Some(fragment_id),
+                event_id: None,
+                method: VerificationMethod::Manual,
+                note: Some("人工确认部署策略变更".to_owned()),
+            })
+            .collect(),
+        metadata,
+    };
+    MemoryRequest {
+        api_version: API_VERSION_V1.to_owned(),
+        request_id: request_id.to_owned(),
+        access_scope: AccessScope::from(scope.clone()),
+        command: MemoryCommand::Observe(ObserveCommand { fragment }),
+    }
+}
+
+fn state_recall_request(scope: &MemoryScope, request_id: &str) -> MemoryRequest {
+    MemoryRequest {
+        api_version: API_VERSION_V1.to_owned(),
+        request_id: request_id.to_owned(),
+        access_scope: AccessScope::from(scope.clone()),
+        command: MemoryCommand::Recall(RecallCommand {
+            mode: RecallMode::CurrentState,
+            text: "project.deployment_strategy".to_owned(),
+            entities: Vec::new(),
+            at_time: None,
+            limits: RecallLimits {
+                max_seeds: 4,
+                max_neighbors: 4,
+                max_hops: 2,
+                max_nodes: 8,
+                timeout_ms: 500,
+            },
+        }),
+    }
+}
+
+fn observe_event_id(response: &ResponseEnvelope) -> jc_memory_protocol::EventId {
+    let MemoryResponse::Observe(result) = &response.response else {
+        panic!("State Observe 必须返回 ObserveResult")
+    };
+    result.event_id
+}
+
+fn contract_state_values(name: &str) -> serde_json::Value {
+    let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../sdk/contracts/fixtures")
+        .join(name);
+    let fixture: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(source).unwrap()).unwrap();
+    serde_json::json!([
+        fixture["response"]["response"]["payload"]["current_states"][0]["value"],
+        fixture["response"]["response"]["payload"]["historical_states"][0]["value"],
+    ])
 }
