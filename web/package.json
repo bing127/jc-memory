@@ -1,0 +1,21 @@
+{
+  "name": "@jiangcheng-memory/control-plane",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=22.22"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter './*' dev",
+    "test": "pnpm -r test",
+    "test:e2e": "node e2e/run-playwright.mjs",
+    "test:e2e:real": "node e2e/run-playwright.mjs --real",
+    "test:workspace": "node --test tests/workspace.test.mjs",
+    "typecheck": "pnpm -r typecheck",
+    "build": "pnpm -r build"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1"
+  }
+}

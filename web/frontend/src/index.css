@@ -1,0 +1,246 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #f2f4f3;
+  --color-panel: #ffffff;
+  --color-ink: #111513;
+  --color-muted: #667169;
+  --color-line: #dce2de;
+  --color-brand: #22c979;
+  --color-brand-strong: #087a45;
+  --color-sidebar: #0b0f0d;
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+@layer base {
+  :root {
+    color: var(--color-ink);
+    background: var(--color-canvas);
+    font-family: var(--font-sans);
+    font-synthesis: none;
+    letter-spacing: 0;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  html, body, #root { min-height: 100%; margin: 0; }
+  body { min-width: 320px; }
+  button, input, textarea, select { font: inherit; letter-spacing: 0; }
+  button, a { -webkit-tap-highlight-color: transparent; }
+  code, pre { font-family: var(--font-mono); }
+}
+
+@layer components {
+  .app-loading { @apply grid min-h-screen place-items-center bg-canvas text-sm text-muted; }
+  .public-kicker, .page-kicker { @apply m-0 text-[10px] font-bold text-muted; }
+  .public-kicker { @apply text-xs; }
+
+  .login-form { @apply grid gap-3; }
+  .login-form label { @apply text-xs font-semibold; }
+  .login-description { @apply mb-7 mt-3 text-sm leading-6 text-muted; }
+  .login-footnote { @apply mb-0 mt-5 text-[11px] leading-5 text-muted; }
+  .form-error { @apply m-0 text-xs text-red-700; }
+
+  .console-layout { @apply min-h-screen bg-canvas; }
+  .console-sidebar { @apply fixed inset-y-0 left-0 z-30 flex w-[248px] flex-col border-r border-white/8 bg-sidebar px-3 py-4 text-white; }
+  .console-brand { @apply flex min-h-11 items-center gap-3 px-2; }
+  .console-brand-mark { @apply grid size-8 shrink-0 place-items-center bg-brand text-sidebar; }
+  .console-brand-mark svg { @apply size-4; }
+  .console-brand > span:last-child { @apply grid gap-1 leading-none; }
+  .console-brand strong { @apply text-sm font-semibold; }
+  .console-brand small { @apply text-[8px] font-semibold text-white/38; }
+  .instance-switcher { @apply mx-1 mb-3 mt-6 grid gap-2 border-y border-white/8 py-4; }
+  .instance-switcher label { @apply text-[9px] font-bold text-white/36; }
+  .instance-switcher select { @apply h-9 w-full border border-white/10 bg-white/6 px-2 text-xs text-white outline-none focus:border-brand/70; }
+  .instance-switcher option { @apply bg-sidebar text-white; }
+  .console-nav { @apply mt-1 grid gap-1; }
+  .console-nav a { @apply flex h-10 items-center gap-3 px-3 text-[13px] font-medium text-white/56 no-underline transition-colors hover:bg-white/6 hover:text-white; }
+  .console-nav a.active { @apply bg-brand/12 font-semibold text-brand; box-shadow: inset 2px 0 0 var(--color-brand); }
+  .console-nav svg { @apply size-4; }
+  .nav-section { @apply mx-3 mb-1 mt-5 text-[9px] font-bold text-white/28; }
+  .sidebar-logout { @apply mt-auto justify-start text-white/48 hover:bg-white/6 hover:text-white; }
+  .console-main { @apply min-h-screen pl-[248px]; }
+  .console-topbar { @apply sticky top-0 z-20 flex h-14 items-center justify-between border-b border-line bg-white/95 px-7 backdrop-blur; }
+  .console-topbar > div:first-child { @apply flex items-center gap-3; }
+  .console-topbar svg { @apply size-4 text-muted; }
+  .console-topbar span { @apply grid gap-0.5 leading-none; }
+  .console-topbar small { @apply text-[8px] font-bold text-muted; }
+  .console-topbar strong { @apply text-xs font-semibold; }
+  .console-connection { @apply flex items-center gap-2 font-mono text-[10px] font-semibold text-muted; }
+  .console-connection > span { @apply size-1.5 bg-brand; }
+  .console-mobile-header { @apply hidden; }
+
+  .console-page { @apply mx-auto w-[min(1360px,calc(100%-48px))] py-7 pb-16; }
+  .page-header { @apply flex items-end justify-between gap-8 border-b border-line pb-5; }
+  .page-header h1 { @apply m-0 text-[26px] font-semibold leading-tight; }
+  .page-header > p { @apply m-0 max-w-xl text-right text-xs leading-5 text-muted; }
+
+  .connection-layout { @apply mt-6 grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,.85fr)]; }
+  .connection-form, .platform-band, .instance-list { @apply border border-line bg-panel p-6; }
+  .connection-form { @apply grid gap-4; }
+  .connection-side { @apply grid content-start gap-4; }
+  .section-heading { @apply flex items-center gap-3; }
+  .section-heading > svg { @apply size-5 text-brand-strong; }
+  .section-heading h2 { @apply m-0 text-sm font-semibold; }
+  .section-heading p { @apply mb-0 mt-1 text-[9px] font-bold text-muted; }
+  .form-field { @apply grid gap-1.5 text-xs font-semibold text-ink; }
+  .platform-band { @apply bg-[#f8f9f8]; }
+  .platform-band .section-heading > svg { @apply text-amber-600; }
+  .platform-band > p { @apply mb-0 mt-5 text-xs leading-6 text-muted; }
+  .instance-list h2 { @apply mb-3 mt-0 text-sm font-semibold; }
+  .instance-list button { @apply flex w-full items-center justify-between gap-3 border-0 border-t border-line bg-transparent py-4 text-left; }
+  .instance-list button span { @apply grid min-w-0 gap-1; }
+  .instance-list button small { @apply overflow-hidden text-ellipsis whitespace-nowrap text-muted; }
+  .boundary-list { @apply mt-3 flex flex-wrap gap-2; }
+  .boundary-list span { @apply inline-flex items-center gap-2 border border-line bg-white px-3 py-2 text-xs; }
+  .boundary-list svg { @apply size-4 text-brand-strong; }
+
+  .status-row { @apply my-5 flex flex-wrap gap-2; }
+  .status-pill { @apply inline-flex h-7 items-center gap-1.5 border px-2.5 text-[10px] font-bold; }
+  .status-pill svg { @apply size-3; }
+  .status-ok { @apply border-emerald-200 bg-emerald-50 text-emerald-800; }
+  .status-warning { @apply border-red-200 bg-red-50 text-red-800; }
+  .status-pending { @apply border-line bg-white text-muted; }
+  .error-band { @apply mb-4 border-l-2 border-red-600 bg-red-50 px-4 py-3 text-xs text-red-800; }
+  .metric-grid { @apply grid gap-3 md:grid-cols-3; }
+  .metric { @apply grid min-h-36 content-between border border-line bg-panel p-5; }
+  .metric span { @apply flex items-center gap-2 text-xs text-muted; }
+  .metric svg { @apply size-4; }
+  .metric strong { @apply font-mono text-3xl font-semibold; }
+  .instance-facts { @apply mt-4 border border-line bg-panel; }
+  .instance-facts h2 { @apply m-0 border-b border-line px-5 py-4 text-xs font-semibold; }
+  .fact-row { @apply grid gap-3 border-b border-line/70 px-5 py-3 last:border-b-0 md:grid-cols-[180px_minmax(0,1fr)]; }
+  .fact-row > span { @apply flex items-center gap-2 text-[11px] text-muted; }
+  .fact-row svg { @apply size-3.5; }
+  .fact-row code { @apply overflow-hidden text-ellipsis whitespace-nowrap text-[11px]; }
+
+  .authority-boundary { @apply mt-4 border-l-2 border-brand-strong bg-emerald-50 px-4 py-3 text-xs leading-6 text-emerald-950; }
+  .lab-tabs { @apply mt-5 border border-line bg-panel; }
+  .lab-tabs > [role="tablist"] { @apply flex gap-1 overflow-x-auto border-b border-line bg-[#f8f9f8] p-2; }
+  .lab-tabs [role="tab"] { @apply inline-flex h-9 items-center gap-2 border-0 bg-transparent px-3 text-xs font-semibold text-muted hover:bg-black/4; }
+  .lab-tabs [role="tab"] svg { @apply size-3.5; }
+  .lab-tabs [role="tab"][data-state="active"] { @apply bg-sidebar text-white; }
+  .lab-form { @apply grid gap-4 p-5; }
+  .operation-note { @apply m-0 border-l-2 border-line pl-3 text-[11px] leading-5 text-muted; }
+  .danger-form { @apply border-t-2 border-red-600; }
+  .danger-note { @apply border-red-600 text-red-800; }
+  .form-grid { @apply grid gap-3 md:grid-cols-2; }
+  .limit-grid { @apply grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5; }
+  .form-field select, .form-field textarea { @apply w-full border border-line bg-white p-2.5 text-[13px] text-ink outline-none focus:border-brand-strong focus:ring-2 focus:ring-brand/15; }
+  .form-field select { @apply h-10 p-0 px-2.5; }
+  .lab-empty { @apply mt-4 flex min-h-44 items-center justify-center gap-2 border border-dashed border-line text-xs text-muted; }
+  .lab-empty svg { @apply size-4; }
+  .lab-result { @apply mt-4 grid gap-4; }
+  .result-meta { @apply grid gap-3 border border-line bg-panel px-4 py-3 text-[10px] md:grid-cols-[100px_minmax(0,1fr)_80px_140px]; }
+  .result-meta > span { @apply text-muted; }
+  .result-meta code { @apply overflow-hidden text-ellipsis whitespace-nowrap; }
+
+  .packet-view { @apply border border-line bg-panel; }
+  .packet-header { @apply grid border-b border-line md:grid-cols-[2fr_1fr_1fr]; }
+  .packet-header > div { @apply grid gap-2 border-b border-line p-4 last:border-0 md:border-b-0 md:border-r; }
+  .packet-header span { @apply text-[9px] font-bold text-muted; }
+  .packet-header code { @apply overflow-hidden text-ellipsis whitespace-nowrap text-[11px]; }
+  .coverage-strip { @apply flex flex-wrap gap-4 border-b border-line bg-[#f7f9f7] px-4 py-2.5 font-mono text-[10px] text-muted; }
+  .packet-sections { @apply grid md:grid-cols-2; }
+  .packet-section { @apply min-h-28 border-b border-r border-line/70 p-4; }
+  .packet-section h3 { @apply m-0 flex items-center justify-between text-[11px] font-semibold; }
+  .packet-section h3 span { @apply grid min-w-6 place-items-center bg-[#eef1ef] px-1 py-1 text-[9px] text-muted; }
+  .packet-section p { @apply mb-0 mt-5 text-[11px] text-muted; }
+  .packet-section pre { @apply max-h-56 overflow-auto whitespace-pre-wrap text-[10px]; }
+  .json-viewer { @apply overflow-hidden border border-[#27302b] bg-[#0b0f0d] text-[#dbe5de]; }
+  .json-viewer header { @apply flex h-11 items-center justify-between border-b border-white/10 px-2 pl-4 text-[10px] font-bold text-white/45; }
+  .json-viewer button { @apply text-white/65 hover:bg-white/8 hover:text-white; }
+  .json-viewer pre { @apply m-0 max-h-[520px] overflow-auto p-4 text-[10px] leading-6; }
+
+  .capability-legend { @apply my-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-[10px] text-muted; }
+  .capability-status { @apply inline-flex h-6 min-w-[68px] items-center justify-center border font-mono text-[9px] font-bold; }
+  .capability-live { @apply border-emerald-200 bg-emerald-50 text-emerald-800; }
+  .capability-core { @apply border-sky-200 bg-sky-50 text-sky-800; }
+  .capability-roadmap { @apply border-amber-200 bg-amber-50 text-amber-800; }
+  .capability-platform { @apply border-rose-200 bg-rose-50 text-rose-800; }
+  .capability-table-wrap { @apply overflow-x-auto border border-line bg-panel; }
+  .capability-table { @apply w-full min-w-[920px] border-collapse text-left; }
+  .capability-table th { @apply h-10 border-b border-line bg-[#f7f9f7] px-4 text-[9px] font-bold text-muted; }
+  .capability-table td { @apply border-b border-line/70 p-4 align-top text-[11px] leading-5 text-muted; }
+  .capability-table tr:last-child td { @apply border-b-0; }
+  .capability-table td:first-child { @apply min-w-[190px] text-ink; }
+  .capability-table td:first-child strong, .capability-table td:first-child small { @apply block; }
+  .capability-table td:first-child small { @apply mt-1 text-[8px] text-brand-strong; }
+  .capability-table code { @apply block max-w-[260px] text-[9px]; overflow-wrap: anywhere; }
+
+  .runtime-boundary { @apply mt-5 flex gap-3 border border-sky-200 border-l-2 border-l-sky-700 bg-sky-50 p-4; }
+  .runtime-boundary > svg { @apply size-5 shrink-0 text-sky-700; }
+  .runtime-boundary h2 { @apply m-0 text-sm font-semibold; }
+  .runtime-boundary p { @apply mb-0 mt-1 text-xs leading-5 text-sky-950/65; }
+  .runtime-start { @apply mt-5 grid items-end gap-2 border border-line bg-panel p-4 md:grid-cols-[minmax(0,1fr)_auto]; }
+  .runtime-start label { @apply text-[10px] font-bold text-muted md:col-span-2; }
+  .runtime-start textarea { @apply min-h-20 resize-y border border-line bg-white px-3 py-2.5 text-xs text-ink outline-none focus:border-brand-strong focus:ring-2 focus:ring-brand/15; }
+  .runtime-start-result, .runtime-start-error { @apply text-[11px] md:col-span-2; }
+  .runtime-start-result { @apply text-emerald-800; }
+  .runtime-start-error { @apply text-red-800; }
+  .runtime-layout { @apply mt-5 grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]; }
+  .runtime-list, .runtime-detail { @apply min-w-0 border border-line bg-panel; }
+  .runtime-list > header { @apply flex h-14 items-center justify-between border-b border-line px-4; }
+  .runtime-list > header div { @apply flex items-center gap-2; }
+  .runtime-list > header span { @apply text-[9px] font-bold text-muted; }
+  .runtime-list > header strong { @apply text-sm; }
+  .runtime-list > header small { @apply text-[9px] text-muted; }
+  .runtime-empty { @apply m-0 px-4 py-8 text-center text-[11px] text-muted; }
+  .runtime-run-row { @apply border-b border-line/70 last:border-b-0; }
+  .runtime-run-row.is-selected { @apply bg-emerald-50; box-shadow: inset 2px 0 0 var(--color-brand-strong); }
+  .runtime-run-row button { @apply grid min-h-20 w-full grid-cols-[minmax(0,1fr)_auto_16px] items-center gap-2 border-0 bg-transparent px-4 py-3 text-left; }
+  .runtime-run-row button > div { @apply grid min-w-0 gap-2; }
+  .runtime-run-row code { @apply overflow-hidden text-ellipsis whitespace-nowrap text-[10px]; }
+  .runtime-run-row button > div span { @apply flex items-center gap-1 text-[9px] text-muted; }
+  .runtime-run-row button svg { @apply size-3; }
+  .runtime-state { @apply inline-flex h-6 min-w-[74px] items-center justify-center border px-2 font-mono text-[9px] font-bold; }
+  .runtime-state-ok { @apply border-emerald-200 bg-emerald-50 text-emerald-800; }
+  .runtime-state-danger { @apply border-red-200 bg-red-50 text-red-800; }
+  .runtime-state-active { @apply border-sky-200 bg-sky-50 text-sky-800; }
+  .runtime-detail { @apply overflow-hidden; }
+  .runtime-detail-empty { @apply flex min-h-80 items-center justify-center gap-2 text-[11px] text-muted; }
+  .runtime-detail-empty svg { @apply size-4; }
+  .runtime-detail-header { @apply flex min-h-16 items-center justify-between gap-4 border-b border-line px-4 py-3; }
+  .runtime-detail-header > div { @apply grid min-w-0 gap-1; }
+  .runtime-detail-header span:first-child { @apply text-[8px] font-bold text-muted; }
+  .runtime-detail-header code { @apply overflow-hidden text-ellipsis whitespace-nowrap text-[10px]; }
+  .runtime-facts { @apply grid border-b border-line bg-[#f7f9f7] sm:grid-cols-2 xl:grid-cols-4; }
+  .runtime-facts span { @apply grid gap-1 border-b border-r border-line px-3 py-2.5 text-[8px] text-muted; }
+  .runtime-facts strong { @apply overflow-hidden text-ellipsis whitespace-nowrap text-[10px] text-ink; }
+  .checkpoint-strip { @apply flex flex-wrap items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-[9px] text-amber-900; }
+  .checkpoint-strip svg { @apply size-3.5; }
+  .transition-timeline { @apply px-4 pb-4 pt-1; }
+  .transition-row { @apply grid grid-cols-[28px_minmax(0,1fr)] gap-3 pt-4; }
+  .transition-step { @apply grid size-7 place-items-center bg-sidebar font-mono text-[9px] text-brand; }
+  .transition-body { @apply min-w-0 border-b border-line/70 pb-4; }
+  .transition-body header { @apply flex justify-between gap-3 text-[11px]; }
+  .transition-body header span { @apply text-[9px] text-muted; }
+  .transition-meta { @apply mt-2 flex flex-wrap justify-between gap-2 text-[8px] text-muted; }
+  .transition-meta code { overflow-wrap: anywhere; }
+  .transition-body pre { @apply mt-2 max-h-44 overflow-auto border border-line bg-[#f7f9f7] p-2.5 text-[9px]; }
+  .transition-evidence { @apply mt-2 flex gap-4 text-[8px] text-muted; }
+  .runtime-detail > .json-viewer { @apply m-4 mt-0; }
+}
+
+@media (max-width: 860px) {
+  .console-sidebar { @apply -translate-x-full transition-transform; }
+  .console-sidebar.is-open { @apply translate-x-0 shadow-2xl; }
+  .console-mobile-header { @apply sticky top-0 z-40 flex h-14 items-center justify-between border-b border-white/8 bg-sidebar px-3 text-white; }
+  .console-mobile-header .console-brand { @apply p-0; }
+  .console-mobile-header button { @apply text-white; }
+  .console-main { @apply pl-0; }
+  .console-topbar { @apply top-14 px-4; }
+  .console-page { @apply w-[calc(100%-28px)] py-5; }
+  .page-header { @apply items-start; }
+  .page-header > p { @apply hidden; }
+  .packet-section { @apply border-r-0; }
+}
+
+@media (max-width: 560px) {
+  .fact-row { @apply grid-cols-1; }
+  .console-connection { @apply hidden; }
+  .result-meta { @apply grid-cols-1; }
+  .runtime-start button { @apply w-full; }
+  .packet-header { @apply grid-cols-1; }
+}
