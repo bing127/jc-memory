@@ -1,8 +1,10 @@
 import { expect, test } from "@playwright/test";
+import { join } from "node:path";
 
 const namespaceId = "00000000-0000-0000-0000-000000000001";
 const apiKey = "sk-jcmemory-87s92kdp5vqz4mnh3cr0xfbj6gwy1aue7t";
 const memoryPort = Number(process.env.JC_WEB_E2E_MEMORY_PORT ?? 8787);
+const performanceFixture = join(process.cwd(), "e2e", "fixtures", "performance-report.json");
 
 test("login, connect and execute the complete Memory Console path through the BFF", async ({ page }, testInfo) => {
   const apiResponses: string[] = [];
@@ -125,6 +127,22 @@ test("login, connect and execute the complete Memory Console path through the BF
   await expect(page.getByText(/"phase": "observe"/).first()).toBeVisible();
   await expect(page.getByText("Approval approved")).toHaveCount(0);
   await expect(page.getByText("Tool executed")).toHaveCount(0);
+
+  if (testInfo.project.name.includes("mobile")) {
+    await page.getByRole("button", { name: "打开导航" }).click();
+  }
+  await page.getByRole("link", { name: "性能观测" }).click();
+  await expect(page.getByRole("heading", { name: "性能观测" })).toBeVisible();
+  await page.getByRole("tab", { name: "实时监控" }).click();
+  await expect(page.getByText("P95").first()).toBeVisible();
+  await expect(page.getByText("429 背压", { exact: true })).toBeVisible();
+  await expect(page.locator(".live-metrics strong").filter({ hasText: /req\/s$/ })).toBeVisible({ timeout: 12_000 });
+  await page.getByRole("tab", { name: "静态报告" }).click();
+  const reportInput = page.getByRole("button", { name: "导入压测报告" });
+  await reportInput.setInputFiles(performanceFixture);
+  await expect(page.getByRole("rowheader", { name: "recall-fixture", exact: true })).toBeVisible();
+  await expect(page.getByText("P95").first()).toBeVisible();
+  await expect(page.getByText("429 背压", { exact: true })).toBeVisible();
 
   expect(apiResponses.join("\n")).not.toContain(apiKey);
   await page.evaluate(() => window.scrollTo(0, 0));

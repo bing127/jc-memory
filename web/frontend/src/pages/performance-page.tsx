@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { AlertTriangle, BarChart3, FileJson, Gauge, LineChart as LineChartIcon, Upload } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { AlertTriangle, BarChart3, FileJson, Gauge, Radio, Upload } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -13,21 +14,51 @@ import {
   YAxis,
 } from "recharts";
 
-import type { InstanceSummary } from "../lib/contracts.js";
+import { api } from "../lib/api.js";
+import type { InstanceSummary, PerformanceOperationName } from "../lib/contracts.js";
 import {
+  appendPerformanceHistory,
+  deriveOperationSeries,
   formatMetric,
   parseLoadTestReport,
   reportChartData,
   summarizeLoadTestReport,
   type LoadTestReport,
+  type PerformanceHistoryEntry,
 } from "../lib/performance.js";
 
 export function PerformancePage({ instance }: { instance: InstanceSummary }) {
   const [report, setReport] = useState<LoadTestReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"static" | "live">("static");
+  const [operation, setOperation] = useState<PerformanceOperationName>("recall");
+  const [history, setHistory] = useState<PerformanceHistoryEntry[]>([]);
+  const handledDataAt = useRef(0);
+  const handledErrorAt = useRef(0);
+  const metrics = useQuery({
+    queryKey: ["instance-metrics", instance.id],
+    queryFn: () => api.instanceMetrics(instance.id),
+    enabled: tab === "live",
+    refetchInterval: tab === "live" ? 5_000 : false,
+  });
   const summary = report ? summarizeLoadTestReport(report) : null;
   const chartData = report ? reportChartData(report) : null;
+
+  useEffect(() => {
+    if (!metrics.data || metrics.dataUpdatedAt <= handledDataAt.current) return;
+    handledDataAt.current = metrics.dataUpdatedAt;
+    setHistory((current) => appendPerformanceHistory(current, metrics.data));
+  }, [metrics.data, metrics.dataUpdatedAt]);
+
+  useEffect(() => {
+    if (!metrics.isError || metrics.errorUpdatedAt <= handledErrorAt.current) return;
+    handledErrorAt.current = metrics.errorUpdatedAt;
+    setHistory((current) => appendPerformanceHistory(
+      current,
+      null,
+      new Date(metrics.errorUpdatedAt).toISOString(),
+    ));
+  }, [metrics.errorUpdatedAt, metrics.isError]);
 
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -47,15 +78,15 @@ export function PerformancePage({ instance }: { instance: InstanceSummary }) {
     <main className="console-page performance-page">
       <header className="page-header">
         <div><p className="page-kicker">PERFORMANCE OBSERVABILITY</p><h1>性能观测</h1></div>
-        <p>{instance.name} · 静态报告在浏览器本地解析，实时监控将在后续版本接入。</p>
+        <p>{instance.name} · 对比本地压测报告，并观察实例实时请求、延迟与背压。</p>
       </header>
 
       <div className="performance-tabs" role="tablist" aria-label="性能视图">
         <button type="button" role="tab" aria-selected={tab === "static"} className={tab === "static" ? "is-active" : ""} onClick={() => setTab("static")}>
           <FileJson aria-hidden="true" />静态报告
         </button>
-        <button type="button" role="tab" aria-selected={tab === "live"} disabled className="is-disabled" onClick={() => setTab("live")}>
-          <Gauge aria-hidden="true" />实时监控（即将接入）
+        <button type="button" role="tab" aria-selected={tab === "live"} className={tab === "live" ? "is-active" : ""} onClick={() => setTab("live")}>
+          <Gauge aria-hidden="true" />实时监控
         </button>
       </div>
 
@@ -82,7 +113,113 @@ export function PerformancePage({ instance }: { instance: InstanceSummary }) {
           )}
         </>
       ) : null}
+      {tab === "live" ? (
+        <LiveMonitor
+          operation={operation}
+          onOperationChange={setOperation}
+          history={history}
+          pending={metrics.isPending}
+          failed={metrics.isError}
+        />
+      ) : null}
     </main>
+  );
+}
+
+const operationLabels: Record<PerformanceOperationName, string> = {
+  observe: "Observe",
+  commit: "Commit",
+  recall: "Recall",
+  stats: "Stats",
+  correct: "Correct",
+  forget: "Forget",
+  explain: "Explain",
+  command: "Command",
+};
+
+function LiveMonitor({ operation, onOperationChange, history, pending, failed }: {
+  operation: PerformanceOperationName;
+  onOperationChange(operation: PerformanceOperationName): void;
+  history: PerformanceHistoryEntry[];
+  pending: boolean;
+  failed: boolean;
+}) {
+  const series = deriveOperationSeries(history, operation);
+  const latest = [...series].reverse().find((point) => !point.gap) ?? null;
+  const lastSuccess = [...history].reverse().find((entry) => entry.snapshot !== null) ?? null;
+  const gapCount = history.filter((entry) => entry.snapshot === null).length;
+
+  return (
+    <section className="live-monitor" aria-label="实时性能监控">
+      <header className="live-toolbar">
+        <div><p className="section-kicker">LIVE METRICS · 5S</p><h2>实例实时性能</h2></div>
+        <label>Operation
+          <select value={operation} onChange={(event) => onOperationChange(event.target.value as PerformanceOperationName)}>
+            {Object.entries(operationLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </label>
+      </header>
+
+      {failed ? (
+        <div className="error-band" role="alert">
+          <AlertTriangle aria-hidden="true" />实时采样中断，图表已保留最后成功数据且缺口不会补零。
+        </div>
+      ) : null}
+      {pending && !lastSuccess ? (
+        <div className="performance-empty"><Radio aria-hidden="true" /><span>正在读取实例实时指标。</span></div>
+      ) : (
+        <>
+          <section className="performance-metrics live-metrics" aria-label="实时核心指标">
+            <Metric label="RPS" value={formatMetric(latest?.rps ?? null, "req/s")} />
+            <Metric label="成功率" value={latest?.successRate === null || latest?.successRate === undefined ? "未采集" : `${latest.successRate.toFixed(1)}%`} />
+            <Metric label="in-flight" value={latest?.inFlight?.toLocaleString("zh-CN") ?? "未采集"} />
+            <Metric label="P50" value={formatMetric(latest?.p50 ?? null, "ms")} />
+            <Metric label="P95" value={formatMetric(latest?.p95 ?? null, "ms")} />
+            <Metric label="P99" value={formatMetric(latest?.p99 ?? null, "ms")} />
+            <Metric label="429 背压" value={latest?.rateLimited?.toLocaleString("zh-CN") ?? "未采集"} />
+            <Metric label="Timeout" value={latest?.timeouts?.toLocaleString("zh-CN") ?? "未采集"} />
+          </section>
+
+          <div className="performance-meta live-meta">
+            <span>Operation <code>{operation}</code></span>
+            <span>样本 <code>{history.length}</code> / 60</span>
+            <span>采样缺口 {gapCount}</span>
+            <span>最后成功采样 <code>{lastSuccess?.sampledAt ?? "尚无"}</code></span>
+          </div>
+
+          <section className="performance-chart-grid" aria-label="实时性能图表">
+            <ChartPanel title="请求吞吐与 in-flight" description="累计请求差分为 RPS；采样失败处断线">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={series} margin={{ top: 12, right: 16, left: 0, bottom: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#dce2de" />
+                  <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                  <YAxis yAxisId="left" tick={{ fontSize: 10 }} />
+                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} />
+                  <Tooltip />
+                  <Legend wrapperStyle={{ fontSize: 10 }} />
+                  <Line yAxisId="left" type="monotone" dataKey="rps" name="RPS" stroke="#2563eb" strokeWidth={2} connectNulls={false} />
+                  <Line yAxisId="right" type="monotone" dataKey="inFlight" name="in-flight" stroke="#087a45" strokeWidth={2} connectNulls={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartPanel>
+            <ChartPanel title="实时延迟分位数（毫秒）" description="BFF 归一化的当前累计 Histogram 分位数">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={series} margin={{ top: 12, right: 16, left: 0, bottom: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#dce2de" />
+                  <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                  <YAxis tick={{ fontSize: 10 }} />
+                  <Tooltip formatter={(value) => formatMetric(typeof value === "number" ? value : null, "ms")} />
+                  <Legend wrapperStyle={{ fontSize: 10 }} />
+                  <Line type="monotone" dataKey="p50" name="P50" stroke="#22c979" strokeWidth={2} connectNulls={false} />
+                  <Line type="monotone" dataKey="p95" name="P95" stroke="#e3a008" strokeWidth={2} connectNulls={false} />
+                  <Line type="monotone" dataKey="p99" name="P99" stroke="#c2410c" strokeWidth={2} connectNulls={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartPanel>
+          </section>
+        </>
+      )}
+    </section>
   );
 }
 

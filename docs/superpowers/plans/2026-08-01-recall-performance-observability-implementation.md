@@ -327,25 +327,25 @@ git commit -m "feat(web): 增加压测报告可视化页面" -m "本地解析版
 - Modify: `web/e2e/fixture-memory-server.mjs`
 - Modify: `web/e2e/control-plane.spec.ts`
 
-- [ ] **Step 1: 写实时采样红灯测试**
+- [x] **Step 1: 写实时采样红灯测试**
 
 模拟两个累计快照，断言差分产生每秒请求数；采样失败后图表插入 gap 并显示最后成功时间，不把失败样本写成零。
 
-- [ ] **Step 2: 运行测试并确认实时行为缺失**
+- [x] **Step 2: 运行测试并确认实时行为缺失**
 
 Run: `cd web && corepack pnpm --filter ./frontend test -- performance-page.test.tsx`
 
 Expected: FAIL，缺少实时 Tab 和 `api.instanceMetrics`。
 
-- [ ] **Step 3: 实现轮询与环形样本**
+- [x] **Step 3: 实现轮询与环形样本**
 
 React Query 每 5 秒读取 `GET /api/v1/instances/:id/metrics`，只保留最近 60 个样本。总计数差分计算 RPS 和错误率；累计 Histogram 分位数直接显示。离线时保留最后成功数据并停止连线。
 
-- [ ] **Step 4: 增加 Fixture 与 Playwright 主路径**
+- [x] **Step 4: 增加 Fixture 与 Playwright 主路径**
 
 Fixture `/metrics` 返回两次递增的固定 Prometheus 文本。Playwright 登录、打开“性能”、验证实时指标，再导入压测 Fixture 并验证 P95 和 429 图表标题。
 
-- [ ] **Step 5: 运行 Web 完整门禁**
+- [x] **Step 5: 运行 Web 完整门禁**
 
 Run: `cd web && corepack pnpm test`
 
@@ -357,7 +357,7 @@ Run: `cd web && corepack pnpm test:e2e`
 
 Expected: 全部退出码 0。
 
-- [ ] **Step 6: 提交实时监控**
+- [x] **Step 6: 提交实时监控**
 
 ```bash
 git add web/frontend web/e2e

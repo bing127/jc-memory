@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+import type { PerformanceOperationName, PerformanceSnapshot } from "./contracts.js";
+
+const PERFORMANCE_HISTORY_LIMIT = 60;
+
 const nullableMetric = z.number().finite().nonnegative().nullable();
 
 const scenarioSchema = z.object({
@@ -51,6 +55,26 @@ export interface LoadTestSummary {
     p95: number | null;
     p99: number | null;
   };
+}
+
+export interface PerformanceHistoryEntry {
+  sampledAt: string;
+  snapshot: PerformanceSnapshot | null;
+}
+
+export interface OperationSeriesPoint {
+  sampledAt: string;
+  label: string;
+  gap: boolean;
+  total: number | null;
+  rps: number | null;
+  successRate: number | null;
+  inFlight: number | null;
+  p50: number | null;
+  p95: number | null;
+  p99: number | null;
+  rateLimited: number | null;
+  timeouts: number | null;
 }
 
 export function parseLoadTestReport(value: unknown): LoadTestReport {
@@ -127,4 +151,67 @@ export function reportChartData(report: LoadTestReport) {
       .sort(([left], [right]) => Number(left) - Number(right))
       .map(([status, count]) => ({ status, count })),
   };
+}
+
+export function appendPerformanceHistory(
+  history: PerformanceHistoryEntry[],
+  snapshot: PerformanceSnapshot | null,
+  sampledAt = snapshot?.sampledAt ?? new Date().toISOString(),
+): PerformanceHistoryEntry[] {
+  return [...history, { sampledAt, snapshot }].slice(-PERFORMANCE_HISTORY_LIMIT);
+}
+
+export function deriveOperationSeries(
+  history: PerformanceHistoryEntry[],
+  operationName: PerformanceOperationName,
+): OperationSeriesPoint[] {
+  let previous: { total: number; sampledAtMs: number } | null = null;
+  return history.map((entry) => {
+    if (!entry.snapshot) return gapPoint(entry.sampledAt);
+    const operation = entry.snapshot.operations.find((item) => item.operation === operationName);
+    const total = operation?.total ?? 0;
+    const sampledAtMs = Date.parse(entry.sampledAt);
+    const elapsedSeconds = previous ? (sampledAtMs - previous.sampledAtMs) / 1_000 : 0;
+    const rps = previous && elapsedSeconds > 0 && total >= previous.total
+      ? (total - previous.total) / elapsedSeconds
+      : null;
+    previous = { total, sampledAtMs };
+    return {
+      sampledAt: entry.sampledAt,
+      label: sampleTimeLabel(entry.sampledAt),
+      gap: false,
+      total,
+      rps,
+      successRate: total > 0 ? ((operation?.success ?? 0) / total) * 100 : null,
+      inFlight: entry.snapshot.inFlight,
+      p50: operation?.latencyMs.p50 ?? null,
+      p95: operation?.latencyMs.p95 ?? null,
+      p99: operation?.latencyMs.p99 ?? null,
+      rateLimited: operation?.rateLimited ?? 0,
+      timeouts: operation?.timeouts ?? 0,
+    };
+  });
+}
+
+function gapPoint(sampledAt: string): OperationSeriesPoint {
+  return {
+    sampledAt,
+    label: sampleTimeLabel(sampledAt),
+    gap: true,
+    total: null,
+    rps: null,
+    successRate: null,
+    inFlight: null,
+    p50: null,
+    p95: null,
+    p99: null,
+    rateLimited: null,
+    timeouts: null,
+  };
+}
+
+function sampleTimeLabel(sampledAt: string): string {
+  const timestamp = Date.parse(sampledAt);
+  if (!Number.isFinite(timestamp)) return sampledAt;
+  return new Date(timestamp).toLocaleTimeString("zh-CN", { hour12: false });
 }

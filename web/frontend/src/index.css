@@ -257,6 +257,13 @@
   .performance-table th { @apply border-b border-line bg-[#f7f9f7] px-4 py-3 text-[10px] font-semibold text-muted; }
   .performance-table td { @apply border-b border-line/70 px-4 py-3 text-[10px] text-muted; }
   .performance-table tbody th { @apply bg-white text-ink; }
+  .live-monitor { @apply mt-5 grid gap-4; }
+  .live-toolbar { @apply flex items-end justify-between gap-5 border border-line bg-panel p-5; }
+  .live-toolbar h2 { @apply m-0 text-sm font-semibold; }
+  .live-toolbar label { @apply grid gap-1 text-[10px] font-semibold text-muted; }
+  .live-toolbar select { @apply h-9 min-w-40 border border-line bg-white px-2 text-xs text-ink outline-none focus:border-brand-strong focus:ring-2 focus:ring-brand/15; }
+  .live-meta code { @apply text-ink; }
+  .live-metrics { @apply lg:grid-cols-4 xl:grid-cols-8; }
 }
 
 @media (max-width: 860px) {
@@ -272,6 +279,7 @@
   .page-header > p { @apply hidden; }
   .packet-section { @apply border-r-0; }
   .performance-import { @apply items-start; }
+  .live-toolbar { @apply items-start; }
 }
 
 @media (max-width: 560px) {
@@ -284,4 +292,6 @@
   .performance-upload { @apply w-full justify-center; }
   .performance-chart-panel header { @apply block; }
   .performance-chart-panel header p { @apply mt-1; }
+  .live-toolbar { @apply grid; }
+  .live-toolbar select { @apply w-full; }
 }

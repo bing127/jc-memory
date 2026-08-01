@@ -26,6 +26,32 @@ export interface InstanceStatus {
   serverReady: boolean;
 }
 
+export type PerformanceOperationName =
+  | "observe"
+  | "commit"
+  | "recall"
+  | "stats"
+  | "correct"
+  | "forget"
+  | "explain"
+  | "command";
+
+export interface PerformanceOperation {
+  operation: PerformanceOperationName;
+  total: number;
+  success: number;
+  error: number;
+  rateLimited: number;
+  timeouts: number;
+  latencyMs: { p50: number | null; p95: number | null; p99: number | null };
+}
+
+export interface PerformanceSnapshot {
+  sampledAt: string;
+  inFlight: number;
+  operations: PerformanceOperation[];
+}
+
 export interface ApiErrorBody {
   code: string;
   message: string;

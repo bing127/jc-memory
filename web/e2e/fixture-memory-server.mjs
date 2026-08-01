@@ -6,6 +6,7 @@ const runtimeRunId = "00000000-0000-7000-8000-000000000701";
 const memoryPort = Number(process.env.JC_WEB_E2E_MEMORY_PORT ?? 8787);
 let fragmentCount = 0;
 let eventCount = 0;
+let metricsRequestCount = 0;
 const storedFragments = [];
 
 const server = createServer(async (request, response) => {
@@ -13,7 +14,8 @@ const server = createServer(async (request, response) => {
   if (request.method === "GET" && request.url === "/readyz") return json(response, { status: "ready" });
   if (request.method === "GET" && request.url === "/metrics") {
     response.writeHead(200, { "content-type": "text/plain; version=0.0.4" });
-    return response.end("jc_memory_server_ready 1\n");
+    metricsRequestCount += 1;
+    return response.end(metricsText(metricsRequestCount));
   }
   if (request.method === "POST" && request.url === "/v1/runtime/runs") {
     if (request.headers["x-api-key"] !== apiKey) {
@@ -224,6 +226,28 @@ function fragmentText(fragment) {
 function json(response, body, status = 200) {
   response.writeHead(status, { "content-type": "application/json" });
   response.end(JSON.stringify(body));
+}
+
+function metricsText(sequence) {
+  const total = sequence * 50;
+  const success = sequence * 48;
+  const rateLimited = sequence * 2;
+  const bucket = sequence * 50;
+  return [
+    `jc_memory_requests_total{operation="recall",transport="http",outcome="success"} ${success}`,
+    `jc_memory_requests_total{operation="recall",transport="http",outcome="rate_limited"} ${rateLimited}`,
+    `jc_memory_requests_total{operation="recall",transport="http",outcome="error"} 0`,
+    `jc_memory_requests_total{operation="recall",transport="http",outcome="timeout"} 0`,
+    `jc_memory_request_duration_seconds_bucket{operation="recall",transport="http",le="0.5"} ${bucket * 0.5}`,
+    `jc_memory_request_duration_seconds_bucket{operation="recall",transport="http",le="1"} ${bucket * 0.9}`,
+    `jc_memory_request_duration_seconds_bucket{operation="recall",transport="http",le="2"} ${bucket * 0.98}`,
+    `jc_memory_request_duration_seconds_bucket{operation="recall",transport="http",le="+Inf"} ${total}`,
+    `jc_memory_request_duration_seconds_count{operation="recall",transport="http"} ${total}`,
+    `jc_memory_request_duration_seconds_sum{operation="recall",transport="http"} ${total}`,
+    `jc_memory_requests_in_flight ${sequence % 4}`,
+    "jc_memory_server_ready 1",
+    "",
+  ].join("\n");
 }
 
 function readBody(request) {
