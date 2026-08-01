@@ -101,6 +101,7 @@ impl GovernanceService {
             let mut authority = tokio::fs::File::create(staging.join("authority.jsonl")).await?;
             authority.write_all(authority_bytes.as_bytes()).await?;
             authority.sync_all().await?;
+            drop(authority);
             let blob_ids: Vec<String> = sqlx::query_scalar(
             "SELECT DISTINCT c.blob_id FROM fragment_contents c
              JOIN fragments f ON f.content_id=c.id
@@ -143,6 +144,7 @@ impl GovernanceService {
             )
             .await?;
             file.sync_all().await?;
+            drop(file);
             tokio::fs::rename(&staging, &target).await?;
             Ok(authority_sha256)
         }
