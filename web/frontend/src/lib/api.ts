@@ -2,7 +2,6 @@ import type {
   ApiErrorBody,
   InstanceStatus,
   InstanceSummary,
-  PerformanceSnapshot,
   RuntimeRunDetail,
   RuntimeRunPage,
   RuntimeStartResult,
@@ -43,8 +42,6 @@ export const api = {
     request<void>(`/api/v1/instances/${id}`, { method: "DELETE" }),
   instanceStatus: (id: string) =>
     request<InstanceStatus>(`/api/v1/instances/${id}/status`),
-  instanceMetrics: (id: string) =>
-    request<PerformanceSnapshot>(`/api/v1/instances/${id}/metrics`),
   runtimeRuns: (id: string, state?: string, limit = 25, offset = 0) => {
     const query = new URLSearchParams();
     if (state) query.set("state", state);

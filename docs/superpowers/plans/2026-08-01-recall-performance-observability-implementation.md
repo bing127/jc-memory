@@ -4,7 +4,7 @@
 
 **Goal:** 消除 Recall 候选权威记录的串行 N+1 读取，让查询预算覆盖完整链路，并交付可复现压测 JSON、静态报告图表和实时性能监控。
 
-**Architecture:** Storage 以精确 Scope 批量读取 Fragment 和 Evidence，Core 用一个 Deadline 包裹完整 Recall。Server 输出低基数 Prometheus 指标，BFF 将其归一化为稳定 JSON；前端性能页本地解析 `jcmem.load-test.v1` 报告并轮询实时快照。
+**Architecture:** Storage 以精确 Scope 批量读取 Fragment 和 Evidence，Core 用一个 Deadline 包裹完整 Recall。Server 输出低基数 Prometheus 指标，BFF 将其归一化并通过 WebSocket 推送；前端性能页本地解析 `jcmem.load-test.v1` 报告，并在固定 60 秒时间窗中实时绘制指标。
 
 **Tech Stack:** Rust 2024、Tokio、SQLx/SQLite、Axum、Node.js 22、Fastify、React 19、TypeScript、Zod、Recharts、Vitest、Playwright。
 
@@ -324,26 +324,33 @@ git commit -m "feat(web): 增加压测报告可视化页面" -m "本地解析版
 - Modify: `web/frontend/src/lib/performance.ts`
 - Modify: `web/frontend/src/pages/performance-page.tsx`
 - Modify: `web/frontend/tests/performance-page.test.tsx`
+- Modify: `web/backend/src/app.ts`
+- Modify: `web/backend/src/routes/instances.ts`
+- Modify: `web/backend/tests/app.test.ts`
 - Modify: `web/e2e/fixture-memory-server.mjs`
 - Modify: `web/e2e/control-plane.spec.ts`
 
-- [x] **Step 1: 写实时采样红灯测试**
+- [x] **Step 1: 写 WebSocket 实时采样红灯测试**
 
-模拟两个累计快照，断言差分产生每秒请求数；采样失败后图表插入 gap 并显示最后成功时间，不把失败样本写成零。
+后端使用真实 WebSocket 客户端连接指标流，前端使用可控 WebSocket 模拟两个累计快照。断言差分产生每秒请求数、前端不调用指标 HTTP 接口、采样失败插入 gap、连接关闭后服务端停止采样，并验证固定 60 秒时间窗。
 
 - [x] **Step 2: 运行测试并确认实时行为缺失**
 
-Run: `cd web && corepack pnpm --filter ./frontend test -- performance-page.test.tsx`
+Run: `cd web/backend && corepack pnpm test -- app.test.ts`
 
-Expected: FAIL，缺少实时 Tab 和 `api.instanceMetrics`。
+Run: `cd web/frontend && corepack pnpm test -- performance-page.test.tsx`
 
-- [x] **Step 3: 实现轮询与环形样本**
+Expected: FAIL，WebSocket 指标路由返回 `404`，前端未创建 WebSocket，且缺少固定时间窗函数。
 
-React Query 每 5 秒读取 `GET /api/v1/instances/:id/metrics`，只保留最近 60 个样本。总计数差分计算 RPS 和错误率；累计 Histogram 分位数直接显示。离线时保留最后成功数据并停止连线。
+- [x] **Step 3: 实现 WebSocket 实时流与环形样本**
+
+BFF 每秒采样实例的 Prometheus `/metrics`，通过受 Session 和 Origin 保护的 `GET /api/v1/instances/:id/metrics/stream` WebSocket 推送快照。浏览器不再周期轮询，只保留断线后的指数退避重连；页面保存最近 60 个样本，总计数差分计算 RPS，累计 Histogram 分位数直接显示。采样失败推送明确 gap，不补零；连接关闭时 BFF 清理采样定时器。
+
+实时图表使用数值时间轴和固定 60 秒窗口。窗口未填满时样本从左向右增长，填满后跟随最新样本滚动，不将少量分类样本铺满横轴。
 
 - [x] **Step 4: 增加 Fixture 与 Playwright 主路径**
 
-Fixture `/metrics` 返回两次递增的固定 Prometheus 文本。Playwright 登录、打开“性能”、验证实时指标，再导入压测 Fixture 并验证 P95 和 429 图表标题。
+Fixture `/metrics` 返回递增的固定 Prometheus 文本。Playwright 登录、打开“性能”，验证 WebSocket 已连接、至少接收两个样本、SVG 折线从左向右增长且未铺满 60 秒横轴，再导入压测 Fixture 并验证 P95 和 429 图表标题。
 
 - [x] **Step 5: 运行 Web 完整门禁**
 
@@ -360,8 +367,8 @@ Expected: 全部退出码 0。
 - [x] **Step 6: 提交实时监控**
 
 ```bash
-git add web/frontend web/e2e
-git commit -m "feat(web): 增加实时请求与延迟监控" -m "性能页面轮询受保护的实例指标，展示 RPS、成功率、in-flight、P50/P95/P99、429 和 timeout，并对采样缺口保持诚实。"
+git add web/backend web/frontend web/e2e web/pnpm-lock.yaml
+git commit -m "fix(web): 使用 WebSocket 推送实时性能指标" -m "BFF 每秒采样受保护的实例指标并推送快照，前端以固定六十秒时间窗从左向右绘制实时请求与延迟，同时保留采样缺口和断线重连状态。"
 ```
 
 ### Task 8: 同条件复测、文档和最终门禁

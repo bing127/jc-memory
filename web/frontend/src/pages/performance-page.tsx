@@ -1,5 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, BarChart3, FileJson, Gauge, Radio, Upload } from "lucide-react";
 import {
   Bar,
@@ -14,12 +13,16 @@ import {
   YAxis,
 } from "recharts";
 
-import { api } from "../lib/api.js";
-import type { InstanceSummary, PerformanceOperationName } from "../lib/contracts.js";
+import type {
+  InstanceSummary,
+  PerformanceOperationName,
+  PerformanceSnapshot,
+} from "../lib/contracts.js";
 import {
   appendPerformanceHistory,
   deriveOperationSeries,
   formatMetric,
+  liveTimelineDomain,
   parseLoadTestReport,
   reportChartData,
   summarizeLoadTestReport,
@@ -33,32 +36,61 @@ export function PerformancePage({ instance }: { instance: InstanceSummary }) {
   const [tab, setTab] = useState<"static" | "live">("static");
   const [operation, setOperation] = useState<PerformanceOperationName>("recall");
   const [history, setHistory] = useState<PerformanceHistoryEntry[]>([]);
-  const handledDataAt = useRef(0);
-  const handledErrorAt = useRef(0);
-  const metrics = useQuery({
-    queryKey: ["instance-metrics", instance.id],
-    queryFn: () => api.instanceMetrics(instance.id),
-    enabled: tab === "live",
-    refetchInterval: tab === "live" ? 5_000 : false,
-  });
   const summary = report ? summarizeLoadTestReport(report) : null;
   const chartData = report ? reportChartData(report) : null;
+  const [streamState, setStreamState] = useState<"idle" | "connecting" | "connected" | "error">("idle");
 
   useEffect(() => {
-    if (!metrics.data || metrics.dataUpdatedAt <= handledDataAt.current) return;
-    handledDataAt.current = metrics.dataUpdatedAt;
-    setHistory((current) => appendPerformanceHistory(current, metrics.data));
-  }, [metrics.data, metrics.dataUpdatedAt]);
+    if (tab !== "live") {
+      setStreamState("idle");
+      return;
+    }
+    let disposed = false;
+    let reconnectAttempt = 0;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let socket: WebSocket | null = null;
 
-  useEffect(() => {
-    if (!metrics.isError || metrics.errorUpdatedAt <= handledErrorAt.current) return;
-    handledErrorAt.current = metrics.errorUpdatedAt;
-    setHistory((current) => appendPerformanceHistory(
-      current,
-      null,
-      new Date(metrics.errorUpdatedAt).toISOString(),
-    ));
-  }, [metrics.errorUpdatedAt, metrics.isError]);
+    const connect = () => {
+      if (disposed) return;
+      setStreamState("connecting");
+      socket = new WebSocket(metricsStreamUrl(instance.id));
+      socket.addEventListener("open", () => {
+        reconnectAttempt = 0;
+        setStreamState("connected");
+      });
+      socket.addEventListener("message", (event) => {
+        try {
+          const message = JSON.parse(String(event.data)) as MetricsStreamMessage;
+          if (message.type === "snapshot") {
+            setStreamState("connected");
+            setHistory((current) => appendPerformanceHistory(current, message.snapshot));
+          } else if (message.type === "gap") {
+            setStreamState("error");
+            setHistory((current) => appendPerformanceHistory(current, null, message.sampledAt));
+          }
+        } catch {
+          setStreamState("error");
+        }
+      });
+      socket.addEventListener("error", () => setStreamState("error"));
+      socket.addEventListener("close", () => {
+        socket = null;
+        if (disposed) return;
+        setStreamState("error");
+        const delay = Math.min(500 * (2 ** reconnectAttempt), 5_000);
+        reconnectAttempt += 1;
+        reconnectTimer = setTimeout(connect, delay);
+      });
+    };
+
+    connect();
+    return () => {
+      disposed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      socket?.close();
+      socket = null;
+    };
+  }, [instance.id, tab]);
 
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -118,12 +150,22 @@ export function PerformancePage({ instance }: { instance: InstanceSummary }) {
           operation={operation}
           onOperationChange={setOperation}
           history={history}
-          pending={metrics.isPending}
-          failed={metrics.isError}
+          pending={streamState === "connecting"}
+          failed={streamState === "error"}
+          connected={streamState === "connected"}
         />
       ) : null}
     </main>
   );
+}
+
+type MetricsStreamMessage =
+  | { type: "snapshot"; snapshot: PerformanceSnapshot }
+  | { type: "gap"; sampledAt: string; message: string };
+
+function metricsStreamUrl(instanceId: string): string {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}/api/v1/instances/${instanceId}/metrics/stream`;
 }
 
 const operationLabels: Record<PerformanceOperationName, string> = {
@@ -137,14 +179,16 @@ const operationLabels: Record<PerformanceOperationName, string> = {
   command: "Command",
 };
 
-function LiveMonitor({ operation, onOperationChange, history, pending, failed }: {
+function LiveMonitor({ operation, onOperationChange, history, pending, failed, connected }: {
   operation: PerformanceOperationName;
   onOperationChange(operation: PerformanceOperationName): void;
   history: PerformanceHistoryEntry[];
   pending: boolean;
   failed: boolean;
+  connected: boolean;
 }) {
   const series = deriveOperationSeries(history, operation);
+  const timelineDomain = liveTimelineDomain(series);
   const latest = [...series].reverse().find((point) => !point.gap) ?? null;
   const lastSuccess = [...history].reverse().find((entry) => entry.snapshot !== null) ?? null;
   const gapCount = history.filter((entry) => entry.snapshot === null).length;
@@ -152,12 +196,15 @@ function LiveMonitor({ operation, onOperationChange, history, pending, failed }:
   return (
     <section className="live-monitor" aria-label="实时性能监控">
       <header className="live-toolbar">
-        <div><p className="section-kicker">LIVE METRICS · 5S</p><h2>实例实时性能</h2></div>
+        <div><p className="section-kicker">LIVE METRICS · WEBSOCKET</p><h2>实例实时性能</h2></div>
         <label>Operation
           <select value={operation} onChange={(event) => onOperationChange(event.target.value as PerformanceOperationName)}>
             {Object.entries(operationLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </label>
+        <span className={`live-connection-state ${connected ? "is-connected" : ""}`}>
+          <Radio aria-hidden="true" />{connected ? "实时流已连接" : pending ? "正在连接" : "等待重连"}
+        </span>
       </header>
 
       {failed ? (
@@ -182,37 +229,56 @@ function LiveMonitor({ operation, onOperationChange, history, pending, failed }:
 
           <div className="performance-meta live-meta">
             <span>Operation <code>{operation}</code></span>
-            <span>样本 <code>{history.length}</code> / 60</span>
+            <span aria-label={`样本 ${history.length} / 60`}>样本 <code>{history.length}</code> / 60</span>
             <span>采样缺口 {gapCount}</span>
             <span>最后成功采样 <code>{lastSuccess?.sampledAt ?? "尚无"}</code></span>
           </div>
 
           <section className="performance-chart-grid" aria-label="实时性能图表">
-            <ChartPanel title="请求吞吐与 in-flight" description="累计请求差分为 RPS；采样失败处断线">
+            <ChartPanel title="请求吞吐与 in-flight" description="实时流按时间从左向右推进；采样失败处断线">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={series} margin={{ top: 12, right: 16, left: 0, bottom: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#dce2de" />
-                  <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                  <XAxis
+                    dataKey="timestamp"
+                    type="number"
+                    scale="time"
+                    domain={timelineDomain}
+                    allowDataOverflow
+                    tick={{ fontSize: 10 }}
+                    tickFormatter={formatTimelineTick}
+                  />
                   <YAxis yAxisId="left" tick={{ fontSize: 10 }} />
                   <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} />
-                  <Tooltip />
+                  <Tooltip labelFormatter={(value) => formatTimelineTick(Number(value))} />
                   <Legend wrapperStyle={{ fontSize: 10 }} />
-                  <Line yAxisId="left" type="monotone" dataKey="rps" name="RPS" stroke="#2563eb" strokeWidth={2} connectNulls={false} />
-                  <Line yAxisId="right" type="monotone" dataKey="inFlight" name="in-flight" stroke="#087a45" strokeWidth={2} connectNulls={false} />
+                  <Line yAxisId="left" type="monotone" dataKey="rps" name="RPS" stroke="#2563eb" strokeWidth={2} dot={false} isAnimationActive={false} connectNulls={false} />
+                  <Line yAxisId="right" type="monotone" dataKey="inFlight" name="in-flight" stroke="#087a45" strokeWidth={2} dot={false} isAnimationActive={false} connectNulls={false} />
                 </LineChart>
               </ResponsiveContainer>
             </ChartPanel>
-            <ChartPanel title="实时延迟分位数（毫秒）" description="BFF 归一化的当前累计 Histogram 分位数">
+            <ChartPanel title="实时延迟分位数（毫秒）" description="当前累计 Histogram 分位数，最新样本在右侧">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={series} margin={{ top: 12, right: 16, left: 0, bottom: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#dce2de" />
-                  <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                  <XAxis
+                    dataKey="timestamp"
+                    type="number"
+                    scale="time"
+                    domain={timelineDomain}
+                    allowDataOverflow
+                    tick={{ fontSize: 10 }}
+                    tickFormatter={formatTimelineTick}
+                  />
                   <YAxis tick={{ fontSize: 10 }} />
-                  <Tooltip formatter={(value) => formatMetric(typeof value === "number" ? value : null, "ms")} />
+                  <Tooltip
+                    labelFormatter={(value) => formatTimelineTick(Number(value))}
+                    formatter={(value) => formatMetric(typeof value === "number" ? value : null, "ms")}
+                  />
                   <Legend wrapperStyle={{ fontSize: 10 }} />
-                  <Line type="monotone" dataKey="p50" name="P50" stroke="#22c979" strokeWidth={2} connectNulls={false} />
-                  <Line type="monotone" dataKey="p95" name="P95" stroke="#e3a008" strokeWidth={2} connectNulls={false} />
-                  <Line type="monotone" dataKey="p99" name="P99" stroke="#c2410c" strokeWidth={2} connectNulls={false} />
+                  <Line type="monotone" dataKey="p50" name="P50" stroke="#22c979" strokeWidth={2} dot={false} isAnimationActive={false} connectNulls={false} />
+                  <Line type="monotone" dataKey="p95" name="P95" stroke="#e3a008" strokeWidth={2} dot={false} isAnimationActive={false} connectNulls={false} />
+                  <Line type="monotone" dataKey="p99" name="P99" stroke="#c2410c" strokeWidth={2} dot={false} isAnimationActive={false} connectNulls={false} />
                 </LineChart>
               </ResponsiveContainer>
             </ChartPanel>
@@ -221,6 +287,11 @@ function LiveMonitor({ operation, onOperationChange, history, pending, failed }:
       )}
     </section>
   );
+}
+
+function formatTimelineTick(timestamp: number): string {
+  if (!Number.isFinite(timestamp)) return "";
+  return new Date(timestamp).toLocaleTimeString("zh-CN", { hour12: false });
 }
 
 function ReportView({ report, summary, chartData }: {

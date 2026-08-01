@@ -134,9 +134,31 @@ test("login, connect and execute the complete Memory Console path through the BF
   await page.getByRole("link", { name: "性能观测" }).click();
   await expect(page.getByRole("heading", { name: "性能观测" })).toBeVisible();
   await page.getByRole("tab", { name: "实时监控" }).click();
+  await expect(page.getByText("实时流已连接")).toBeVisible();
   await expect(page.getByText("P95").first()).toBeVisible();
   await expect(page.getByText("429 背压", { exact: true })).toBeVisible();
   await expect(page.locator(".live-metrics strong").filter({ hasText: /req\/s$/ })).toBeVisible({ timeout: 12_000 });
+  await expect.poll(async () => {
+    const label = await page.locator("[aria-label^='样本 ']").getAttribute("aria-label");
+    return Number(label?.match(/^样本 (\d+) \/ 60$/)?.[1] ?? 0);
+  }).toBeGreaterThanOrEqual(2);
+  await expect.poll(async () => page.locator(".recharts-line-curve").evaluateAll((paths) => paths.some((path) => {
+    const line = path as SVGPathElement;
+    return line.getTotalLength() > 0;
+  }))).toBe(true);
+  const timelineProgress = await page.locator(".recharts-line-curve").evaluateAll((paths) => {
+    const line = paths
+      .map((path) => path as SVGPathElement)
+      .find((path) => path.getTotalLength() > 0);
+    if (!line?.ownerSVGElement) return null;
+    const start = line.getPointAtLength(0);
+    const end = line.getPointAtLength(line.getTotalLength());
+    return { startX: start.x, endX: end.x, width: line.ownerSVGElement.getBoundingClientRect().width };
+  });
+  expect(timelineProgress).not.toBeNull();
+  expect(timelineProgress!.endX).toBeGreaterThan(timelineProgress!.startX);
+  expect((timelineProgress!.endX - timelineProgress!.startX) / timelineProgress!.width).toBeLessThan(0.15);
+  await page.screenshot({ path: testInfo.outputPath("performance-live.png"), fullPage: true });
   await page.getByRole("tab", { name: "静态报告" }).click();
   const reportInput = page.getByRole("button", { name: "导入压测报告" });
   await reportInput.setInputFiles(performanceFixture);

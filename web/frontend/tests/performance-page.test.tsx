@@ -7,8 +7,10 @@ import { PerformancePage } from "../src/pages/performance-page.js";
 import {
   appendPerformanceHistory,
   deriveOperationSeries,
+  liveTimelineDomain,
   parseLoadTestReport,
   summarizeLoadTestReport,
+  type PerformanceHistoryEntry,
 } from "../src/lib/performance.js";
 import type { PerformanceSnapshot } from "../src/lib/contracts.js";
 
@@ -78,7 +80,35 @@ function snapshot(sampledAt: string, total: number, success: number): Performanc
   };
 }
 
-afterEach(() => vi.unstubAllGlobals());
+class FakeWebSocket {
+  static readonly OPEN = 1;
+  static readonly instances: FakeWebSocket[] = [];
+  readonly readyState = FakeWebSocket.OPEN;
+  readonly url: string;
+  private readonly listeners = new Map<string, Array<(event: MessageEvent) => void>>();
+
+  constructor(url: string) {
+    this.url = url;
+    FakeWebSocket.instances.push(this);
+  }
+
+  addEventListener(type: string, listener: (event: MessageEvent) => void): void {
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+  }
+
+  close(): void {}
+
+  emitMessage(message: unknown): void {
+    for (const listener of this.listeners.get("message") ?? []) {
+      listener(new MessageEvent("message", { data: JSON.stringify(message) }));
+    }
+  }
+}
+
+afterEach(() => {
+  FakeWebSocket.instances.length = 0;
+  vi.unstubAllGlobals();
+});
 
 test("导入合法压测报告后显示核心指标和429", async () => {
   const user = userEvent.setup();
@@ -152,32 +182,72 @@ test("累计快照差分生成RPS且失败样本保留为缺口", () => {
     null,
   ]);
   expect(history[2]?.snapshot).toBeNull();
+  expect(liveTimelineDomain(deriveOperationSeries(history, "recall"))).toEqual([
+    Date.parse("2026-08-01T00:00:00.000Z"),
+    Date.parse("2026-08-01T00:00:59.000Z"),
+  ]);
+});
+
+test("实时序列使用递增时间戳并在六十秒后滚动窗口", () => {
+  const history = [
+    snapshot("2026-08-01T00:00:00.000Z", 100, 95),
+    snapshot("2026-08-01T00:00:01.000Z", 105, 100),
+    snapshot("2026-08-01T00:01:10.000Z", 150, 145),
+  ].reduce<PerformanceHistoryEntry[]>(
+    (current, item) => appendPerformanceHistory(current, item),
+    [],
+  );
+  const series = deriveOperationSeries(history, "recall");
+
+  expect(series.map((point) => point.timestamp)).toEqual([
+    Date.parse("2026-08-01T00:00:00.000Z"),
+    Date.parse("2026-08-01T00:00:01.000Z"),
+    Date.parse("2026-08-01T00:01:10.000Z"),
+  ]);
+  expect(liveTimelineDomain(series)).toEqual([
+    Date.parse("2026-08-01T00:00:11.000Z"),
+    Date.parse("2026-08-01T00:01:10.000Z"),
+  ]);
 });
 
 test("实时采样失败后显示最后成功数据和采样缺口", async () => {
+  vi.stubGlobal("WebSocket", FakeWebSocket);
   const user = userEvent.setup();
-  const responses: Array<PerformanceSnapshot | Error> = [
-    snapshot("2026-08-01T00:00:00.000Z", 100, 95),
-    snapshot("2026-08-01T00:00:10.000Z", 150, 145),
-    new Error("fixture offline"),
-  ];
-  vi.stubGlobal("fetch", vi.fn(async () => {
-    const response = responses.shift();
-    if (response instanceof Error) {
-      return Response.json({ code: "upstream_unavailable", message: "实例指标不可用" }, { status: 502 });
-    }
-    return Response.json(response);
-  }));
-  const { client } = renderPage();
+  renderPage();
 
   await user.click(screen.getByRole("tab", { name: "实时监控" }));
+  const socket = FakeWebSocket.instances.at(-1);
+  socket?.emitMessage({ type: "snapshot", snapshot: snapshot("2026-08-01T00:00:00.000Z", 100, 95) });
   expect(await screen.findByText("95.0%")).not.toBeNull();
-  await client.invalidateQueries({ queryKey: ["instance-metrics", instance.id] });
+  socket?.emitMessage({ type: "snapshot", snapshot: snapshot("2026-08-01T00:00:10.000Z", 150, 145) });
   expect(await screen.findByText("5 req/s")).not.toBeNull();
-  await client.invalidateQueries({ queryKey: ["instance-metrics", instance.id] });
+  socket?.emitMessage({
+    type: "gap",
+    sampledAt: "2026-08-01T00:00:15.000Z",
+    message: "实例指标采样失败",
+  });
 
   expect(await screen.findByRole("alert")).not.toBeNull();
   expect(screen.getByText(/最后成功采样/)).not.toBeNull();
   await waitFor(() => expect(screen.getByText("采样缺口 1")).not.toBeNull());
   expect(screen.getByText("5 req/s")).not.toBeNull();
+});
+
+test("实时监控通过 WebSocket 按时间顺序接收快照", async () => {
+  vi.stubGlobal("WebSocket", FakeWebSocket);
+  const fetch = vi.fn();
+  vi.stubGlobal("fetch", fetch);
+  const user = userEvent.setup();
+  renderPage();
+
+  await user.click(screen.getByRole("tab", { name: "实时监控" }));
+  const socket = FakeWebSocket.instances.at(-1);
+  expect(socket?.url).toContain(`/api/v1/instances/${instance.id}/metrics/stream`);
+  socket?.emitMessage({ type: "snapshot", snapshot: snapshot("2026-08-01T00:00:00.000Z", 100, 95) });
+  expect(await screen.findByText("95.0%")).not.toBeNull();
+  socket?.emitMessage({ type: "snapshot", snapshot: snapshot("2026-08-01T00:00:01.000Z", 105, 100) });
+
+  expect(await screen.findByText("5 req/s")).not.toBeNull();
+  expect(screen.getByLabelText("样本 2 / 60")).not.toBeNull();
+  expect(fetch).not.toHaveBeenCalled();
 });

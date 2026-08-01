@@ -139,7 +139,7 @@ jc_memory_timeouts_total
 jc_memory_server_ready
 ```
 
-BFF 将 Prometheus 文本归一化为前端契约，前端不直接接触实例 API Key。Histogram 分位数由有边界的 Bucket 或服务端快照计算，并明确显示采样窗口。
+BFF 将 Prometheus 文本归一化为前端契约，前端不直接接触实例 API Key。BFF 每秒采样后通过受 Session 和 Origin 保护的 WebSocket 推送，浏览器不周期轮询指标；连接关闭时停止采样。Histogram 分位数由有边界的 Bucket 或服务端快照计算，并在固定 60 秒滚动时间窗中从左向右显示。
 
 ## 8. 测试与验收
 

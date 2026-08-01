@@ -64,6 +64,7 @@ export interface PerformanceHistoryEntry {
 
 export interface OperationSeriesPoint {
   sampledAt: string;
+  timestamp: number;
   label: string;
   gap: boolean;
   total: number | null;
@@ -178,6 +179,7 @@ export function deriveOperationSeries(
     previous = { total, sampledAtMs };
     return {
       sampledAt: entry.sampledAt,
+      timestamp: sampledAtMs,
       label: sampleTimeLabel(entry.sampledAt),
       gap: false,
       total,
@@ -193,9 +195,25 @@ export function deriveOperationSeries(
   });
 }
 
+export function liveTimelineDomain(
+  series: OperationSeriesPoint[],
+): [number | "auto", number | "auto"] {
+  const timestamps = series
+    .map((point) => point.timestamp)
+    .filter(Number.isFinite);
+  const first = timestamps[0];
+  const latest = timestamps.at(-1);
+  if (first === undefined || latest === undefined) return ["auto", "auto"];
+  const windowMs = (PERFORMANCE_HISTORY_LIMIT - 1) * 1_000;
+  return latest - first < windowMs
+    ? [first, first + windowMs]
+    : [latest - windowMs, latest];
+}
+
 function gapPoint(sampledAt: string): OperationSeriesPoint {
   return {
     sampledAt,
+    timestamp: Date.parse(sampledAt),
     label: sampleTimeLabel(sampledAt),
     gap: true,
     total: null,

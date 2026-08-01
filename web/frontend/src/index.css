@@ -260,6 +260,9 @@
   .live-monitor { @apply mt-5 grid gap-4; }
   .live-toolbar { @apply flex items-end justify-between gap-5 border border-line bg-panel p-5; }
   .live-toolbar h2 { @apply m-0 text-sm font-semibold; }
+  .live-connection-state { @apply inline-flex items-center gap-1.5 text-[10px] font-semibold text-muted; }
+  .live-connection-state svg { @apply size-3.5; }
+  .live-connection-state.is-connected { @apply text-emerald-700; }
   .live-toolbar label { @apply grid gap-1 text-[10px] font-semibold text-muted; }
   .live-toolbar select { @apply h-9 min-w-40 border border-line bg-white px-2 text-xs text-ink outline-none focus:border-brand-strong focus:ring-2 focus:ring-brand/15; }
   .live-meta code { @apply text-ink; }
