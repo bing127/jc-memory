@@ -15,6 +15,9 @@ concurrency:
 
 env:
   RUST_TOOLCHAIN: "1.97.1"
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
 
 jobs:
   quality:
@@ -38,10 +41,9 @@ jobs:
         shell: bash
         run: cargo +"$RUST_TOOLCHAIN" clippy --workspace --all-targets --all-features -- -D warnings
       - name: 安装固定 Buf
-        shell: bash
-        run: |
-          go install github.com/bufbuild/buf/cmd/buf@v1.64.0
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+        uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99
+        with:
+          version: "1.64.0"
       - name: Workspace 测试
         shell: bash
         run: cargo +"$RUST_TOOLCHAIN" test --workspace --all-features --exclude jc-memory-python

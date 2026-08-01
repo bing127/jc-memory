@@ -46,6 +46,11 @@ jobs:
           print("\n".join(document["project"]["dependencies"]))
           PY
           pip-audit -r /tmp/jc-memory-python-requirements.txt
+      - name: 安装 Go 模块工具链
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: sdk/go/go.mod
+          cache: false
       - name: Go 依赖审计
         shell: bash
         working-directory: sdk/go

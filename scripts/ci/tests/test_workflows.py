@@ -38,6 +38,8 @@ WORKFLOWS = {
 CHECKOUT_SHA = "11bd71901bbe5b1630ceea73d27597364c9af683"
 PNPM_VERSION = "9.15.9"
 BUF_VERSION = "1.64.0"
+BUF_SETUP_SHA = "a47c93e0b1648d5651a065437926377d060baa99"
+SETUP_GO_SHA = "924ae3a1cded613372ab5595356fb5720e22ba16"
 PUSH_WORKFLOWS = (
     "benchmarks.yml",
     "mobile.yml",
@@ -72,10 +74,52 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_rust_quality_installs_fixed_buf_before_workspace_tests(self) -> None:
         workflow = (WORKFLOW_DIR / "rust.yml").read_text(encoding="utf-8")
-        install = f"go install github.com/bufbuild/buf/cmd/buf@v{BUF_VERSION}"
+        install = f"uses: bufbuild/buf-setup-action@{BUF_SETUP_SHA}"
         workspace_test = 'cargo +"$RUST_TOOLCHAIN" test --workspace'
         self.assertIn(install, workflow)
+        self.assertIn(f'version: "{BUF_VERSION}"', workflow)
         self.assertLess(workflow.index(install), workflow.index(workspace_test))
+
+    def test_rust_quality_bounds_cargo_disk_usage(self) -> None:
+        workflow = (WORKFLOW_DIR / "rust.yml").read_text(encoding="utf-8")
+        for setting in (
+            'CARGO_INCREMENTAL: "0"',
+            'CARGO_PROFILE_DEV_DEBUG: "0"',
+            'CARGO_PROFILE_TEST_DEBUG: "0"',
+        ):
+            self.assertIn(setting, workflow)
+
+    def test_security_uses_module_go_version_for_govulncheck(self) -> None:
+        workflow = (WORKFLOW_DIR / "security.yml").read_text(encoding="utf-8")
+        setup = f"uses: actions/setup-go@{SETUP_GO_SHA}"
+        govulncheck = "go install golang.org/x/vuln/cmd/govulncheck@v1.1.4"
+        self.assertIn(setup, workflow)
+        self.assertIn("go-version-file: sdk/go/go.mod", workflow)
+        self.assertLess(workflow.index(setup), workflow.index(govulncheck))
+
+    def test_windows_security_noops_expect_fallible_contract_lint(self) -> None:
+        source = (ROOT / "crates" / "memory-security" / "src" / "key.rs").read_text(
+            encoding="utf-8"
+        )
+        helpers = (
+            "sync_directory",
+            "ensure_restricted_directory",
+            "set_restricted_directory_permissions",
+            "ensure_restricted_file",
+            "set_restricted_file_permissions",
+        )
+        for helper in helpers:
+            pattern = (
+                r"#\[cfg_attr\(\s*not\(unix\),\s*expect\(\s*"
+                r"clippy::unnecessary_wraps,\s*reason = \"[^\"]+\"\s*\)\s*\)\]\s*"
+                rf"fn {helper}\b"
+            )
+            self.assertRegex(source, pattern, helper)
+        self.assertIn("let _ = (path, file);", source)
+        self.assertRegex(
+            source,
+            r"fn set_restricted_file_permissions[\s\S]{0,500}let _ = file;",
+        )
 
     def test_every_action_reference_uses_a_full_commit_sha(self) -> None:
         references = []

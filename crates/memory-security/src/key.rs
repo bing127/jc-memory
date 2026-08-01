@@ -504,6 +504,13 @@ impl<'a> Cursor<'a> {
     }
 }
 
+#[cfg_attr(
+    not(unix),
+    expect(
+        clippy::unnecessary_wraps,
+        reason = "Unix directory synchronization is fallible"
+    )
+)]
 fn sync_directory(path: &Path) -> Result<(), std::io::Error> {
     #[cfg(unix)]
     {
@@ -516,6 +523,13 @@ fn sync_directory(path: &Path) -> Result<(), std::io::Error> {
     }
 }
 
+#[cfg_attr(
+    not(unix),
+    expect(
+        clippy::unnecessary_wraps,
+        reason = "Unix directory permission validation is fallible"
+    )
+)]
 fn ensure_restricted_directory(path: &Path) -> Result<(), KeyError> {
     #[cfg(unix)]
     {
@@ -534,6 +548,13 @@ fn ensure_restricted_directory(path: &Path) -> Result<(), KeyError> {
     Ok(())
 }
 
+#[cfg_attr(
+    not(unix),
+    expect(
+        clippy::unnecessary_wraps,
+        reason = "Unix directory permission updates are fallible"
+    )
+)]
 fn set_restricted_directory_permissions(path: &Path) -> Result<(), KeyError> {
     #[cfg(unix)]
     {
@@ -546,6 +567,13 @@ fn set_restricted_directory_permissions(path: &Path) -> Result<(), KeyError> {
     Ok(())
 }
 
+#[cfg_attr(
+    not(unix),
+    expect(
+        clippy::unnecessary_wraps,
+        reason = "Unix file permission validation is fallible"
+    )
+)]
 fn ensure_restricted_file(path: &Path, file: &File) -> Result<(), KeyError> {
     #[cfg(unix)]
     {
@@ -561,10 +589,17 @@ fn ensure_restricted_file(path: &Path, file: &File) -> Result<(), KeyError> {
             return Err(KeyError::PermissionDenied);
         }
     }
-    let _ = path;
+    let _ = (path, file);
     Ok(())
 }
 
+#[cfg_attr(
+    not(unix),
+    expect(
+        clippy::unnecessary_wraps,
+        reason = "Unix file permission updates are fallible"
+    )
+)]
 fn set_restricted_file_permissions(file: &File) -> Result<(), KeyError> {
     #[cfg(unix)]
     {
@@ -574,6 +609,7 @@ fn set_restricted_file_permissions(file: &File) -> Result<(), KeyError> {
                 operation: "set key file permissions",
             })?;
     }
+    let _ = file;
     Ok(())
 }
 
