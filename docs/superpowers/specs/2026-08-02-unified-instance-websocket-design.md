@@ -1,6 +1,6 @@
 # 统一实例 WebSocket 设计
 
-- **状态：** 待确认
+- **状态：** 已确认
 - **日期：** 2026-08-02
 - **产品名称：** 疆诚记忆
 - **英文名称：** Jiangcheng Memory
@@ -81,6 +81,18 @@ WebSocket 使用现有 Session Cookie，并校验握手 `Origin`。实例不存�
 
 每次 `subscribe` 消息表达该连接的完整期望集合，而不是增量补丁。BFF 比较新旧集合后启动新增频道、停止移除频道。重复发送相同集合必须幂等，不得创建重复定时器。
 
+HTTP 写操作成功后，客户端可要求当前已订阅频道立即采样一次：
+
+```json
+{
+  "version": 1,
+  "type": "refresh",
+  "topics": ["runtime.list"]
+}
+```
+
+`refresh` 不改变订阅集合，不创建新定时器；未订阅 Topic 会返回协议错误。频道已有采样正在执行时跳过该次刷新，避免请求重叠。
+
 频道定义：
 
 | Topic | 参数 | 立即采样 | 后续周期 |
@@ -90,7 +102,7 @@ WebSocket 使用现有 Session Cookie，并校验握手 `Origin`。实例不存�
 | `runtime.list` | 无 | 是 | 10 秒 |
 | `runtime.detail` | `runId` | 是 | 5 秒 |
 
-未知版本、未知 Topic、非法 UUID 或重复冲突参数不关闭整个连接。BFF 返回协议错误消息并保留上一份合法订阅集合。
+未知版本、未知 Topic、非法 UUID、重复冲突参数或刷新未订阅频道不关闭整个连接。BFF 返回协议错误消息并保留上一份合法订阅集合。
 
 ## 6. 服务端消息协议
 
@@ -168,7 +180,9 @@ Provider 维护以下独立状态：
 
 只有真实 WebSocket `close` 或 `error` 才进入传输断开状态。`channel_error` 不得把连接显示为“等待重连”。重连成功后 Provider 自动重发当前订阅集合。
 
-React StrictMode 下的开发期挂载检查不得形成持续双连接。Provider 清理旧连接，BFF 的幂等订阅和任务清理共同保证不会出现重复采样。
+前端使用按实例 ID 建立的连接注册表和引用计数。最后一个 Provider 释放连接时不立即关闭，而是延迟到下一轮事件循环；React StrictMode 紧接着重新获取同一实例时取消释放并复用原生 WebSocket，因此开发期挂载检查也只构造一条连接。真实实例切换、退出实例区域或延迟释放到期后关闭旧连接。
+
+同一轮路由切换中的订阅移除和新增合并后再发送，避免先发送空集合、随后又发送新集合造成无意义的频道启停。BFF 的幂等订阅和任务清理继续作为服务端防线。
 
 ## 9. 页面行为
 
@@ -180,7 +194,7 @@ React StrictMode 下的开发期挂载检查不得形成持续双连接。Provid
 
 Runtime 页始终订阅 `runtime.list`；选中 Run 后额外订阅一个带 `runId` 的 `runtime.detail`。删除 10 秒和 5 秒轮询文案及配置。
 
-Runtime Start 仍使用 HTTP mutation。成功后页面选中返回的 `run_id`，Provider 更新订阅；BFF 随即对新详情和列表执行一次即时采样，不等待下一个周期。
+Runtime Start 仍使用 HTTP mutation。成功后页面选中返回的 `run_id`，Provider 更新详情订阅并对 `runtime.list` 发送 `refresh`；BFF 随即采样新详情和列表，不等待下一个周期。
 
 ### 9.3 性能观测
 
