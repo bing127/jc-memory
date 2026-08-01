@@ -1,6 +1,7 @@
 //! 疆诚记忆 HTTP 与共享协议服务边界。
 
 mod config;
+mod metrics;
 mod runtime_backend;
 
 pub use config::{ConfigError, RuntimeProviderConfig, ServerConfig, TlsFiles};
@@ -35,6 +36,7 @@ use jc_memory_runtime::{
     RunId, RuntimeQueryError, RuntimeReadStore, RuntimeRequest, RuntimeResult, RuntimeRunDetail,
     RuntimeRunPage, RuntimeRunQuery, RuntimeService, RuntimeServiceError, RuntimeState,
 };
+use metrics::{MetricOperation, MetricOutcome, MetricTransport, ServerMetrics};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::net::TcpListener;
@@ -85,6 +87,7 @@ pub struct ServerState<B> {
     request_timeout: Option<Duration>,
     runtime_read_store: Option<Arc<RuntimeReadStore>>,
     runtime_service: Option<Arc<RuntimeService>>,
+    metrics: Arc<ServerMetrics>,
 }
 
 impl<B> Clone for ServerState<B> {
@@ -98,6 +101,7 @@ impl<B> Clone for ServerState<B> {
             request_timeout: self.request_timeout,
             runtime_read_store: self.runtime_read_store.clone(),
             runtime_service: self.runtime_service.clone(),
+            metrics: Arc::clone(&self.metrics),
         }
     }
 }
@@ -175,6 +179,7 @@ impl<B> ServerState<B> {
             request_timeout,
             runtime_read_store: None,
             runtime_service: None,
+            metrics: Arc::new(ServerMetrics::new()),
         }
     }
 
@@ -258,7 +263,7 @@ where
     Router::new()
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
-        .route("/metrics", get(metrics))
+        .route("/metrics", get(metrics::<B>))
         .route("/v1/memory/command", post(command::<B>))
         .route("/v1/memory/observe", post(observe::<B>))
         .route("/v1/memory/commit", post(commit::<B>))
@@ -394,10 +399,15 @@ async fn readyz() -> impl IntoResponse {
     Json(json!({"status":"ready"}))
 }
 
-async fn metrics() -> impl IntoResponse {
+async fn metrics<B>(State(state): State<ServerState<B>>) -> impl IntoResponse
+where
+    B: CommandBus + Send + Sync + 'static,
+{
     (
         [("content-type", "text/plain; version=0.0.4")],
-        "jc_memory_server_ready 1\n",
+        state
+            .metrics
+            .render(state.in_flight.load(Ordering::Acquire)),
     )
 }
 
@@ -645,11 +655,31 @@ async fn command_inner<B>(
 where
     B: CommandBus + Send + Sync + 'static,
 {
+    let operation = MetricOperation::from_command(&request.command);
+    let started = Instant::now();
+    let result = command_inner_uninstrumented(&state, headers, request).await;
+    state.metrics.record(
+        operation,
+        MetricTransport::Http,
+        MetricOutcome::from_error(result.as_ref().err()),
+        started.elapsed(),
+    );
+    result
+}
+
+async fn command_inner_uninstrumented<B>(
+    state: &ServerState<B>,
+    headers: HeaderMap,
+    request: MemoryRequest,
+) -> Result<Json<ResponseEnvelope>, ServerError>
+where
+    B: CommandBus + Send + Sync + 'static,
+{
     let key = extract_api_key(&headers).ok_or(ServerError::Unauthorized)?;
     let access = state.access(&key, &request.request_id)?;
     state.acquire_rate_limit(&key)?;
-    let _permit = InFlightPermit::acquire(&state)?;
-    let response = execute_with_timeout(&state, &access, request).await?;
+    let _permit = InFlightPermit::acquire(state)?;
+    let response = execute_with_timeout(state, &access, request).await?;
     Ok(Json(response))
 }
 
@@ -735,10 +765,22 @@ where
         key: &str,
         request: MemoryRequest,
     ) -> Result<ResponseEnvelope, ServerError> {
-        let access = self.state.access(key, &request.request_id)?;
-        self.state.acquire_rate_limit(key)?;
-        let _permit = InFlightPermit::acquire(&self.state)?;
-        execute_with_timeout(&self.state, &access, request).await
+        let operation = MetricOperation::from_command(&request.command);
+        let started = Instant::now();
+        let result = async {
+            let access = self.state.access(key, &request.request_id)?;
+            self.state.acquire_rate_limit(key)?;
+            let _permit = InFlightPermit::acquire(&self.state)?;
+            execute_with_timeout(&self.state, &access, request).await
+        }
+        .await;
+        self.state.metrics.record(
+            operation,
+            MetricTransport::Grpc,
+            MetricOutcome::from_error(result.as_ref().err()),
+            started.elapsed(),
+        );
+        result
     }
 }
 

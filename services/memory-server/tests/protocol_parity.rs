@@ -319,6 +319,137 @@ async fn generic_command_route_reuses_the_same_core_envelope() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn metrics_record_success_timeout_and_backpressure_without_sensitive_labels() {
+    let success_key = ApiKey::new(
+        "test-key",
+        AccessContext::new("principal", request().access_scope.clone().into()),
+    );
+    let success_state = ServerState::new(FixtureBus, vec![success_key]);
+    let success = router(success_state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/memory/observe")
+                .header("content-type", "application/json")
+                .header("x-api-key", "test-key")
+                .body(Body::from(serde_json::to_vec(&request()).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(success.status(), StatusCode::OK);
+
+    let timeout_state = ServerState::with_request_limits_and_timeout(
+        SlowBus,
+        [ApiKey::new(
+            "slow-key",
+            AccessContext::new("principal", request().access_scope.clone().into()),
+        )],
+        64,
+        100,
+        1,
+    );
+    let timeout = router(timeout_state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/memory/observe")
+                .header("content-type", "application/json")
+                .header("x-api-key", "slow-key")
+                .body(Body::from(serde_json::to_vec(&request()).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(timeout.status(), StatusCode::GATEWAY_TIMEOUT);
+
+    let limited_state = ServerState::with_max_in_flight(
+        FixtureBus,
+        [ApiKey::new(
+            "limited-key",
+            AccessContext::new("principal", request().access_scope.clone().into()),
+        )],
+        0,
+    );
+    let limited = router(limited_state.clone())
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/memory/observe")
+                .header("content-type", "application/json")
+                .header("x-api-key", "limited-key")
+                .body(Body::from(serde_json::to_vec(&request()).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(limited.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    let metrics = router(success_state)
+        .oneshot(
+            Request::builder()
+                .uri("/metrics")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(metrics.status(), StatusCode::OK);
+    let body = metrics.into_body().collect().await.unwrap().to_bytes();
+    let body = String::from_utf8(body.to_vec()).unwrap();
+    assert!(body.contains("jc_memory_requests_total"));
+    assert!(body.contains("operation=\"observe\""));
+    assert!(body.contains("transport=\"http\""));
+    assert!(body.contains("outcome=\"success\""));
+    assert!(!body.contains("test-key"));
+    assert!(!body.contains("request-1"));
+    assert!(!body.contains("00000000-0000-7000-8000-000000000003"));
+
+    let timeout_metrics = router(timeout_state)
+        .oneshot(
+            Request::builder()
+                .uri("/metrics")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let timeout_body = timeout_metrics
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes();
+    assert!(
+        String::from_utf8(timeout_body.to_vec())
+            .unwrap()
+            .contains("outcome=\"timeout\"")
+    );
+
+    let limited_metrics = router(limited_state)
+        .oneshot(
+            Request::builder()
+                .uri("/metrics")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let limited_body = limited_metrics
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes();
+    assert!(
+        String::from_utf8(limited_body.to_vec())
+            .unwrap()
+            .contains("outcome=\"rate_limited\"")
+    );
+}
+
+#[tokio::test]
 async fn commit_route_returns_structured_commit_envelope() {
     let mut request = request();
     let fragment = match request.command {

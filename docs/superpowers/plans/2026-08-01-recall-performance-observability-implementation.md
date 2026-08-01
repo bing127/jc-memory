@@ -200,21 +200,21 @@ git commit -m "feat(benchmarks): 增加可视化 HTTP 压测报告" -m "新增�
 - Modify: `services/memory-server/src/lib.rs`
 - Modify: `services/memory-server/tests/protocol_parity.rs`
 
-- [ ] **Step 1: 写指标红灯测试**
+- [x] **Step 1: 写指标红灯测试**
 
 对成功 Observe、SlowBus timeout 和超过 `max_in_flight` 的请求执行后读取 `/metrics`，断言包含固定 operation、累计 Bucket、429 和 timeout，且不包含 API Key、request ID 或 Scope ID。
 
-- [ ] **Step 2: 运行测试并确认现有 metrics 只有 ready**
+- [x] **Step 2: 运行测试并确认现有 metrics 只有 ready**
 
 Run: `CARGO_INCREMENTAL=0 cargo test -p jc-memory-server --test protocol_parity metrics --offline`
 
 Expected: FAIL，缺少 `jc_memory_requests_total`。
 
-- [ ] **Step 3: 实现无高基数指标聚合**
+- [x] **Step 3: 实现无高基数指标聚合**
 
 `ServerMetrics` 使用固定 operation 枚举、`AtomicU64` 计数器和固定秒级 Histogram Bucket。`command_inner` 与 `GrpcAdapter::execute` 记录整个请求耗时和稳定结果类别；`/metrics` 从 `State` 渲染 Prometheus 0.0.4 文本，in-flight 直接读取现有原子计数。
 
-- [ ] **Step 4: 运行 Server 测试和 Clippy**
+- [x] **Step 4: 运行 Server 测试和 Clippy**
 
 Run: `CARGO_INCREMENTAL=0 cargo test -p jc-memory-server --all-targets --all-features --offline`
 
@@ -222,7 +222,7 @@ Run: `cargo fmt --all -- --check && CARGO_INCREMENTAL=0 cargo clippy -p jc-memor
 
 Expected: 全部退出码 0。
 
-- [ ] **Step 5: 提交 Server 指标**
+- [x] **Step 5: 提交 Server 指标**
 
 ```bash
 git add services/memory-server/src/metrics.rs services/memory-server/src/lib.rs services/memory-server/tests/protocol_parity.rs
