@@ -26,6 +26,16 @@ export interface InstanceStatus {
   serverReady: boolean;
 }
 
+export interface OverviewSnapshot {
+  status: InstanceStatus;
+  stats: {
+    request_id: string;
+    response: {
+      payload: { fragment_count: number; event_count: number };
+    };
+  };
+}
+
 export type PerformanceOperationName =
   | "observe"
   | "commit"
