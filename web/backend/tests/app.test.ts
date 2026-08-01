@@ -118,6 +118,39 @@ describe("control-plane BFF", () => {
     await app.close();
   });
 
+  test("proxies metrics as a normalized performance snapshot", async () => {
+    const upstreamFetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input)).toBe("http://127.0.0.1:8787/metrics");
+      expect(new Headers(init?.headers).get("x-api-key")).toBeNull();
+      return new Response([
+        'jc_memory_requests_total{operation="recall",transport="http"} 2',
+        'jc_memory_requests_total{operation="recall",transport="http",outcome="success"} 2',
+        'jc_memory_request_duration_seconds_bucket{operation="recall",transport="http",le="0.025"} 2',
+        'jc_memory_request_duration_seconds_bucket{operation="recall",transport="http",le="+Inf"} 2',
+        "jc_memory_requests_in_flight 1",
+        "jc_memory_server_ready 1",
+      ].join("\n"));
+    });
+    const app = await createApp(upstreamFetch);
+    const cookie = await login(app);
+    const instanceId = await createInstance(app, cookie);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/v1/instances/${instanceId}/metrics`,
+      headers: { cookie },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      inFlight: 1,
+      operations: [{ operation: "recall", total: 2, success: 2, latencyMs: { p95: 25 } }],
+    });
+    expect(response.body).not.toContain(apiKey);
+    expect(upstreamFetch).toHaveBeenCalledOnce();
+    await app.close();
+  });
+
   test("rejects unsafe instance URLs before saving credentials", async () => {
     const app = await createApp(vi.fn());
     const cookie = await login(app);

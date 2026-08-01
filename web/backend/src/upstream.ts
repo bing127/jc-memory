@@ -44,6 +44,7 @@ export interface UpstreamClient {
   status(
     connection: InstanceConnection,
   ): Promise<{ health: unknown; ready: unknown; metrics: string }>;
+  metrics(connection: InstanceConnection): Promise<string>;
   runtimeRuns(
     connection: InstanceConnection,
     query: { state?: string | undefined; limit: number; offset: number },
@@ -129,6 +130,10 @@ export function createUpstreamClient(
         fetchStatusText(fetchImpl, new URL("metrics", baseUrl), timeoutMs),
       ]);
       return { health, ready, metrics };
+    },
+    async metrics(connection) {
+      const baseUrl = validateBaseUrl(connection.baseUrl);
+      return fetchStatusText(fetchImpl, new URL("metrics", baseUrl), timeoutMs);
     },
     async runtimeRuns(connection, query) {
       const baseUrl = validateBaseUrl(connection.baseUrl);

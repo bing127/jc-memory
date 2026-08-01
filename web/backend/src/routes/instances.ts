@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import type { AuthService } from "../auth.js";
 import type { InstanceStore } from "../instances.js";
+import { parseServerMetrics } from "../metrics.js";
 import { uuidStringSchema } from "../protocol.js";
 import type { UpstreamClient } from "../upstream.js";
 import { validateBaseUrl } from "../upstream.js";
@@ -75,5 +76,19 @@ export async function registerInstanceRoutes(
       ready: status.ready,
       serverReady: /^jc_memory_server_ready 1$/m.test(status.metrics),
     };
+  });
+
+  app.get("/api/v1/instances/:id/metrics", async (request, reply) => {
+    if (!requireSession(request, reply, auth)) return;
+    const parsed = instanceParamsSchema.safeParse(request.params);
+    if (!parsed.success) {
+      return reply.code(400).send({ code: "invalid_argument", message: "实例 ID 无效" });
+    }
+    const connection = store.getConnection(parsed.data.id);
+    if (!connection) {
+      return reply.code(404).send({ code: "not_found", message: "实例连接不存在" });
+    }
+    const rawMetrics = await upstream.metrics(connection);
+    return parseServerMetrics(rawMetrics);
   });
 }

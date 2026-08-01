@@ -238,21 +238,21 @@ git commit -m "feat(server): 暴露请求延迟与背压指标" -m "按固定 op
 - Modify: `web/backend/src/routes/instances.ts`
 - Modify: `web/backend/tests/app.test.ts`
 
-- [ ] **Step 1: 写 Prometheus 解析红灯测试**
+- [x] **Step 1: 写 Prometheus 解析红灯测试**
 
 使用固定 metrics Fixture，断言只接受白名单指标，并把累计 Bucket 转为 operation 的 total、success、error、rateLimited、timeouts、inFlight、P50/P95/P99；未知标签和 `NaN` 必须拒绝。
 
-- [ ] **Step 2: 运行测试并确认解析器缺失**
+- [x] **Step 2: 运行测试并确认解析器缺失**
 
 Run: `cd web && corepack pnpm --filter ./backend test -- metrics.test.ts`
 
 Expected: FAIL，提示 `metrics.ts` 不存在。
 
-- [ ] **Step 3: 实现解析器、Upstream 和受保护路由**
+- [x] **Step 3: 实现解析器、Upstream 和受保护路由**
 
 增加 `upstream.metrics(connection)`，只 GET `/metrics`。增加 `GET /api/v1/instances/:id/metrics`，要求有效 Session，从 Store 取服务端凭据并返回归一化 `PerformanceSnapshot`；响应不得包含原始 Prometheus 文本或 API Key。
 
-- [ ] **Step 4: 运行 BFF 测试与 Typecheck**
+- [x] **Step 4: 运行 BFF 测试与 Typecheck**
 
 Run: `cd web && corepack pnpm --filter ./backend test`
 
@@ -260,7 +260,7 @@ Run: `cd web && corepack pnpm --filter ./backend typecheck`
 
 Expected: 全部退出码 0。
 
-- [ ] **Step 5: 提交 BFF 指标接口**
+- [x] **Step 5: 提交 BFF 指标接口**
 
 ```bash
 git add web/backend/src/metrics.ts web/backend/tests/metrics.test.ts web/backend/src/upstream.ts web/backend/src/routes/instances.ts web/backend/tests/app.test.ts
