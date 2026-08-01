@@ -154,11 +154,15 @@ class WorkflowContractTests(unittest.TestCase):
             r"#\[must_use\]\s*pub fn into_inner\(self\) -> platform::Stream",
         )
 
-    def test_unix_only_server_test_documents_the_empty_windows_crate(self) -> None:
-        source = (
-            ROOT / "services" / "memory-server" / "tests" / "server_binary_e2e.rs"
-        ).read_text(encoding="utf-8")
-        self.assertLess(source.index("//!"), source.index("#![cfg(unix)]"))
+    def test_unix_only_tests_document_the_empty_windows_crate(self) -> None:
+        for relative_path in (
+            "services/memory-server/tests/server_binary_e2e.rs",
+            "services/memory-sidecar/tests/sidecar_contract.rs",
+        ):
+            source = (ROOT / relative_path).read_text(encoding="utf-8")
+            self.assertLess(
+                source.index("//!"), source.index("#![cfg(unix)]"), relative_path
+            )
 
     def test_every_action_reference_uses_a_full_commit_sha(self) -> None:
         references = []

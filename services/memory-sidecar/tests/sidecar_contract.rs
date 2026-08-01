@@ -1,5 +1,5 @@
-#![cfg(unix)]
 //! Sidecar 本地认证、单实例和生命周期契约测试。
+#![cfg(unix)]
 
 use std::os::unix::fs::PermissionsExt as _;
 use std::process::Command;
