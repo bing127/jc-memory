@@ -1,36 +1,40 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Clock3, GitBranch, PauseCircle, Play, Workflow } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { ChevronRight, Clock3, GitBranch, PauseCircle, Play } from "lucide-react";
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { JsonViewer } from "../components/json-viewer.js";
 import { Button } from "../components/ui/button.js";
 import { api, ApiError } from "../lib/api.js";
-import type { InstanceSummary, RuntimeRunRecord, RuntimeState } from "../lib/contracts.js";
+import type {
+  InstanceSummary,
+  RuntimeRunDetail,
+  RuntimeRunPage,
+  RuntimeRunRecord,
+  RuntimeState,
+} from "../lib/contracts.js";
+import {
+  useInstanceStreamRefresh,
+  useInstanceStreamSubscription,
+  useInstanceStreamTopic,
+} from "../lib/instance-stream.js";
 
 export function RuntimePage({ instance }: { instance: InstanceSummary }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [prompt, setPrompt] = useState("");
-  const queryClient = useQueryClient();
   const selectedRunId = searchParams.get("run");
-  const runs = useQuery({
-    queryKey: ["runtime-runs", instance.id],
-    queryFn: () => api.runtimeRuns(instance.id),
-    refetchInterval: 10_000,
-  });
-  const detail = useQuery({
-    queryKey: ["runtime-run", instance.id, selectedRunId],
-    queryFn: () => api.runtimeRun(instance.id, selectedRunId ?? ""),
-    enabled: selectedRunId !== null,
-    refetchInterval: 5_000,
-  });
-  const unavailable = runs.error instanceof ApiError && [404, 503].includes(runs.error.status);
+  useInstanceStreamSubscription({ topic: "runtime.list" });
+  useInstanceStreamSubscription(
+    selectedRunId ? { topic: "runtime.detail", runId: selectedRunId } : null,
+  );
+  const runs = useInstanceStreamTopic<RuntimeRunPage>("runtime.list");
+  const detail = useInstanceStreamTopic<RuntimeRunDetail>("runtime.detail");
+  const refresh = useInstanceStreamRefresh();
   const start = useMutation({
     mutationFn: () => api.runtimeStart(instance.id, prompt),
-    async onSuccess(result) {
+    onSuccess(result) {
       setSearchParams({ run: result.run_id });
-      await queryClient.invalidateQueries({ queryKey: ["runtime-runs", instance.id] });
-      await queryClient.invalidateQueries({ queryKey: ["runtime-run", instance.id, result.run_id] });
+      refresh(["runtime.list"]);
     },
   });
 
@@ -40,7 +44,7 @@ export function RuntimePage({ instance }: { instance: InstanceSummary }) {
         <div><p className="page-kicker">RUNTIME EXPLORER</p><h1>Agent Runtime</h1></div>
         <p>启动 FinalResponse Run，并查看持久化的 Transition 与 Control Checkpoint。</p>
       </header>
-      {!unavailable ? <form
+      <form
         className="runtime-start"
         onSubmit={(event) => {
           event.preventDefault();
@@ -55,19 +59,18 @@ export function RuntimePage({ instance }: { instance: InstanceSummary }) {
         {start.data?.response ? <output className="runtime-start-result">{start.data.response.text}</output> : null}
         {start.error instanceof ApiError && start.error.status === 503 ? <span className="runtime-start-error">当前实例未配置 Runtime Provider</span> : null}
         {start.isError && !(start.error instanceof ApiError && start.error.status === 503) ? <span className="runtime-start-error">Runtime 启动失败</span> : null}
-      </form> : null}
-      {unavailable ? (
-        <section className="runtime-boundary">
-          <Workflow aria-hidden="true" />
-          <div><h2>当前实例未开放 Runtime 查询契约</h2><p>状态机能力仍为 CORE；控制台不会用演示数据替代真实 Run。</p></div>
-        </section>
-      ) : runs.isError ? (
-        <div className="error-band">Runtime 查询失败，请检查实例版本、API Key 与 Scope。</div>
-      ) : (
-        <div className="runtime-layout">
+      </form>
+      <div
+        className={`error-band ${runs.error ? "visible" : "invisible"}`}
+        role="alert"
+        aria-hidden={!runs.error}
+      >
+        {runs.error ? "Runtime 查询失败，请检查实例版本、API Key 与 Scope。" : "Runtime 列表频道正常"}
+      </div>
+      <div className="runtime-layout">
           <section className="runtime-list" aria-label="Runtime Runs">
-            <header><div><span>RUNS</span><strong>{runs.data?.total ?? 0}</strong></div><small>每 10 秒刷新</small></header>
-            {runs.isPending ? <p className="runtime-empty">正在读取持久化 Run</p> : null}
+            <header><div><span>RUNS</span><strong>{runs.data?.total ?? 0}</strong></div><small>实时订阅</small></header>
+            {!runs.data && !runs.error ? <p className="runtime-empty">正在读取持久化 Run</p> : null}
             {runs.data?.items.length === 0 ? <p className="runtime-empty">当前 Scope 暂无 Runtime Run</p> : null}
             {runs.data?.items.map((run) => (
               <RunRow
@@ -80,8 +83,8 @@ export function RuntimePage({ instance }: { instance: InstanceSummary }) {
           </section>
           <section className="runtime-detail" aria-label="Runtime Run 详情">
             {!selectedRunId ? <div className="runtime-detail-empty"><GitBranch aria-hidden="true" /><span>选择 Run 查看不可变 Transition 时间线</span></div> : null}
-            {detail.isPending && selectedRunId ? <div className="runtime-detail-empty">正在读取 Run 详情</div> : null}
-            {detail.isError ? <div className="error-band">无法读取该 Run，可能已超出当前授权 Scope。</div> : null}
+            {!detail.data && !detail.error && selectedRunId ? <div className="runtime-detail-empty">正在读取 Run 详情</div> : null}
+            {detail.error ? <div className="error-band">无法读取该 Run，可能已超出当前授权 Scope。</div> : null}
             {detail.data ? (
               <>
                 <div className="runtime-detail-header">
@@ -115,7 +118,6 @@ export function RuntimePage({ instance }: { instance: InstanceSummary }) {
             ) : null}
           </section>
         </div>
-      )}
     </main>
   );
 }
