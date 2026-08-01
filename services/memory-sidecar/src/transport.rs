@@ -303,8 +303,12 @@ mod tests {
         });
         tokio::time::sleep(Duration::from_millis(25)).await;
         pending.abort();
+        let cancellation = match pending.await {
+            Ok(_) => panic!("accept 应被取消"),
+            Err(error) => error,
+        };
         assert!(
-            pending.await.expect_err("accept 应被取消").is_cancelled(),
+            cancellation.is_cancelled(),
             "取消必须保留 listener 中的 pending pipe instance"
         );
 
