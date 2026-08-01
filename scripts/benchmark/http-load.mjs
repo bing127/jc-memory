@@ -75,20 +75,22 @@ function requestBody(template, index) {
   return JSON.stringify(body);
 }
 
-async function executeRequest(url, scenario, index, apiKey, timeoutMs) {
+async function executeRequest(url, scenario, index, options) {
   const started = performance.now();
   const headers = { accept: "application/json" };
   const body = requestBody(scenario.body, index);
   if (body !== undefined) {
     headers["content-type"] = "application/json";
   }
-  if (apiKey) headers["x-api-key"] = apiKey;
+  if (options.apiKey) headers["x-api-key"] = options.apiKey;
+  if (options.sessionCookie) headers.cookie = options.sessionCookie;
+  if (options.origin) headers.origin = options.origin;
   try {
     const response = await fetch(url, {
       method: scenario.method,
       headers,
       body,
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: AbortSignal.timeout(options.timeoutMs),
       redirect: "error",
     });
     await response.arrayBuffer();
@@ -122,7 +124,12 @@ export async function runScenario(baseUrl, scenario, options = {}) {
       const index = next;
       next += 1;
       if (index >= requests) return;
-      const result = await executeRequest(url, scenario, index, apiKey, timeoutMs);
+      const result = await executeRequest(url, scenario, index, {
+        apiKey,
+        sessionCookie: options.sessionCookie,
+        origin: options.origin,
+        timeoutMs,
+      });
       latencies.push(result.latency);
       if (result.status !== undefined) {
         const status = String(result.status);
@@ -197,6 +204,8 @@ export async function runFromConfig(configPath, outputPath, options = {}) {
   assertLoadTarget(baseUrl, options.allowExternal === true);
   const configDirectory = dirname(resolve(configPath));
   const apiKey = process.env.JC_MEMORY_API_KEY;
+  const sessionCookie = process.env.JC_WEB_SESSION_COOKIE;
+  const origin = process.env.JC_WEB_ORIGIN;
   const scenarios = [];
   for (const input of config.scenarios) {
     const body = input.body_file
@@ -205,11 +214,15 @@ export async function runFromConfig(configPath, outputPath, options = {}) {
     const scenario = { ...input, body };
     await warmupScenario(baseUrl, scenario, config.warmup_requests ?? 0, {
       apiKey,
+      sessionCookie,
+      origin,
       timeoutMs: config.timeout_ms,
       realRustSqlite: config.real_rust_sqlite,
     });
     scenarios.push(await runScenario(baseUrl, scenario, {
       apiKey,
+      sessionCookie,
+      origin,
       timeoutMs: config.timeout_ms,
       realRustSqlite: config.real_rust_sqlite,
     }));
