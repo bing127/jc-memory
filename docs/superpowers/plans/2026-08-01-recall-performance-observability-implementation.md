@@ -372,15 +372,19 @@ git commit -m "feat(web): 增加实时请求与延迟监控" -m "性能页面轮
 - Modify: `docs/superpowers/plans/2026-08-01-recall-performance-observability-implementation.md`
 - Create: `target/benchmarks/recall-after.json`（gitignored，不提交）
 
-- [ ] **Step 1: 使用相同配置运行 Recall c8/c32/c64**
+- [x] **Step 1: 使用相同已知配置运行 Recall c8/c32/c64**
 
-以隔离端口、相同数据库规模、相同预热和相同请求体运行新压测脚本，输出 `target/benchmarks/recall-after.json`。不得覆盖之前报告。
+以隔离端口、相同数据库规模、相同预热、请求数量和并发运行新压测脚本，输出 `target/benchmarks/recall-after.json`。不得覆盖之前报告；旧请求体若未版本化保存，必须在结果中标记为未完全复现。
 
-- [ ] **Step 2: 对比前后数据**
+已在提交 `384ee96`、干净工作树、本机 BFF `8990` -> Rust Server `8987` -> SQLite 链路完成 c8/c32/c64；每场景预热 20 次，正式请求为 400/800/800，数据库为 2032 Fragment/2032 Event。当前请求体和生成规则已写入 Benchmark 文档。旧请求体未版本化保存，因此这里只确认数据库规模、服务限额、预热、请求数和并发数相同，严格同请求体复现仍是证据边界。
+
+- [x] **Step 2: 对比前后数据**
 
 记录吞吐、P50/P95/P99、错误率、状态码和最终 Fragment/Event 计数。只有实测改善才写入结论；若未改善，保留报告并回到根因分析。
 
-- [ ] **Step 3: 运行最终质量门禁**
+历史基线与当前报告的同已知条件参考对比已写入 `docs/benchmarks/http-load.md`。正式当前报告三档全部成功，无 429/timeout，吞吐为 125.94/123.40/118.52 RPS，P95 为 85.59/305.02/599.77ms，最终 Fragment/Event 保持 2032/2032。压测中发现并通过 `b5b14b3` 修复最近候选联接 FTS5 虚表的慢查询；百分比因旧请求体缺失而明确标为参考值。
+
+- [x] **Step 3: 运行最终质量门禁**
 
 Run: `cargo fmt --all -- --check`
 
@@ -394,20 +398,20 @@ Run: `cd web && corepack pnpm test && corepack pnpm typecheck && corepack pnpm b
 
 Run: `git diff --check`
 
-Expected: 全部退出码 0；任何失败单独记录，不能把静态通过描述为实机通过。
+Expected: 全部退出码 0；本次 Rust、Web 和本机 Playwright 命令均退出码 0。GitHub Actions 矩阵、其他平台、外部服务和生产数据仍不能描述为实机通过。
 
-- [ ] **Step 4: 更新完成勾选与中文验证记录**
+- [x] **Step 4: 更新完成勾选与中文验证记录**
 
-在本计划中逐项勾选实际完成步骤；在发布验证报告中写入命令、结果、压测前后数据和未验证边界。
+已在本计划中勾选实际完成步骤；Benchmark 和发布验证报告已写入命令、结果、当前压测数据、历史参考对比和未验证边界。
 
-- [ ] **Step 5: 提交验证记录**
+- [x] **Step 5: 提交验证记录**
 
 ```bash
 git add docs/benchmarks/http-load.md docs/release/verification-report.md docs/superpowers/plans/2026-08-01-recall-performance-observability-implementation.md
 git commit -m "docs(perf): 记录 Recall 优化与可视化验收" -m "记录聚焦测试、Web E2E、同条件压测对比和未验证边界，并勾选实际完成的实施步骤。"
 ```
 
-- [ ] **Step 6: 推送功能分支**
+- [x] **Step 6: 推送功能分支**
 
 Run: `git push origin feat/performance-observability`
 
