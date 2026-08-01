@@ -156,6 +156,23 @@ class WorkflowContractTests(unittest.TestCase):
             r"#\[must_use\]\s*pub fn into_inner\(self\) -> platform::Stream",
         )
 
+    def test_windows_sidecar_accept_keeps_pipe_owned_until_connected(self) -> None:
+        source = (
+            ROOT / "services" / "memory-sidecar" / "src" / "transport.rs"
+        ).read_text(encoding="utf-8")
+        windows = source[
+            source.index("#[cfg(windows)]") : source.index(
+                "#[cfg(all(not(unix), not(windows)))]"
+            )
+        ]
+        self.assertIn("windows_cancelled_accept_keeps_pending_pipe_instance", source)
+        self.assertIn("let server = current.as_ref()", windows)
+        borrowed = windows.index("let server = current.as_ref()")
+        connected = windows.index("server.connect().await")
+        taken = windows.index("let server = current.take()")
+        self.assertLess(borrowed, connected)
+        self.assertLess(connected, taken)
+
     def test_unix_only_tests_document_the_empty_windows_crate(self) -> None:
         for relative_path in (
             "services/memory-server/tests/server_binary_e2e.rs",

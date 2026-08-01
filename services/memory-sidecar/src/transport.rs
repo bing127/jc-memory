@@ -133,15 +133,17 @@ mod platform {
 
     pub async fn accept(listener: &Listener) -> Result<Stream, TransportError> {
         let mut current = listener.server.lock().await;
+        let server = current.as_ref().ok_or_else(|| {
+            TransportError::Io(io::Error::other(
+                "named pipe listener instance is unavailable",
+            ))
+        })?;
+        server.connect().await?;
         let server = current.take().ok_or_else(|| {
             TransportError::Io(io::Error::other(
                 "named pipe listener instance is unavailable",
             ))
         })?;
-        if let Err(error) = server.connect().await {
-            *current = Some(server);
-            return Err(error.into());
-        }
         let next = match ServerOptions::new().create(&listener.name) {
             Ok(next) => next,
             Err(error) => {
@@ -280,6 +282,44 @@ mod tests {
             .await
             .expect("等待 Named Pipe 客户端")
             .expect("连接 Named Pipe");
+        drop(accepted);
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn windows_cancelled_accept_keeps_pending_pipe_instance() {
+        use std::{sync::Arc, time::Duration};
+
+        let directory = tempfile::tempdir().expect("创建取消测试目录");
+        let endpoint = directory.path().join("jcmemd-cancel.pipe");
+        let listener = Arc::new(
+            SidecarListener::bind(&endpoint)
+                .await
+                .expect("绑定取消测试 Named Pipe"),
+        );
+        let pending = tokio::spawn({
+            let listener = Arc::clone(&listener);
+            async move { listener.accept().await }
+        });
+        tokio::time::sleep(Duration::from_millis(25)).await;
+        pending.abort();
+        assert!(
+            pending.await.expect_err("accept 应被取消").is_cancelled(),
+            "取消必须保留 listener 中的 pending pipe instance"
+        );
+
+        let connecting = tokio::spawn({
+            let endpoint = endpoint.clone();
+            async move { SidecarStream::connect(&endpoint).await }
+        });
+        let accepted = tokio::time::timeout(Duration::from_secs(2), listener.accept())
+            .await
+            .expect("等待恢复后的 accept")
+            .expect("取消后仍可接受 Named Pipe 连接");
+        connecting
+            .await
+            .expect("等待取消测试客户端")
+            .expect("连接取消测试 Named Pipe");
         drop(accepted);
     }
 
