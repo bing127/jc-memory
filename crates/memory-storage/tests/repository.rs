@@ -473,6 +473,34 @@ async fn recent_candidates_respect_scope_cutoff_order_and_limit() {
 }
 
 #[tokio::test]
+async fn recent_candidates_read_authoritative_content_without_fts_dependency() {
+    let harness = Harness::new().await;
+    let scope = full_scope();
+    let draft = Harness::text_event(scope.clone(), "权威最近候选不能依赖派生 FTS", Vec::new());
+    harness
+        .repository
+        .append(&draft)
+        .await
+        .expect("写入权威候选");
+    sqlx::query("DELETE FROM fragment_fts WHERE fragment_id = ?1")
+        .bind(draft.fragment_id.to_string())
+        .execute(harness.store.pool())
+        .await
+        .expect("删除派生 FTS 行");
+
+    let candidates = harness
+        .repository
+        .recent_fragments(&scope, None, 10)
+        .await
+        .expect("从权威内容读取最近候选");
+
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].fragment_id, draft.fragment_id);
+    assert_eq!(candidates[0].event_id, draft.id);
+    assert_eq!(candidates[0].body, "权威最近候选不能依赖派生 FTS");
+}
+
+#[tokio::test]
 async fn all_fragment_content_kinds_and_microsecond_times_round_trip() {
     let harness = Harness::new().await;
     let scope = full_scope();

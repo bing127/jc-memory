@@ -679,13 +679,14 @@ impl MemoryRepository for SqliteMemoryRepository {
         let scope_key = scope_key(scope)?;
         let effective_at_us = effective_at.map_or(i64::MAX, |value| value.timestamp_micros());
         let rows = sqlx::query(
-            "SELECT fragments.id AS fragment_id, events.id AS event_id, fragment_fts.body
-             FROM fragments INDEXED BY idx_fragments_scope_occurred
-             JOIN fragment_fts ON fragment_fts.fragment_id = fragments.id
-             JOIN events ON events.fragment_id = fragments.id
-             WHERE fragments.scope_key = ?1 AND fragment_fts.scope_key = ?1
-                   AND fragments.occurred_at_us <= ?2
-             ORDER BY fragments.occurred_at_us DESC, fragments.id
+            "SELECT f.id AS fragment_id, e.id AS event_id,
+                    CAST(c.inline_value AS TEXT) AS body
+             FROM fragments AS f INDEXED BY idx_fragments_scope_occurred
+             JOIN fragment_contents AS c ON c.id = f.content_id
+             JOIN events AS e ON e.fragment_id = f.id
+             WHERE f.scope_key = ?1 AND f.occurred_at_us <= ?2
+                   AND c.storage_kind IN ('inline_text', 'inline_json')
+             ORDER BY f.occurred_at_us DESC, f.id
              LIMIT ?3",
         )
         .bind(scope_key)
@@ -698,19 +699,23 @@ impl MemoryRepository for SqliteMemoryRepository {
             .map(|row| {
                 let raw_id: String = row.try_get("fragment_id").map_err(|error| {
                     corrupt(
-                        "fragment_fts",
+                        "fragments",
                         "unknown",
                         format!("invalid fragment_id: {error}"),
                     )
                 })?;
                 let fragment_id =
-                    parse_id::<FragmentId>(&raw_id, "fragment_fts", &raw_id, "fragment_id")?;
+                    parse_id::<FragmentId>(&raw_id, "fragments", &raw_id, "fragment_id")?;
                 let raw_event_id: String = row.try_get("event_id").map_err(|error| {
                     corrupt("events", &raw_id, format!("invalid event_id: {error}"))
                 })?;
                 let event_id = parse_id::<EventId>(&raw_event_id, "events", &raw_event_id, "id")?;
                 let body: String = row.try_get("body").map_err(|error| {
-                    corrupt("fragment_fts", &raw_id, format!("invalid body: {error}"))
+                    corrupt(
+                        "fragment_contents",
+                        &raw_id,
+                        format!("invalid body: {error}"),
+                    )
                 })?;
                 Ok(FragmentSearchHit {
                     event_id,
