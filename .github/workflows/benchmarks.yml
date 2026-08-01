@@ -2,7 +2,7 @@ name: Benchmark Smoke
 
 on:
   push:
-    branches: [main, "feat/**"]
+    branches: [main, master, "feat/**"]
   pull_request:
   workflow_dispatch:
 

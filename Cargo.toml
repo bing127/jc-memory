@@ -35,6 +35,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.97"
 license-file = "LICENSE"
+publish = false
 authors = ["Jiangcheng Memory Contributors"]
 
 [workspace.dependencies]
@@ -55,6 +56,7 @@ pyo3-async-runtimes = { version = "0.29", features = ["tokio-runtime"] }
 proptest = "1"
 prost = "0.14"
 prost-types = "0.14"
+protoc-bin-vendored = "3.2"
 pulldown-cmark = "0.13"
 reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls"] }
 semver = { version = "1", features = ["serde"] }

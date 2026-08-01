@@ -12,6 +12,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "cargo:rerun-if-changed={}",
         proto_root.join("buf.yaml").display()
     );
-    tonic_prost_build::configure().compile_protos(&[memory_proto], &[proto_root])?;
+    let protoc = protoc_bin_vendored::protoc_bin_path()?;
+    let mut prost_config = tonic_prost_build::Config::new();
+    prost_config.protoc_executable(protoc);
+    tonic_prost_build::configure().compile_with_config(
+        prost_config,
+        &[memory_proto],
+        &[proto_root],
+    )?;
     Ok(())
 }

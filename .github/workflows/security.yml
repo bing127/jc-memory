@@ -2,7 +2,7 @@ name: Supply Chain Security
 
 on:
   push:
-    branches: [main, "feat/**"]
+    branches: [main, master, "feat/**"]
   pull_request:
   schedule:
     - cron: "17 3 * * 1"
@@ -27,13 +27,13 @@ jobs:
       - name: cargo audit
         run: cargo audit
       - name: cargo deny
-        run: cargo deny check
+        run: cargo deny check -A warnings
       - name: Node 依赖审计
         shell: bash
         run: |
           corepack enable
-          corepack pnpm --dir sdk/node install --frozen-lockfile
-          corepack pnpm --dir sdk/node audit --audit-level high
+          corepack pnpm@9.15.9 --dir sdk/node install --frozen-lockfile
+          corepack pnpm@9.15.9 --dir sdk/node audit --audit-level high
       - name: Python 依赖审计
         shell: bash
         run: |

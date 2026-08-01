@@ -2,7 +2,7 @@ name: Protobuf Contract
 
 on:
   push:
-    branches: [main, "feat/**"]
+    branches: [main, master, "feat/**"]
   pull_request:
   workflow_dispatch:
 
@@ -25,6 +25,11 @@ jobs:
         run: |
           go install github.com/bufbuild/buf/cmd/buf@v1.64.0
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: 安装固定 Protoc
+        uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b
+        with:
+          version: "35.1"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Buf lint
         run: buf lint proto
       - name: Buf breaking

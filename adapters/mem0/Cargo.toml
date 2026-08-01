@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license-file.workspace = true
+publish.workspace = true
 description = "Mem0 Add/Search 与疆诚记忆 Core 的来源保真迁移适配器"
 
 [dependencies]

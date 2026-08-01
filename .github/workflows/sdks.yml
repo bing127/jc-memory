@@ -2,7 +2,7 @@ name: SDK Contracts
 
 on:
   push:
-    branches: [main, "feat/**"]
+    branches: [main, master, "feat/**"]
   pull_request:
   workflow_dispatch:
 
@@ -21,9 +21,9 @@ jobs:
         shell: bash
         run: |
           corepack enable
-          corepack pnpm --dir sdk/node install --frozen-lockfile
-          corepack pnpm --dir sdk/node test
-          corepack pnpm --dir sdk/node typecheck
+          corepack pnpm@9.15.9 --dir sdk/node install --frozen-lockfile
+          corepack pnpm@9.15.9 --dir sdk/node test
+          corepack pnpm@9.15.9 --dir sdk/node typecheck
       - name: Python SDK
         shell: bash
         run: |

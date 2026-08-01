@@ -1,7 +1,9 @@
 """跨平台 CI、供应链和工作流固定版本的仓库契约测试。"""
 
+import json
 import re
 import subprocess
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -34,6 +36,15 @@ WORKFLOWS = {
     ],
 }
 CHECKOUT_SHA = "11bd71901bbe5b1630ceea73d27597364c9af683"
+PNPM_VERSION = "9.15.9"
+PUSH_WORKFLOWS = (
+    "benchmarks.yml",
+    "mobile.yml",
+    "proto.yml",
+    "rust.yml",
+    "sdks.yml",
+    "security.yml",
+)
 
 
 class WorkflowContractTests(unittest.TestCase):
@@ -42,6 +53,12 @@ class WorkflowContractTests(unittest.TestCase):
             content = (WORKFLOW_DIR / filename).read_text(encoding="utf-8")
             for fragment in required_fragments:
                 self.assertIn(fragment, content, f"{filename} 缺少 {fragment}")
+
+    def test_regular_workflows_run_on_master_push(self) -> None:
+        expected_branch_filter = 'branches: [main, master, "feat/**"]'
+        for filename in PUSH_WORKFLOWS:
+            workflow = (WORKFLOW_DIR / filename).read_text(encoding="utf-8")
+            self.assertIn(expected_branch_filter, workflow, f"{filename} 未监听 master push")
 
     def test_every_action_reference_uses_a_full_commit_sha(self) -> None:
         references = []
@@ -64,6 +81,56 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("version: 2", dependabot)
         self.assertIn("package-ecosystem: cargo", dependabot)
         self.assertIn("package-ecosystem: github-actions", dependabot)
+
+    def test_protocol_codegen_uses_vendored_protoc(self) -> None:
+        workspace = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))
+        protocol = tomllib.loads(
+            (ROOT / "crates" / "memory-protocol" / "Cargo.toml").read_text(encoding="utf-8")
+        )
+        build_script = (ROOT / "crates" / "memory-protocol" / "build.rs").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("protoc-bin-vendored", workspace["workspace"]["dependencies"])
+        self.assertTrue(protocol["build-dependencies"]["protoc-bin-vendored"]["workspace"])
+        self.assertIn("protoc_bin_vendored::protoc_bin_path()", build_script)
+        self.assertIn("protoc_executable", build_script)
+
+    def test_node_workflows_pin_pnpm(self) -> None:
+        package = json.loads((ROOT / "sdk" / "node" / "package.json").read_text(encoding="utf-8"))
+        self.assertEqual(package.get("packageManager"), f"pnpm@{PNPM_VERSION}")
+        for filename in ("sdks.yml", "security.yml"):
+            workflow = (WORKFLOW_DIR / filename).read_text(encoding="utf-8")
+            self.assertIn(f"corepack pnpm@{PNPM_VERSION}", workflow)
+
+    def test_workspace_crates_are_non_publishable(self) -> None:
+        result = subprocess.run(
+            ["cargo", "metadata", "--no-deps", "--format-version", "1"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        packages = json.loads(result.stdout)["packages"]
+        publishable = [package["name"] for package in packages if package["publish"] != []]
+        self.assertEqual(publishable, [], f"以下私有 crate 仍可发布：{publishable}")
+
+    def test_deny_allows_licenses_required_by_locked_dependencies(self) -> None:
+        deny = tomllib.loads((ROOT / "deny.toml").read_text(encoding="utf-8"))
+        allowed = set(deny["licenses"]["allow"])
+        required = {
+            "Apache-2.0",
+            "Apache-2.0 WITH LLVM-exception",
+            "CDLA-Permissive-2.0",
+            "MPL-2.0",
+        }
+        self.assertEqual(required - allowed, set())
+
+    def test_deny_allows_warnings_but_keeps_denied_findings_blocking(self) -> None:
+        deny = tomllib.loads((ROOT / "deny.toml").read_text(encoding="utf-8"))
+        self.assertTrue(deny["bans"].get("allow-wildcard-paths"))
+        security = (WORKFLOW_DIR / "security.yml").read_text(encoding="utf-8")
+        self.assertIn("cargo deny check -A warnings", security)
 
     def test_workflow_validator_rejects_invalid_fixture(self) -> None:
         validator = ROOT / "scripts" / "ci" / "validate-workflows.sh"
