@@ -1758,6 +1758,7 @@ dependencies = [
  "getrandom 0.4.3",
  "hex",
  "jc-memory-events",
+ "jc-memory-graph",
  "jc-memory-protocol",
  "serde",
  "serde_json",
