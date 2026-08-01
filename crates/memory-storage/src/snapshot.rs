@@ -356,7 +356,68 @@ async fn database_integrity(database: &Path) -> Result<(), SnapshotError> {
             });
         }
     }
+    let foreign_key_violations = sqlx::query("PRAGMA foreign_key_check")
+        .fetch_all(&mut connection)
+        .await?;
+    if !foreign_key_violations.is_empty() {
+        return Err(SnapshotError::IntegrityCheck {
+            details: format!("foreign key violations: {}", foreign_key_violations.len()),
+        });
+    }
+    let projection_violations = trusted_projection_violations(&mut connection).await?;
+    if projection_violations != 0 {
+        return Err(SnapshotError::IntegrityCheck {
+            details: format!("trusted projection violations: {projection_violations}"),
+        });
+    }
     Ok(())
+}
+
+async fn trusted_projection_violations(
+    connection: &mut SqliteConnection,
+) -> Result<i64, sqlx::Error> {
+    let mut violations = 0_i64;
+    for statement in [
+        "SELECT COUNT(*) FROM states s
+         WHERE (
+             SELECT COUNT(*) FROM state_versions v
+             WHERE v.state_id = s.id AND v.valid_to_us IS NULL
+               AND v.validity NOT IN ('disputed', 'superseded', 'invalidated', 'quarantined')
+         ) != CASE WHEN s.current_version_id IS NULL THEN 0 ELSE 1 END
+         OR (s.current_version_id IS NOT NULL AND NOT EXISTS (
+             SELECT 1 FROM state_versions current
+             WHERE current.id = s.current_version_id AND current.state_id = s.id
+               AND current.valid_to_us IS NULL
+               AND current.validity NOT IN (
+                   'disputed', 'superseded', 'invalidated', 'quarantined'
+               )
+         ))",
+        "SELECT COUNT(*) FROM state_versions child
+         JOIN state_versions parent ON parent.id = child.previous_version_id
+         WHERE parent.state_id != child.state_id",
+        "SELECT COUNT(*) FROM state_versions v
+         JOIN states s ON s.id = v.state_id
+         JOIN fragments f ON f.id = v.source_fragment_id
+         LEFT JOIN events e ON e.id = v.source_event_id
+         WHERE f.scope_key != s.scope_key
+            OR (v.source_event_id IS NOT NULL AND e.scope_key != s.scope_key)",
+        "SELECT COUNT(*) FROM points p
+         JOIN fragments f ON f.id = p.source_fragment_id
+         WHERE p.scope_key != f.scope_key",
+        "SELECT COUNT(*) FROM edges e
+         JOIN points source ON source.id = e.source_point_id
+         JOIN points target ON target.id = e.target_point_id
+         JOIN fragments f ON f.id = e.source_fragment_id
+         WHERE e.scope_key != source.scope_key
+            OR e.scope_key != target.scope_key
+            OR e.scope_key != f.scope_key",
+    ] {
+        let count: i64 = sqlx::query_scalar(statement)
+            .fetch_one(&mut *connection)
+            .await?;
+        violations = violations.saturating_add(count);
+    }
+    Ok(violations)
 }
 
 async fn validate_database_scope(

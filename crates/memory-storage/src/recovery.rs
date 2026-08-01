@@ -15,7 +15,10 @@ use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 use sqlx::{Row as _, SqlitePool};
 
-use crate::{BlobError, BlobStore, SnapshotError, SnapshotManager, SnapshotReceipt, SqliteStore};
+use crate::{
+    BlobError, BlobStore, ProjectionTarget, SnapshotError, SnapshotManager, SnapshotReceipt,
+    SqliteProjectionStore, SqliteStore, StorageError,
+};
 
 const FTS_REBUILD_TABLE: &str = "fragment_fts_rebuild";
 
@@ -87,6 +90,10 @@ pub struct RebuildReport {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RebuildStage {
+    /// 清理并重放显式 State 投影。
+    StateProjection,
+    /// 从权威 Mutation Event 重放 Point 与 Edge。
+    GraphProjection,
     /// 从权威 Fragment 内容重建 FTS。
     Fts,
     /// 执行版本化 Embedding 派生阶段契约。
@@ -100,8 +107,10 @@ pub enum RebuildStage {
 }
 
 impl RebuildStage {
-    /// M3 固定重建顺序。
-    pub const ORDER: [Self; 5] = [
+    /// 可信记忆派生层的固定重建顺序。
+    pub const ORDER: [Self; 7] = [
+        Self::StateProjection,
+        Self::GraphProjection,
         Self::Fts,
         Self::Embedding,
         Self::EdgeCandidate,
@@ -123,6 +132,8 @@ pub struct DerivedRebuildReport {
 struct RebuildJobCheckpoint {
     version: u32,
     scope: MemoryScope,
+    #[serde(default)]
+    authority_hash: Option<String>,
     completed_stages: Vec<RebuildStage>,
 }
 
@@ -172,6 +183,15 @@ pub enum RecoveryError {
     /// Another process currently owns the garbage-collection lock.
     #[error("garbage collection lock is unavailable")]
     LockUnavailable,
+    /// 另一个进程正在重建同一精确 Scope。
+    #[error("derived rebuild lock is unavailable")]
+    RebuildLockUnavailable,
+    /// 重建过程中权威 `Fragment`、`Event` 或 `EvidenceRef` 发生变化。
+    #[error("authoritative memory changed during derived rebuild")]
+    RebuildAuthorityChanged,
+    /// State 或 Graph 投影重放失败。
+    #[error("trusted projection rebuild failed: {0}")]
+    Projection(#[from] StorageError),
     /// A durable database blob identifier is malformed.
     #[error("invalid blob identifier in durable storage: {value}")]
     InvalidBlobId {
@@ -427,17 +447,35 @@ impl RecoveryManager {
         &self,
         scope: &MemoryScope,
     ) -> Result<DerivedRebuildReport, RecoveryError> {
+        let _lease = self.acquire_rebuild_lock(scope)?;
+        let scope_key = canonical_scope_key(scope)?;
+        let authority_before = authority_hash(&self.pool, &scope_key).await?;
         let checkpoint_path = self.rebuild_checkpoint_path(scope)?;
         let mut checkpoint = load_rebuild_checkpoint(&checkpoint_path, scope).await?;
+        if checkpoint.authority_hash.as_deref() != Some(&authority_before) {
+            checkpoint.authority_hash = Some(authority_before.clone());
+            checkpoint.completed_stages.clear();
+            save_rebuild_checkpoint(&checkpoint_path, &checkpoint).await?;
+        }
         let resumed_after = checkpoint.completed_stages.last().copied();
+        let projection_target = SqliteProjectionStore::new(self.pool.clone())
+            .target(scope)
+            .await?;
         for stage in RebuildStage::ORDER {
             if checkpoint.completed_stages.contains(&stage) {
                 continue;
             }
-            self.execute_rebuild_stage(stage, scope).await?;
+            self.execute_rebuild_stage(stage, scope, projection_target)
+                .await?;
             checkpoint.completed_stages.push(stage);
             save_rebuild_checkpoint(&checkpoint_path, &checkpoint).await?;
             self.failpoint.after_rebuild_stage(stage)?;
+        }
+        let authority_after = authority_hash(&self.pool, &scope_key).await?;
+        if let Err(error) = verify_authority_hash(&authority_before, &authority_after) {
+            checkpoint.completed_stages.clear();
+            save_rebuild_checkpoint(&checkpoint_path, &checkpoint).await?;
+            return Err(error);
         }
         match tokio::fs::remove_file(&checkpoint_path).await {
             Ok(()) => {}
@@ -454,8 +492,22 @@ impl RecoveryManager {
         &self,
         stage: RebuildStage,
         scope: &MemoryScope,
+        projection_target: ProjectionTarget,
     ) -> Result<(), RecoveryError> {
         match stage {
+            RebuildStage::StateProjection => {
+                reset_trusted_projections(&self.pool, scope).await?;
+                let projection = SqliteProjectionStore::new(self.pool.clone());
+                projection
+                    .catch_up_state(scope, projection_target, 128)
+                    .await?;
+            }
+            RebuildStage::GraphProjection => {
+                let projection = SqliteProjectionStore::new(self.pool.clone());
+                projection
+                    .catch_up_graph(scope, projection_target, 128)
+                    .await?;
+            }
             RebuildStage::Fts => {
                 self.rebuild_fts().await?;
             }
@@ -489,6 +541,131 @@ impl RecoveryManager {
             .join(".maintenance")
             .join(format!("rebuild-{scope_key}.json")))
     }
+
+    fn acquire_rebuild_lock(&self, scope: &MemoryScope) -> Result<File, RecoveryError> {
+        let checkpoint = self.rebuild_checkpoint_path(scope)?;
+        let parent =
+            checkpoint
+                .parent()
+                .ok_or_else(|| RecoveryError::InvalidRebuildCheckpoint {
+                    reason: "rebuild lock path has no parent".to_owned(),
+                })?;
+        std::fs::create_dir_all(parent)?;
+        let scope_key = canonical_scope_key(scope)?;
+        let lock = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .truncate(false)
+            .open(parent.join(format!("rebuild-{scope_key}.lock")))?;
+        match lock.try_lock_exclusive() {
+            Ok(()) => Ok(lock),
+            Err(error) if error.raw_os_error() == fs2::lock_contended_error().raw_os_error() => {
+                Err(RecoveryError::RebuildLockUnavailable)
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+}
+
+/// 校验派生重建前后的权威摘要保持一致。
+///
+/// # Errors
+///
+/// 两个摘要不一致时返回 [`RecoveryError::RebuildAuthorityChanged`]。
+pub fn verify_authority_hash(before: &str, after: &str) -> Result<(), RecoveryError> {
+    if before == after {
+        Ok(())
+    } else {
+        Err(RecoveryError::RebuildAuthorityChanged)
+    }
+}
+
+async fn reset_trusted_projections(
+    pool: &SqlitePool,
+    scope: &MemoryScope,
+) -> Result<(), RecoveryError> {
+    let scope_key = canonical_scope_key(scope)?;
+    let mut transaction = pool.begin_with("BEGIN IMMEDIATE").await?;
+    sqlx::query("UPDATE states SET current_version_id = NULL WHERE scope_key = ?1")
+        .bind(&scope_key)
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query(
+        "UPDATE state_versions SET previous_version_id = NULL
+         WHERE state_id IN (SELECT id FROM states WHERE scope_key = ?1)",
+    )
+    .bind(&scope_key)
+    .execute(&mut *transaction)
+    .await?;
+    sqlx::query(
+        "DELETE FROM state_versions WHERE state_id IN (
+            SELECT id FROM states WHERE scope_key = ?1
+         )",
+    )
+    .bind(&scope_key)
+    .execute(&mut *transaction)
+    .await?;
+    sqlx::query("DELETE FROM states WHERE scope_key = ?1")
+        .bind(&scope_key)
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("DELETE FROM projection_checkpoints WHERE scope_key = ?1")
+        .bind(scope_key)
+        .execute(&mut *transaction)
+        .await?;
+    transaction.commit().await?;
+    Ok(())
+}
+
+async fn authority_hash(pool: &SqlitePool, scope_key: &str) -> Result<String, RecoveryError> {
+    let mut digest = Sha256::new();
+    for (table, statement) in [
+        (
+            "fragment_contents",
+            "SELECT json_array(c.id, c.storage_kind, hex(c.inline_value), c.blob_id,
+                    c.media_type, c.byte_len, c.sha256, c.created_at_us)
+             FROM fragment_contents c
+             WHERE EXISTS (
+                 SELECT 1 FROM fragments f
+                 WHERE f.content_id = c.id AND f.scope_key = ?1
+             )
+             ORDER BY c.id",
+        ),
+        (
+            "fragments",
+            "SELECT json_array(id, scope_key, namespace_id, tenant_id, user_id, agent_id,
+                    project_id, session_id, trace_id, kind, content_id, source_json, perspective,
+                    occurred_at_us, observed_at_us, confidence, importance, validity,
+                    security_label, metadata_json, created_at_us)
+             FROM fragments WHERE scope_key = ?1 ORDER BY id",
+        ),
+        (
+            "events",
+            "SELECT json_array(id, fragment_id, scope_key, namespace_id, tenant_id, stage,
+                    sequence, recorded_at_us, content_hash, payload_json)
+             FROM events WHERE scope_key = ?1 ORDER BY sequence, id",
+        ),
+        (
+            "evidence_refs",
+            "SELECT json_array(er.id, er.owner_fragment_id, er.referenced_fragment_id,
+                    er.referenced_event_id, er.verification_method, er.note, er.created_at_us)
+             FROM evidence_refs er JOIN fragments f ON f.id = er.owner_fragment_id
+             WHERE f.scope_key = ?1 ORDER BY er.id",
+        ),
+    ] {
+        digest.update(table.as_bytes());
+        digest.update([0]);
+        let rows: Vec<String> = sqlx::query_scalar(statement)
+            .bind(scope_key)
+            .fetch_all(pool)
+            .await?;
+        for row in rows {
+            digest.update(row.as_bytes());
+            digest.update([0]);
+        }
+    }
+    Ok(hex::encode(digest.finalize()))
 }
 
 async fn load_rebuild_checkpoint(
@@ -501,12 +678,13 @@ async fn load_rebuild_checkpoint(
             return Ok(RebuildJobCheckpoint {
                 version: 1,
                 scope: scope.clone(),
+                authority_hash: None,
                 completed_stages: Vec::new(),
             });
         }
         Err(error) => return Err(error.into()),
     };
-    let checkpoint: RebuildJobCheckpoint = serde_json::from_slice(&bytes).map_err(|error| {
+    let mut checkpoint: RebuildJobCheckpoint = serde_json::from_slice(&bytes).map_err(|error| {
         RecoveryError::InvalidRebuildCheckpoint {
             reason: error.to_string(),
         }
@@ -515,6 +693,18 @@ async fn load_rebuild_checkpoint(
         return Err(RecoveryError::InvalidRebuildCheckpoint {
             reason: "version or scope mismatch".to_owned(),
         });
+    }
+    if checkpoint
+        .authority_hash
+        .as_ref()
+        .is_some_and(|hash| hash.len() != 64 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()))
+    {
+        return Err(RecoveryError::InvalidRebuildCheckpoint {
+            reason: "authority hash is malformed".to_owned(),
+        });
+    }
+    if checkpoint.authority_hash.is_none() {
+        checkpoint.completed_stages.clear();
     }
     if checkpoint.completed_stages.len() > RebuildStage::ORDER.len() {
         return Err(RecoveryError::InvalidRebuildCheckpoint {

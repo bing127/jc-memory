@@ -3,7 +3,10 @@
 use std::{
     fs::OpenOptions,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 
@@ -15,10 +18,212 @@ use jc_memory_protocol::{
     ValidityStatus,
 };
 use jc_memory_storage::{
-    BlobOptions, BlobStore, GcPolicy, MemoryRepository, RecoveryError, RecoveryFailpoint,
-    RecoveryManager, SqliteConfig, SqliteMemoryRepository, SqliteStore,
+    BlobOptions, BlobStore, GcPolicy, MemoryRepository, RebuildStage, RecoveryError,
+    RecoveryFailpoint, RecoveryManager, SqliteConfig, SqliteMemoryRepository,
+    SqliteProjectionStore, SqliteStore, verify_authority_hash,
 };
 use tempfile::TempDir;
+
+#[test]
+fn trusted_projection_stages_precede_legacy_derived_stages() {
+    assert_eq!(
+        &RebuildStage::ORDER[..2],
+        &[RebuildStage::StateProjection, RebuildStage::GraphProjection]
+    );
+    assert!(verify_authority_hash("same", "same").is_ok());
+    assert!(matches!(
+        verify_authority_hash("before", "after"),
+        Err(RecoveryError::RebuildAuthorityChanged)
+    ));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn rebuild_lease_rejects_same_scope_without_blocking_another_scope() {
+    let harness = Harness::new().await;
+    let scope = MemoryScope::new(NamespaceId::new());
+    let other_scope = MemoryScope::new(NamespaceId::new());
+    let entered = Arc::new(AtomicBool::new(false));
+    let release = Arc::new(AtomicBool::new(false));
+    let blocker = Arc::new(BlockAfterState {
+        entered: Arc::clone(&entered),
+        release: Arc::clone(&release),
+    });
+    let first_manager = harness.recovery.clone().with_failpoint(blocker);
+    let first_scope = scope.clone();
+    let first = tokio::spawn(async move { first_manager.rebuild_derived(&first_scope).await });
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !entered.load(Ordering::Acquire) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("首个重建进入 StateProjection 后的阻塞点");
+
+    let same_scope = harness.recovery.rebuild_derived(&scope).await;
+    let other_scope_result = tokio::time::timeout(
+        Duration::from_secs(5),
+        harness.recovery.rebuild_derived(&other_scope),
+    )
+    .await;
+    release.store(true, Ordering::Release);
+    let first_result = first.await.expect("首个重建任务未崩溃");
+
+    assert!(matches!(
+        same_scope,
+        Err(RecoveryError::RebuildLockUnavailable)
+    ));
+    assert!(
+        other_scope_result
+            .expect("不同 Scope 重建不应等待同一 Lease")
+            .is_ok()
+    );
+    assert!(first_result.is_ok());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn authority_change_retries_from_state_projection_instead_of_skipping_stages() {
+    let harness = Harness::new().await;
+    let scope = MemoryScope::new(NamespaceId::new());
+    let entered = Arc::new(AtomicBool::new(false));
+    let release = Arc::new(AtomicBool::new(false));
+    let blocker = Arc::new(BlockAfterState {
+        entered: Arc::clone(&entered),
+        release: Arc::clone(&release),
+    });
+    let interrupted = harness.recovery.clone().with_failpoint(blocker);
+    let rebuild_scope = scope.clone();
+    let first = tokio::spawn(async move { interrupted.rebuild_derived(&rebuild_scope).await });
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !entered.load(Ordering::Acquire) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("重建进入 StateProjection 后的并发写入点");
+    harness
+        .repository
+        .append(&text_event_in_scope(
+            scope.clone(),
+            "重建期间追加的权威记录",
+        ))
+        .await
+        .expect("并发追加权威 Event");
+    harness
+        .repository
+        .append(&text_event_in_scope(
+            scope.clone(),
+            "并发追加的第二条权威记录",
+        ))
+        .await
+        .expect("并发追加第二条权威 Event");
+    release.store(true, Ordering::Release);
+    assert!(matches!(
+        first.await.expect("首轮重建任务未崩溃"),
+        Err(RecoveryError::RebuildAuthorityChanged)
+    ));
+    let first_graph_checkpoint = SqliteProjectionStore::from_store(&harness.store)
+        .checkpoint(&scope, jc_memory_storage::ProjectorKind::Graph)
+        .await
+        .expect("读取首轮 Graph 固定目标");
+    assert_eq!(first_graph_checkpoint.sequence, 0);
+
+    let retried = harness
+        .recovery
+        .rebuild_derived(&scope)
+        .await
+        .expect("权威变化后从 StateProjection 重新执行");
+    assert_eq!(retried.resumed_after, None);
+    let projection = SqliteProjectionStore::from_store(&harness.store);
+    for projector in [
+        jc_memory_storage::ProjectorKind::State,
+        jc_memory_storage::ProjectorKind::Graph,
+    ] {
+        assert_eq!(
+            projection
+                .checkpoint(&scope, projector)
+                .await
+                .expect("读取重试后的投影 Checkpoint")
+                .sequence,
+            1
+        );
+    }
+}
+
+#[tokio::test]
+async fn authority_change_between_attempts_invalidates_completed_state_stage() {
+    let harness = Harness::new().await;
+    let scope = MemoryScope::new(NamespaceId::new());
+    let interrupted = harness
+        .recovery
+        .clone()
+        .with_failpoint(Arc::new(FailAfterState));
+    assert!(matches!(
+        interrupted.rebuild_derived(&scope).await,
+        Err(RecoveryError::InjectedFailure {
+            point: "after_state_projection"
+        })
+    ));
+    for text in ["中断后追加的首条权威记录", "中断后追加的第二条权威记录"]
+    {
+        harness
+            .repository
+            .append(&text_event_in_scope(scope.clone(), text))
+            .await
+            .expect("在两次重建之间追加权威 Event");
+    }
+
+    let retried = harness
+        .recovery
+        .rebuild_derived(&scope)
+        .await
+        .expect("权威哈希变化后重新执行全部阶段");
+    assert_eq!(retried.resumed_after, None);
+    let checkpoint = SqliteProjectionStore::from_store(&harness.store)
+        .checkpoint(&scope, jc_memory_storage::ProjectorKind::State)
+        .await
+        .expect("读取重试后的 State Checkpoint");
+    assert_eq!(checkpoint.sequence, 1);
+}
+
+#[tokio::test]
+async fn legacy_rebuild_checkpoint_is_safely_invalidated_after_stage_order_upgrade() {
+    let harness = Harness::new().await;
+    let scope = MemoryScope::new(NamespaceId::new());
+    let interrupted = harness
+        .recovery
+        .clone()
+        .with_failpoint(Arc::new(FailAfterState));
+    assert!(interrupted.rebuild_derived(&scope).await.is_err());
+    let maintenance = harness.blob_root.parent().unwrap().join(".maintenance");
+    let checkpoint_path = std::fs::read_dir(&maintenance)
+        .expect("读取维护目录")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "json")
+        })
+        .expect("存在重建 Job Checkpoint");
+    let legacy = serde_json::json!({
+        "version": 1,
+        "scope": scope,
+        "completed_stages": ["fts"]
+    });
+    tokio::fs::write(
+        checkpoint_path,
+        serde_json::to_vec_pretty(&legacy).expect("序列化旧版 Checkpoint"),
+    )
+    .await
+    .expect("写入旧版 Checkpoint");
+
+    let rebuilt = harness
+        .recovery
+        .rebuild_derived(&scope)
+        .await
+        .expect("安全失效旧阶段顺序并从头重建");
+    assert_eq!(rebuilt.resumed_after, None);
+    assert_eq!(rebuilt.completed_stages, RebuildStage::ORDER);
+}
 
 #[tokio::test]
 async fn audit_reports_missing_corrupt_and_orphan_blobs_without_deleting_evidence() {
@@ -215,6 +420,47 @@ impl RecoveryFailpoint for InterruptBeforeFtsSwap {
     }
 }
 
+#[derive(Debug)]
+struct BlockAfterState {
+    entered: Arc<AtomicBool>,
+    release: Arc<AtomicBool>,
+}
+
+#[derive(Debug)]
+struct FailAfterState;
+
+impl RecoveryFailpoint for FailAfterState {
+    fn before_fts_swap(&self) -> Result<(), RecoveryError> {
+        Ok(())
+    }
+
+    fn after_rebuild_stage(&self, stage: RebuildStage) -> Result<(), RecoveryError> {
+        if stage == RebuildStage::StateProjection {
+            Err(RecoveryError::InjectedFailure {
+                point: "after_state_projection",
+            })
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl RecoveryFailpoint for BlockAfterState {
+    fn before_fts_swap(&self) -> Result<(), RecoveryError> {
+        Ok(())
+    }
+
+    fn after_rebuild_stage(&self, stage: RebuildStage) -> Result<(), RecoveryError> {
+        if stage == RebuildStage::StateProjection {
+            self.entered.store(true, Ordering::Release);
+            while !self.release.load(Ordering::Acquire) {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        }
+        Ok(())
+    }
+}
+
 struct Harness {
     _directory: TempDir,
     blob_root: PathBuf,
@@ -285,11 +531,24 @@ fn text_event(text: &str) -> EventDraft {
     })
 }
 
+fn text_event_in_scope(scope: MemoryScope, text: &str) -> EventDraft {
+    event_in_scope(
+        scope,
+        FragmentContent::Text {
+            text: text.to_owned(),
+        },
+    )
+}
+
 fn event(content: FragmentContent) -> EventDraft {
+    event_in_scope(MemoryScope::new(NamespaceId::new()), content)
+}
+
+fn event_in_scope(scope: MemoryScope, content: FragmentContent) -> EventDraft {
     let now = chrono::Utc::now();
     let fragment = CognitiveFragment {
         id: FragmentId::new(),
-        scope: MemoryScope::new(NamespaceId::new()),
+        scope,
         session_id: None,
         trace_id: None,
         kind: FragmentKind::Observation,

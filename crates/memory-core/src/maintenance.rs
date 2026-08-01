@@ -47,16 +47,16 @@ impl MemoryEngine {
         )
     }
 
-    /// 按 FTS、Embedding、Edge Candidate、Surface Member、Summary/Cache 顺序重建派生层。
+    /// 按 State、Graph、FTS 与后续固定阶段重建派生层。
     ///
     /// # Errors
     ///
-    /// 调用者缺少 Admin 权限，或阶段执行与 Checkpoint 持久化失败时返回错误。
+    /// 调用者缺少 Consolidate 权限，或阶段执行与 Checkpoint 持久化失败时返回错误。
     pub async fn rebuild_derived(
         &self,
         context: &AccessContext,
     ) -> Result<DerivedRebuildReport, MemoryError> {
-        crate::security::authorize(context, Operation::Admin, &context.scope)?;
+        crate::security::authorize(context, Operation::Consolidate, &context.scope)?;
         Ok(self.recovery.rebuild_derived(&context.scope).await?)
     }
 }

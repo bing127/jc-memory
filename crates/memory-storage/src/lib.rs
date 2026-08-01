@@ -20,7 +20,7 @@ pub use projection::{
 };
 pub use recovery::{
     DerivedRebuildReport, GcPolicy, GcReport, IntegrityReport, RebuildReport, RebuildStage,
-    RecoveryError, RecoveryFailpoint, RecoveryManager,
+    RecoveryError, RecoveryFailpoint, RecoveryManager, verify_authority_hash,
 };
 pub use repository::{
     AppendReceipt, FragmentSearchHit, MemoryRepository, QuarantineDisposition, RepositoryFailpoint,
