@@ -4,6 +4,7 @@ mod blob;
 mod config;
 mod error;
 mod export;
+mod projection;
 mod recovery;
 mod repository;
 mod snapshot;
@@ -13,6 +14,10 @@ pub use blob::{BlobError, BlobOptions, BlobReceipt, BlobStore, Compression, Encr
 pub use config::SqliteConfig;
 pub use error::StorageError;
 pub use export::{SnapshotBlob, SnapshotError, SnapshotFile, SnapshotManifest};
+pub use projection::{
+    ProjectionCheckpoint, ProjectionFailpoint, ProjectionTarget, ProjectorKind,
+    SqliteProjectionStore,
+};
 pub use recovery::{
     DerivedRebuildReport, GcPolicy, GcReport, IntegrityReport, RebuildReport, RebuildStage,
     RecoveryError, RecoveryFailpoint, RecoveryManager,

@@ -32,6 +32,7 @@ const REQUIRED_TABLES: &[&str] = &[
     "model_versions",
     "outcomes",
     "points",
+    "projection_checkpoints",
     "quarantine",
     "recall_activations",
     "recall_sessions",
@@ -60,10 +61,14 @@ const REQUIRED_INDEXES: &[&str] = &[
     "idx_fragments_scope_occurred",
     "idx_governance_receipts_scope_created",
     "idx_points_scope_validity",
+    "idx_points_scope_source_fragment",
     "idx_recall_sessions_scope_started",
     "idx_retention_plans_scope_status",
     "idx_runtime_runs_scope_state",
     "idx_state_versions_state_validity",
+    "idx_state_versions_source_event",
+    "idx_state_versions_source_fragment",
+    "idx_state_versions_state_effective",
     "idx_surface_members_point",
     "idx_surfaces_scope_validity",
     "idx_transitions_trace",
@@ -177,7 +182,44 @@ async fn reopening_the_same_database_is_migration_idempotent() {
             .fetch_one(second.pool())
             .await
             .expect("count applied migrations");
-    assert_eq!(applied_migrations, 5);
+    assert_eq!(applied_migrations, 6);
+}
+
+#[tokio::test]
+async fn trusted_projection_migration_adds_state_columns_and_scoped_checkpoints() {
+    let database = TestDatabase::new().await;
+    let columns: Vec<String> =
+        sqlx::query_scalar("SELECT name FROM pragma_table_info('state_versions') ORDER BY cid")
+            .fetch_all(database.store.pool())
+            .await
+            .expect("读取 state_versions 列");
+    assert!(columns.contains(&"reason".to_owned()));
+    assert!(columns.contains(&"source_event_id".to_owned()));
+
+    let scope_key = "a".repeat(64);
+    sqlx::query(
+        "INSERT INTO projection_checkpoints
+            (scope_key, projector, sequence, updated_at_us)
+         VALUES (?1, 'state', 0, 1), (?1, 'graph', 0, 1)",
+    )
+    .bind(&scope_key)
+    .execute(database.store.pool())
+    .await
+    .expect("同一 Scope 写入两类 Projector Checkpoint");
+
+    let duplicate = sqlx::query(
+        "INSERT INTO projection_checkpoints
+            (scope_key, projector, sequence, updated_at_us)
+         VALUES (?1, 'state', 1, 2)",
+    )
+    .bind(scope_key)
+    .execute(database.store.pool())
+    .await
+    .expect_err("相同 Scope 与 Projector 必须唯一");
+    assert!(
+        duplicate.to_string().contains("UNIQUE constraint failed"),
+        "非预期唯一约束错误: {duplicate}"
+    );
 }
 
 #[tokio::test]
