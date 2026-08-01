@@ -31,3 +31,7 @@ Runtime 状态包括 `Observing`、`Recalling`、`Reasoning`、`AwaitingApproval
 ## 当前边界
 
 Runtime 状态机、持久化、Provider、Capability、Policy、Approval、Tool、MCP Client、Completion 和 `RuntimeService` 均已有 Rust 实现与测试；Embedded Fixture 已验证完整编排。把 `RuntimeBackend` 接入具体远程部署进程，以及 Windows、容器和集群环境的运行验证，仍需要对应平台证据。
+
+`memory-server` 当前已提供 Run 列表、详情与 `POST /v1/runtime/runs` FinalResponse 启动契约。启动只接受 Prompt，Scope 与 Grant 由 API Key 在服务端精确绑定；Prompt 经共享 `CommandBus` 追加为 `Observation + Unverified`，Recall 的 `recommended_context` 进入模型请求，FinalResponse 追加为 `Inference + Unverified`。模型输出不会写为 Verified Fact。
+
+Start 只有在 Server 配置 OpenAI Compatible Provider 时可用；未配置返回 503，查询仍可使用。审批决策、审批后续跑、工具执行、Pause/Resume 与 Provider 管理页面仍未接通，不能把 FinalResponse Start 描述为完整远程 Tool/Approval 闭环。

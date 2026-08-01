@@ -6,11 +6,11 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use jc_memory_protocol::{AccessContext, EvidenceRef, MemoryScope, TraceId};
 use semver::VersionReq;
-use serde_json::json;
+use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    FinalResponse, ModelError, ModelMessage, ModelOutput, ModelProvider, ModelRequest,
+    FinalResponse, ModelError, ModelMessage, ModelOutput, ModelProvider, ModelRequest, ModelRole,
     RuntimeError, RuntimeEvent, RuntimeRunner, RuntimeSnapshot, ToolCommit, ToolError,
     ToolInvocation, ToolLoop,
 };
@@ -26,13 +26,13 @@ pub trait RuntimeBackend: Send + Sync {
         input: &str,
     ) -> Result<Vec<EvidenceRef>, String>;
 
-    /// 执行受 Scope 约束的 Recall，并返回权威证据引用。
+    /// 执行受 Scope 约束的 Recall，并返回模型上下文、派生载荷和权威证据引用。
     async fn recall(
         &self,
         access: &AccessContext,
         scope: &MemoryScope,
         input: &str,
-    ) -> Result<Vec<EvidenceRef>, String>;
+    ) -> Result<RuntimeRecall, String>;
 
     /// 提交工具结果或最终响应；实现不得把模型候选直接写成 Fact。
     async fn commit(
@@ -41,6 +41,17 @@ pub trait RuntimeBackend: Send + Sync {
         scope: &MemoryScope,
         commit: RuntimeCommit,
     ) -> Result<Vec<EvidenceRef>, String>;
+}
+
+/// Runtime Recall 阶段交给模型和 Transition 的有界结果。
+#[derive(Clone, Debug)]
+pub struct RuntimeRecall {
+    /// Memory Packet 生成的模型无关上下文。
+    pub recommended_context: String,
+    /// 写入 Transition 的派生 Packet 摘要，不替代权威记录。
+    pub transition_payload: Value,
+    /// 已有的权威证据引用；实现不得臆造验证方法。
+    pub evidence_refs: Vec<EvidenceRef>,
 }
 
 /// 可提交的 Runtime 结果。
@@ -167,6 +178,7 @@ impl RuntimeService {
                     input_refs: Vec::new(),
                     output_refs: observed,
                     phase: "observe",
+                    memory_packet: None,
                 },
             )
             .await?;
@@ -184,8 +196,9 @@ impl RuntimeService {
                     deadline: request.deadline,
                     trace_id,
                     input_refs: Vec::new(),
-                    output_refs: recalled,
+                    output_refs: recalled.evidence_refs,
                     phase: "recall",
+                    memory_packet: Some(recalled.transition_payload),
                 },
             )
             .await?;
@@ -194,7 +207,13 @@ impl RuntimeService {
             .provider
             .invoke(
                 ModelRequest {
-                    messages: vec![ModelMessage::user(request.prompt.clone())],
+                    messages: vec![
+                        ModelMessage {
+                            role: ModelRole::System,
+                            content: recalled.recommended_context,
+                        },
+                        ModelMessage::user(request.prompt.clone()),
+                    ],
                     stream: false,
                 },
                 request.cancellation.clone(),
@@ -248,6 +267,7 @@ impl RuntimeService {
                     input_refs: Vec::new(),
                     output_refs: Vec::new(),
                     phase: "model_final",
+                    memory_packet: None,
                 },
             )
             .await?;
@@ -262,6 +282,7 @@ impl RuntimeService {
                     input_refs: Vec::new(),
                     output_refs: Vec::new(),
                     phase: "capture_final",
+                    memory_packet: None,
                 },
             )
             .await?;
@@ -281,6 +302,7 @@ impl RuntimeService {
                     input_refs: Vec::new(),
                     output_refs,
                     phase: "commit",
+                    memory_packet: None,
                 },
             )
             .await?;
@@ -305,28 +327,26 @@ impl RuntimeService {
                     .transition(
                         access,
                         snapshot,
-                        TransitionInput {
-                            event: RuntimeEvent::Execute,
-                            deadline: request.deadline,
+                        TransitionInput::phase(
+                            RuntimeEvent::Execute,
+                            request.deadline,
                             trace_id,
-                            input_refs: Vec::new(),
-                            output_refs: Vec::new(),
-                            phase: "tool_execute",
-                        },
+                            Vec::new(),
+                            "tool_execute",
+                        ),
                     )
                     .await?;
                 snapshot = self
                     .transition(
                         access,
                         snapshot,
-                        TransitionInput {
-                            event: RuntimeEvent::Commit,
-                            deadline: request.deadline,
+                        TransitionInput::phase(
+                            RuntimeEvent::Commit,
+                            request.deadline,
                             trace_id,
-                            input_refs: Vec::new(),
-                            output_refs: Vec::new(),
-                            phase: "tool_capture",
-                        },
+                            Vec::new(),
+                            "tool_capture",
+                        ),
                     )
                     .await?;
                 let output_refs = self
@@ -338,14 +358,13 @@ impl RuntimeService {
                     .transition(
                         access,
                         snapshot,
-                        TransitionInput {
-                            event: RuntimeEvent::Complete,
-                            deadline: request.deadline,
+                        TransitionInput::phase(
+                            RuntimeEvent::Complete,
+                            request.deadline,
                             trace_id,
-                            input_refs: Vec::new(),
                             output_refs,
-                            phase: "commit",
-                        },
+                            "commit",
+                        ),
                     )
                     .await?;
                 Ok(RuntimeResult::Completed {
@@ -360,14 +379,13 @@ impl RuntimeService {
                     .transition(
                         access,
                         snapshot,
-                        TransitionInput {
-                            event: RuntimeEvent::RequestApproval,
-                            deadline: request.deadline,
+                        TransitionInput::phase(
+                            RuntimeEvent::RequestApproval,
+                            request.deadline,
                             trace_id,
-                            input_refs: Vec::new(),
-                            output_refs: Vec::new(),
-                            phase: "approval",
-                        },
+                            Vec::new(),
+                            "approval",
+                        ),
                     )
                     .await?;
                 Ok(RuntimeResult::AwaitingApproval {
@@ -380,14 +398,13 @@ impl RuntimeService {
                 self.transition(
                     access,
                     snapshot,
-                    TransitionInput {
-                        event: RuntimeEvent::Fail,
-                        deadline: request.deadline,
+                    TransitionInput::phase(
+                        RuntimeEvent::Fail,
+                        request.deadline,
                         trace_id,
-                        input_refs: Vec::new(),
-                        output_refs: Vec::new(),
-                        phase: "tool_failed",
-                    },
+                        Vec::new(),
+                        "tool_failed",
+                    ),
                 )
                 .await?;
                 Err(error.into())
@@ -401,6 +418,10 @@ impl RuntimeService {
         snapshot: RuntimeSnapshot,
         input: TransitionInput,
     ) -> Result<RuntimeSnapshot, RuntimeServiceError> {
+        let mut payload = json!({"phase": input.phase});
+        if let Some(memory_packet) = input.memory_packet {
+            payload["memory_packet"] = memory_packet;
+        }
         Ok(self
             .runner
             .transition(
@@ -413,7 +434,7 @@ impl RuntimeService {
                     attempt: 1,
                     deadline: input.deadline,
                     trace_id: input.trace_id,
-                    payload: json!({"phase": input.phase}),
+                    payload,
                 },
             )
             .await?)
@@ -427,4 +448,25 @@ struct TransitionInput {
     input_refs: Vec<EvidenceRef>,
     output_refs: Vec<EvidenceRef>,
     phase: &'static str,
+    memory_packet: Option<Value>,
+}
+
+impl TransitionInput {
+    fn phase(
+        event: RuntimeEvent,
+        deadline: DateTime<Utc>,
+        trace_id: TraceId,
+        output_refs: Vec<EvidenceRef>,
+        phase: &'static str,
+    ) -> Self {
+        Self {
+            event,
+            deadline,
+            trace_id,
+            input_refs: Vec::new(),
+            output_refs,
+            phase,
+            memory_packet: None,
+        }
+    }
 }

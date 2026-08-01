@@ -1,6 +1,7 @@
 //! Server 启动配置。
 
 use std::{
+    fmt,
     fmt::Display,
     net::SocketAddr,
     path::{Path, PathBuf},
@@ -11,7 +12,7 @@ use jc_memory_protocol::NamespaceId;
 use serde::Deserialize;
 
 /// 可从环境变量构造的本地 Server 配置。
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct ServerConfig {
     /// HTTP 监听地址。
     pub bind: SocketAddr,
@@ -31,6 +32,48 @@ pub struct ServerConfig {
     pub max_requests_per_second: u64,
     /// 单个请求允许执行的最长时间（毫秒）。
     pub request_timeout_ms: u64,
+    /// 可选的 Runtime `OpenAI` Compatible Provider。
+    pub runtime_provider: Option<RuntimeProviderConfig>,
+}
+
+/// Runtime Provider 启动配置；认证值不会出现在 Debug 输出。
+#[derive(Clone, Eq, PartialEq)]
+pub struct RuntimeProviderConfig {
+    /// Chat Completions 兼容地址。
+    pub endpoint: String,
+    /// 请求使用的模型标识。
+    pub model: String,
+    /// 可选 Bearer Token，只从环境变量读取。
+    pub api_key: Option<String>,
+}
+
+impl fmt::Debug for RuntimeProviderConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RuntimeProviderConfig")
+            .field("endpoint", &self.endpoint)
+            .field("model", &self.model)
+            .field("api_key", &self.api_key.as_ref().map(|_| "[REDACTED]"))
+            .finish()
+    }
+}
+
+impl fmt::Debug for ServerConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ServerConfig")
+            .field("bind", &self.bind)
+            .field("grpc_bind", &self.grpc_bind)
+            .field("tls", &self.tls)
+            .field("data_dir", &self.data_dir)
+            .field("api_key", &"[REDACTED]")
+            .field("namespace_id", &self.namespace_id)
+            .field("max_in_flight", &self.max_in_flight)
+            .field("max_requests_per_second", &self.max_requests_per_second)
+            .field("request_timeout_ms", &self.request_timeout_ms)
+            .field("runtime_provider", &self.runtime_provider)
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq)]
@@ -190,6 +233,22 @@ impl ServerConfig {
                 "value must be greater than zero".into(),
             ));
         }
+        let provider_endpoint = string_value(&lookup, "JC_MEMORY_RUNTIME_PROVIDER_ENDPOINT");
+        let provider_model = string_value(&lookup, "JC_MEMORY_RUNTIME_PROVIDER_MODEL");
+        let runtime_provider = match (provider_endpoint, provider_model) {
+            (None, None) => None,
+            (Some(endpoint), Some(model)) => Some(RuntimeProviderConfig {
+                endpoint,
+                model,
+                api_key: string_value(&lookup, "JC_MEMORY_RUNTIME_PROVIDER_API_KEY"),
+            }),
+            (Some(_), None) => {
+                return Err(ConfigError::Missing("JC_MEMORY_RUNTIME_PROVIDER_MODEL"));
+            }
+            (None, Some(_)) => {
+                return Err(ConfigError::Missing("JC_MEMORY_RUNTIME_PROVIDER_ENDPOINT"));
+            }
+        };
         Ok(Self {
             bind,
             grpc_bind,
@@ -200,6 +259,7 @@ impl ServerConfig {
             max_in_flight,
             max_requests_per_second,
             request_timeout_ms,
+            runtime_provider,
         })
     }
 }
@@ -461,6 +521,43 @@ mod tests {
         assert!(matches!(error, ConfigError::File { .. }));
         assert!(error.to_string().contains("/missing/jc-memory/server.yaml"));
         assert!(!error.to_string().contains("do-not-print-this-key"));
+    }
+
+    #[test]
+    fn runtime_provider_requires_endpoint_and_model_and_redacts_secrets() {
+        let base = [
+            ("JC_MEMORY_API_KEY", "server-secret"),
+            (
+                "JC_MEMORY_NAMESPACE_ID",
+                "018f4c8f-5f7b-7d31-9a6c-b7a0f4f37001",
+            ),
+        ];
+        let missing_model = values(&[
+            base[0],
+            base[1],
+            (
+                "JC_MEMORY_RUNTIME_PROVIDER_ENDPOINT",
+                "https://model.example/v1/chat/completions",
+            ),
+        ]);
+        assert!(ServerConfig::from_lookup(|name| missing_model.get(name).cloned()).is_err());
+
+        let settings = values(&[
+            base[0],
+            base[1],
+            (
+                "JC_MEMORY_RUNTIME_PROVIDER_ENDPOINT",
+                "https://model.example/v1/chat/completions",
+            ),
+            ("JC_MEMORY_RUNTIME_PROVIDER_MODEL", "fixture-model"),
+            ("JC_MEMORY_RUNTIME_PROVIDER_API_KEY", "provider-secret"),
+        ]);
+        let config = ServerConfig::from_lookup(|name| settings.get(name).cloned()).unwrap();
+        let provider = config.runtime_provider.as_ref().unwrap();
+        assert_eq!(provider.model, "fixture-model");
+        let debug = format!("{config:?}");
+        assert!(!debug.contains("server-secret"));
+        assert!(!debug.contains("provider-secret"));
     }
 
     #[test]

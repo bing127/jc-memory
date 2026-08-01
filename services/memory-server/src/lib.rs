@@ -1,8 +1,10 @@
 //! 疆诚记忆 HTTP 与共享协议服务边界。
 
 mod config;
+mod runtime_backend;
 
-pub use config::{ConfigError, ServerConfig, TlsFiles};
+pub use config::{ConfigError, RuntimeProviderConfig, ServerConfig, TlsFiles};
+pub use runtime_backend::CommandBusRuntimeBackend;
 
 use std::{
     collections::BTreeMap,
@@ -16,7 +18,7 @@ use std::{
 
 use axum::{
     Json, Router,
-    extract::State,
+    extract::{Path as AxumPath, Query, State},
     http::{HeaderMap, StatusCode, header::AUTHORIZATION},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -29,9 +31,14 @@ use jc_memory_protocol::{
         memory_service_server::{MemoryService, MemoryServiceServer},
     },
 };
-use serde::Serialize;
+use jc_memory_runtime::{
+    RunId, RuntimeQueryError, RuntimeReadStore, RuntimeRequest, RuntimeResult, RuntimeRunDetail,
+    RuntimeRunPage, RuntimeRunQuery, RuntimeService, RuntimeServiceError, RuntimeState,
+};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::net::TcpListener;
+use tokio_util::sync::CancellationToken;
 
 /// 服务端保存的 API Key 与授权上下文模板。
 #[derive(Clone)]
@@ -76,6 +83,8 @@ pub struct ServerState<B> {
     max_in_flight: usize,
     rate_limiter: Option<Arc<ApiKeyRateLimiter>>,
     request_timeout: Option<Duration>,
+    runtime_read_store: Option<Arc<RuntimeReadStore>>,
+    runtime_service: Option<Arc<RuntimeService>>,
 }
 
 impl<B> Clone for ServerState<B> {
@@ -87,6 +96,8 @@ impl<B> Clone for ServerState<B> {
             max_in_flight: self.max_in_flight,
             rate_limiter: self.rate_limiter.clone(),
             request_timeout: self.request_timeout,
+            runtime_read_store: self.runtime_read_store.clone(),
+            runtime_service: self.runtime_service.clone(),
         }
     }
 }
@@ -162,7 +173,23 @@ impl<B> ServerState<B> {
             rate_limiter: max_requests_per_second
                 .map(|limit| Arc::new(ApiKeyRateLimiter::new(limit))),
             request_timeout,
+            runtime_read_store: None,
+            runtime_service: None,
         }
+    }
+
+    /// 为 HTTP 控制面启用 Runtime Run 与 Transition 的只读查询。
+    #[must_use]
+    pub fn with_runtime_read_store(mut self, store: RuntimeReadStore) -> Self {
+        self.runtime_read_store = Some(Arc::new(store));
+        self
+    }
+
+    /// 为 HTTP 控制面启用真实 Runtime 编排。
+    #[must_use]
+    pub fn with_runtime_service(mut self, service: RuntimeService) -> Self {
+        self.runtime_service = Some(Arc::new(service));
+        self
     }
 
     fn access(&self, key: &str, request_id: &str) -> Result<AccessContext, ServerError> {
@@ -240,6 +267,11 @@ where
         .route("/v1/memory/correct", post(correct::<B>))
         .route("/v1/memory/forget", post(forget::<B>))
         .route("/v1/memory/explain", post(explain::<B>))
+        .route(
+            "/v1/runtime/runs",
+            get(runtime_runs::<B>).post(runtime_start::<B>),
+        )
+        .route("/v1/runtime/runs/{run_id}", get(runtime_run::<B>))
         .with_state(state)
 }
 
@@ -457,6 +489,154 @@ where
     command_inner(state, headers, request).await
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RuntimeListParams {
+    state: Option<RuntimeState>,
+    limit: Option<u32>,
+    offset: Option<u32>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RuntimeStartRequest {
+    prompt: String,
+}
+
+#[derive(Serialize)]
+struct RuntimeStartResponse {
+    outcome: &'static str,
+    run_id: RunId,
+    state: RuntimeState,
+    response: Option<jc_memory_runtime::FinalResponse>,
+    approval_id: Option<String>,
+}
+
+async fn runtime_start<B>(
+    State(state): State<ServerState<B>>,
+    headers: HeaderMap,
+    Json(request): Json<serde_json::Value>,
+) -> Result<(StatusCode, Json<RuntimeStartResponse>), ServerError>
+where
+    B: CommandBus + Send + Sync + 'static,
+{
+    let request: RuntimeStartRequest =
+        serde_json::from_value(request).map_err(|_| ServerError::InvalidRuntimeRequest)?;
+    let (access, _permit) = runtime_query_access(&state, &headers)?;
+    if request.prompt.trim().is_empty() || request.prompt.chars().count() > 32_768 {
+        return Err(ServerError::InvalidRuntimeRequest);
+    }
+    let service = state
+        .runtime_service
+        .as_ref()
+        .ok_or(ServerError::RuntimeUnavailable)?;
+    let timeout = state.request_timeout.unwrap_or(Duration::from_secs(30));
+    let cancellation = CancellationToken::new();
+    let deadline = chrono::Utc::now()
+        + chrono::Duration::from_std(timeout).map_err(|_| ServerError::InvalidRuntimeRequest)?;
+    let execute = service.run(
+        &access,
+        RuntimeRequest {
+            scope: access.scope.clone(),
+            prompt: request.prompt,
+            deadline,
+            cancellation: cancellation.clone(),
+        },
+    );
+    let result = if let Ok(result) = tokio::time::timeout(timeout, execute).await {
+        result.map_err(ServerError::runtime_start)?
+    } else {
+        cancellation.cancel();
+        return Err(ServerError::timeout("runtime-start"));
+    };
+    let response = match result {
+        RuntimeResult::Completed { response, snapshot } => RuntimeStartResponse {
+            outcome: "completed",
+            run_id: snapshot.run_id,
+            state: snapshot.state,
+            response: Some(response),
+            approval_id: None,
+        },
+        RuntimeResult::AwaitingApproval {
+            snapshot,
+            approval_id,
+            ..
+        } => RuntimeStartResponse {
+            outcome: "awaiting_approval",
+            run_id: snapshot.run_id,
+            state: snapshot.state,
+            response: None,
+            approval_id: Some(approval_id.to_string()),
+        },
+    };
+    Ok((StatusCode::CREATED, Json(response)))
+}
+
+async fn runtime_runs<B>(
+    State(state): State<ServerState<B>>,
+    headers: HeaderMap,
+    Query(params): Query<RuntimeListParams>,
+) -> Result<Json<RuntimeRunPage>, ServerError>
+where
+    B: CommandBus + Send + Sync + 'static,
+{
+    let (access, _permit) = runtime_query_access(&state, &headers)?;
+    let store = state
+        .runtime_read_store
+        .as_ref()
+        .ok_or(ServerError::RuntimeUnavailable)?;
+    let query = RuntimeRunQuery {
+        state: params.state,
+        limit: params.limit.unwrap_or(25),
+        offset: params.offset.unwrap_or(0),
+    };
+    let execute = store.list(&access, &access.scope, query);
+    let page = match state.request_timeout {
+        Some(timeout) => tokio::time::timeout(timeout, execute)
+            .await
+            .map_err(|_| ServerError::timeout("runtime-query"))?,
+        None => execute.await,
+    }
+    .map_err(ServerError::runtime_query)?;
+    Ok(Json(page))
+}
+
+async fn runtime_run<B>(
+    State(state): State<ServerState<B>>,
+    headers: HeaderMap,
+    AxumPath(run_id): AxumPath<RunId>,
+) -> Result<Json<RuntimeRunDetail>, ServerError>
+where
+    B: CommandBus + Send + Sync + 'static,
+{
+    let (access, _permit) = runtime_query_access(&state, &headers)?;
+    let store = state
+        .runtime_read_store
+        .as_ref()
+        .ok_or(ServerError::RuntimeUnavailable)?;
+    let execute = store.get(&access, &access.scope, run_id);
+    let detail = match state.request_timeout {
+        Some(timeout) => tokio::time::timeout(timeout, execute)
+            .await
+            .map_err(|_| ServerError::timeout("runtime-query"))?,
+        None => execute.await,
+    }
+    .map_err(ServerError::runtime_query)?
+    .ok_or(ServerError::RuntimeNotFound)?;
+    Ok(Json(detail))
+}
+
+fn runtime_query_access<B>(
+    state: &ServerState<B>,
+    headers: &HeaderMap,
+) -> Result<(AccessContext, InFlightPermit), ServerError> {
+    let key = extract_api_key(headers).ok_or(ServerError::Unauthorized)?;
+    let access = state.access(&key, "runtime-query")?;
+    state.acquire_rate_limit(&key)?;
+    let permit = InFlightPermit::acquire(state)?;
+    Ok((access, permit))
+}
+
 async fn command_inner<B>(
     state: ServerState<B>,
     headers: HeaderMap,
@@ -607,6 +787,29 @@ pub enum ServerError {
         #[source]
         source: CommandError,
     },
+    /// 当前服务进程没有配置 Runtime 只读 Store。
+    #[error("runtime query service is unavailable")]
+    RuntimeUnavailable,
+    /// Runtime Start 请求不符合有界输入契约。
+    #[error("invalid runtime start request")]
+    InvalidRuntimeRequest,
+    /// 目标 Run 不存在于当前授权 Scope。
+    #[error("runtime run was not found")]
+    RuntimeNotFound,
+    /// Runtime 查询失败。
+    #[error("runtime query failed")]
+    RuntimeQuery {
+        /// 未向客户端泄漏的原始查询错误。
+        #[source]
+        source: RuntimeQueryError,
+    },
+    /// Runtime 编排失败，源错误不直接返回客户端。
+    #[error("runtime start failed")]
+    RuntimeStart {
+        /// 原始 Runtime 编排错误。
+        #[source]
+        source: RuntimeServiceError,
+    },
 }
 
 impl ServerError {
@@ -622,6 +825,14 @@ impl ServerError {
             request_id: request_id.to_owned(),
         }
     }
+
+    fn runtime_query(source: RuntimeQueryError) -> Self {
+        Self::RuntimeQuery { source }
+    }
+
+    fn runtime_start(source: RuntimeServiceError) -> Self {
+        Self::RuntimeStart { source }
+    }
 }
 
 fn grpc_status(error: &ServerError) -> tonic::Status {
@@ -632,6 +843,11 @@ fn grpc_status(error: &ServerError) -> tonic::Status {
             (tonic::Code::DeadlineExceeded, Some(request_id.as_str()))
         }
         ServerError::Transport(_) => (tonic::Code::Internal, None),
+        ServerError::RuntimeUnavailable
+        | ServerError::InvalidRuntimeRequest
+        | ServerError::RuntimeNotFound
+        | ServerError::RuntimeQuery { .. }
+        | ServerError::RuntimeStart { .. } => (tonic::Code::Unimplemented, None),
         ServerError::Command { source, request_id } => {
             let code = match source.code() {
                 jc_memory_protocol::CommandErrorCode::InvalidArgument => {
@@ -673,6 +889,25 @@ impl IntoResponse for ServerError {
             Self::RateLimited => StatusCode::TOO_MANY_REQUESTS,
             Self::Timeout { .. } => StatusCode::GATEWAY_TIMEOUT,
             Self::Transport(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::RuntimeUnavailable => StatusCode::SERVICE_UNAVAILABLE,
+            Self::InvalidRuntimeRequest => StatusCode::BAD_REQUEST,
+            Self::RuntimeNotFound => StatusCode::NOT_FOUND,
+            Self::RuntimeQuery { source } => match source {
+                RuntimeQueryError::AccessDenied(_) => StatusCode::FORBIDDEN,
+                RuntimeQueryError::Invalid(_) => StatusCode::BAD_REQUEST,
+                RuntimeQueryError::Storage(_) | RuntimeQueryError::Corrupt(_) => {
+                    StatusCode::INTERNAL_SERVER_ERROR
+                }
+            },
+            Self::RuntimeStart { source } => match source {
+                RuntimeServiceError::Runtime(jc_memory_runtime::RuntimeError::AccessDenied(_)) => {
+                    StatusCode::FORBIDDEN
+                }
+                RuntimeServiceError::Model(jc_memory_runtime::ModelError::Timeout) => {
+                    StatusCode::GATEWAY_TIMEOUT
+                }
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            },
             Self::Command { source, .. } => match source.code() {
                 jc_memory_protocol::CommandErrorCode::InvalidArgument => StatusCode::BAD_REQUEST,
                 jc_memory_protocol::CommandErrorCode::PermissionDenied => StatusCode::FORBIDDEN,
@@ -689,6 +924,23 @@ impl IntoResponse for ServerError {
             Self::RateLimited => "resource_exhausted".into(),
             Self::Timeout { .. } => "deadline_exceeded".into(),
             Self::Transport(_) => "internal".into(),
+            Self::RuntimeUnavailable => "unavailable".into(),
+            Self::InvalidRuntimeRequest => "invalid_argument".into(),
+            Self::RuntimeNotFound => "not_found".into(),
+            Self::RuntimeQuery { source } => match source {
+                RuntimeQueryError::AccessDenied(_) => "permission_denied".into(),
+                RuntimeQueryError::Invalid(_) => "invalid_argument".into(),
+                RuntimeQueryError::Storage(_) | RuntimeQueryError::Corrupt(_) => "internal".into(),
+            },
+            Self::RuntimeStart { source } => match source {
+                RuntimeServiceError::Runtime(jc_memory_runtime::RuntimeError::AccessDenied(_)) => {
+                    "permission_denied".into()
+                }
+                RuntimeServiceError::Model(jc_memory_runtime::ModelError::Timeout) => {
+                    "deadline_exceeded".into()
+                }
+                _ => "internal".into(),
+            },
             Self::Command { source, .. } => serde_json::to_value(source.code())
                 .unwrap_or(json!("internal"))
                 .as_str()
@@ -704,7 +956,14 @@ impl IntoResponse for ServerError {
                     Self::Command { request_id, .. } | Self::Timeout { request_id } => {
                         Some(request_id.clone())
                     }
-                    Self::Unauthorized | Self::RateLimited | Self::Transport(_) => None,
+                    Self::Unauthorized
+                    | Self::RateLimited
+                    | Self::Transport(_)
+                    | Self::RuntimeUnavailable
+                    | Self::InvalidRuntimeRequest
+                    | Self::RuntimeNotFound
+                    | Self::RuntimeQuery { .. }
+                    | Self::RuntimeStart { .. } => None,
                 },
             }),
         )

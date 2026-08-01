@@ -1,7 +1,10 @@
 //! Runtime 的进程内暂停、恢复、取消和用户输入控制。
 
+use serde::{Deserialize, Serialize};
+
 /// Runtime 控制状态。
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ControlState {
     /// 正常运行。
     Running,

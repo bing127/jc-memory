@@ -10,6 +10,7 @@ mod parser;
 mod persistence;
 mod policy;
 mod providers;
+mod query;
 mod recovery;
 mod retry;
 mod runner;
@@ -39,11 +40,15 @@ pub use providers::{
     GenericHttpConfig, GenericHttpProvider, OpenAiAuth, OpenAiCompatibleConfig,
     OpenAiCompatibleProvider,
 };
+pub use query::{
+    RuntimeControlRecord, RuntimeQueryError, RuntimeReadStore, RuntimeRunDetail, RuntimeRunPage,
+    RuntimeRunQuery, RuntimeRunRecord, RuntimeTransitionRecord,
+};
 pub use recovery::RuntimeRecovery;
 pub use retry::{RetryClass, RetryDecision, RetryPolicy};
 pub use runner::{RunId, RuntimeError, RuntimeRunner, RuntimeSnapshot, TransitionMetadata};
 pub use service::{
-    RuntimeBackend, RuntimeCommit, RuntimeRequest, RuntimeResult, RuntimeService,
+    RuntimeBackend, RuntimeCommit, RuntimeRecall, RuntimeRequest, RuntimeResult, RuntimeService,
     RuntimeServiceError,
 };
 pub use state::{RuntimeEvent, RuntimeState, TransitionError};

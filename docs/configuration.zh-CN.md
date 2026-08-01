@@ -39,6 +39,9 @@ YAML 禁止未知字段。API Key 不允许写入 YAML，必须由 `JC_MEMORY_AP
 | `tls.cert_file` | `JC_MEMORY_TLS_CERT_FILE` | 无 | PEM 证书链文件路径 |
 | `tls.key_file` | `JC_MEMORY_TLS_KEY_FILE` | 无 | PEM 私钥文件路径 |
 | 无 | `JC_MEMORY_API_KEY` | 无 | 服务端 API Key，必须通过 Secret 注入 |
+| 无 | `JC_MEMORY_RUNTIME_PROVIDER_ENDPOINT` | 无 | OpenAI Compatible Chat Completions 地址，与 MODEL 成对配置 |
+| 无 | `JC_MEMORY_RUNTIME_PROVIDER_MODEL` | 无 | Runtime 模型标识，与 ENDPOINT 成对配置 |
+| 无 | `JC_MEMORY_RUNTIME_PROVIDER_API_KEY` | 无 | 可选 Bearer Token，只通过 Secret 注入 |
 | 无 | `JC_MEMORY_CONFIG_FILE` | 无 | YAML 配置文件路径 |
 
 `namespace_id` 和 `JC_MEMORY_API_KEY` 是必填项。TLS 证书与私钥必须成对配置；两者都未配置时使用本机明文 gRPC 开发模式。
@@ -63,6 +66,7 @@ cargo run -p jc-memory-server
 ## Secret 与文件权限
 
 - 不要把 API Key、证书私钥或可用 Token 提交到 Git。
+- Runtime Provider Token 只从环境变量读取，不写入 YAML、HTTP 响应或 Web 控制面数据库。
 - 生产环境 API Key 应由 Kubernetes Secret、容器运行时 Secret 或进程管理器注入。
 - TLS 私钥文件应只允许服务进程用户读取；Unix 环境建议权限为 `0600`。
 - 日志和错误报告只应包含配置字段名或文件路径，不应包含 API Key 或私钥内容。

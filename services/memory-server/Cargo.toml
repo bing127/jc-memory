@@ -9,8 +9,11 @@ publish.workspace = true
 [dependencies]
 async-trait.workspace = true
 axum.workspace = true
+chrono.workspace = true
+jc-memory-runtime = { path = "../../crates/memory-runtime" }
 jc-memory-core = { path = "../../crates/memory-core" }
 jc-memory-protocol = { path = "../../crates/memory-protocol" }
+jc-memory-storage = { path = "../../crates/memory-storage" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
