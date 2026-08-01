@@ -2,7 +2,8 @@
 
 use chrono::{DateTime, Utc};
 use jc_memory_protocol::{
-    EdgeKind, EventId, FragmentContent, FragmentId, FragmentSource, Perspective, VerificationMethod,
+    EdgeKind, EventId, FragmentContent, FragmentId, FragmentSource, Perspective, StateDeclaration,
+    VerificationMethod,
 };
 use serde::{Deserialize, Serialize};
 
@@ -31,6 +32,8 @@ pub struct MutationCommand {
     pub target_fragment_id: FragmentId,
     /// 新变更 Fragment 的原始内容。
     pub content: FragmentContent,
+    /// 可选的显式 State 新值或竞争值。
+    pub state: Option<StateDeclaration>,
     /// 发起变更的来源信息。
     pub source: FragmentSource,
     /// 来源观察视角。

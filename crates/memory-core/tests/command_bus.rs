@@ -411,6 +411,70 @@ async fn command_bus_appends_correct_and_forget_mutations() {
     ));
 }
 
+#[tokio::test]
+async fn command_bus_rejects_invalid_state_mutation_without_writing() {
+    let data_dir = tempfile::tempdir().expect("创建 CommandBus State 数据目录");
+    let engine = MemoryEngine::open(MemoryConfig::local(data_dir.path()))
+        .await
+        .expect("打开记忆引擎");
+    let scope = jc_memory_protocol::MemoryScope::new(jc_memory_protocol::NamespaceId::new());
+    let state = common::state_fragment(
+        scope.clone(),
+        "project.deployment_strategy",
+        serde_json::json!("blue_green"),
+        "CommandBus 初始状态",
+        chrono::Utc::now(),
+    );
+    let target_fragment_id = state.id;
+    let mut access = common::access_context(&scope);
+    let bus = EmbeddedCommandBus::new(engine.clone());
+    access.request_id = "req-state-observe".to_owned();
+    bus.execute(
+        &access,
+        MemoryRequest {
+            api_version: API_VERSION_V1.to_owned(),
+            request_id: access.request_id.clone(),
+            access_scope: AccessScope::from(scope.clone()),
+            command: MemoryCommand::Observe(ObserveCommand { fragment: state }),
+        },
+    )
+    .await
+    .expect("通过 CommandBus 写入 State");
+    let before = engine.stats(&access, &scope).await.expect("读取拒绝前统计");
+
+    access.request_id = "req-invalid-state-correct".to_owned();
+    let error = bus
+        .execute(
+            &access,
+            MemoryRequest {
+                api_version: API_VERSION_V1.to_owned(),
+                request_id: access.request_id.clone(),
+                access_scope: AccessScope::from(scope.clone()),
+                command: MemoryCommand::Correct(MutationCommand {
+                    target_fragment_id,
+                    content: FragmentContent::Text {
+                        text: "错误 key 的状态变更".to_owned(),
+                    },
+                    state: Some(jc_memory_protocol::StateDeclaration {
+                        key: "project.database".to_owned(),
+                        value: serde_json::json!("sqlite"),
+                        reason: "拒绝跨 key 修正".to_owned(),
+                    }),
+                    source: common::observation("state-source").source,
+                    perspective: Perspective::System,
+                    occurred_at: chrono::Utc::now(),
+                    verification_method: VerificationMethod::Manual,
+                    reason: "CommandBus State 前置拒绝".to_owned(),
+                }),
+            },
+        )
+        .await
+        .expect_err("CommandBus 拒绝 State key 不一致");
+
+    assert_eq!(error.code(), CommandErrorCode::InvalidArgument);
+    assert_eq!(engine.stats(&access, &scope).await.unwrap(), before);
+}
+
 fn request(
     access: &AccessContext,
     fragment: jc_memory_protocol::CognitiveFragment,

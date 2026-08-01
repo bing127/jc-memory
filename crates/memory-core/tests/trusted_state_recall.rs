@@ -3,10 +3,13 @@
 mod common;
 
 use chrono::{DateTime, Duration, Utc};
-use jc_memory_core::{MemoryConfig, MemoryEngine, RecallLimits, RecallQuery};
+use jc_memory_core::{
+    MemoryConfig, MemoryEngine, MutationCommand, MutationReceipt, RecallLimits, RecallQuery,
+};
 use jc_memory_protocol::{
-    AccessContext, EventId, EvidenceId, EvidenceRef, FragmentContent, FragmentId, MemoryPacket,
-    MemoryScope, NamespaceId, RecallMode, ValidityStatus, VerificationMethod,
+    AccessContext, CognitiveFragment, EdgeId, EdgeKind, EventId, EvidenceId, EvidenceRef,
+    FragmentContent, FragmentId, FragmentSource, MemoryPacket, MemoryScope, NamespaceId,
+    Perspective, RecallMode, SourceType, StateDeclaration, ValidityStatus, VerificationMethod,
 };
 
 #[tokio::test]
@@ -235,6 +238,257 @@ async fn simultaneous_state_values_remain_visible_as_conflict() {
 }
 
 #[tokio::test]
+async fn state_correct_and_forget_survive_restart_without_rewriting_authority() {
+    let data_dir = tempfile::tempdir().expect("创建 State Mutation 重启目录");
+    let scope = MemoryScope::new(NamespaceId::new());
+    let context = common::access_context(&scope);
+    let now = Utc::now();
+    let engine = MemoryEngine::open(MemoryConfig::local(data_dir.path()))
+        .await
+        .expect("打开 State Mutation 引擎");
+    let fixture = observe_and_correct_state(&engine, &context, &scope, now).await;
+    engine.close().await;
+    drop(engine);
+
+    let reopened = MemoryEngine::open(MemoryConfig::local(data_dir.path()))
+        .await
+        .expect("重启 State Mutation 引擎");
+    let after = reopened
+        .recall(
+            &context,
+            query(
+                scope.clone(),
+                RecallMode::CurrentState,
+                "project.deployment_strategy",
+                None,
+                8,
+            ),
+        )
+        .await
+        .expect("重启后召回 State");
+    assert_eq!(after.current_states, fixture.packet.current_states);
+    assert_eq!(after.historical_states, fixture.packet.historical_states);
+    let explain_after = reopened
+        .explain(
+            &context,
+            query(scope.clone(), RecallMode::Temporal, "canary", None, 8),
+        )
+        .await
+        .expect("重启后解释 State 修正");
+    assert!(
+        explain_after
+            .traversals
+            .iter()
+            .any(|edge| edge.edge_id == fixture.edge_id)
+    );
+
+    reopened
+        .forget(
+            &context,
+            state_mutation(
+                fixture.correct.fragment_id,
+                "遗忘 canary 状态",
+                None,
+                now - Duration::seconds(10),
+            ),
+        )
+        .await
+        .expect("追加 State Forget");
+    let forgotten = reopened
+        .recall(
+            &context,
+            query(
+                scope,
+                RecallMode::CurrentState,
+                "project.deployment_strategy",
+                None,
+                8,
+            ),
+        )
+        .await
+        .expect("召回 Forget 后状态");
+    assert!(forgotten.current_states.is_empty());
+    assert_eq!(
+        reopened
+            .fragment(&context, fixture.original.id)
+            .await
+            .unwrap(),
+        fixture.original
+    );
+    assert_eq!(
+        reopened
+            .fragment(&context, fixture.correct.fragment_id)
+            .await
+            .unwrap()
+            .id,
+        fixture.correct.fragment_id
+    );
+}
+
+struct CorrectedStateFixture {
+    original: CognitiveFragment,
+    correct: MutationReceipt,
+    packet: MemoryPacket,
+    edge_id: EdgeId,
+}
+
+async fn observe_and_correct_state(
+    engine: &MemoryEngine,
+    context: &AccessContext,
+    scope: &MemoryScope,
+    now: DateTime<Utc>,
+) -> CorrectedStateFixture {
+    let mut original = common::state_fragment(
+        scope.clone(),
+        "project.deployment_strategy",
+        serde_json::json!("blue_green"),
+        "初始蓝绿发布策略",
+        now - Duration::seconds(30),
+    );
+    original.content = FragmentContent::Text {
+        text: "部署策略 blue_green".to_owned(),
+    };
+    engine
+        .observe(context, original.clone())
+        .await
+        .expect("写入初始 State");
+    let correct = engine
+        .correct(
+            context,
+            state_mutation(
+                original.id,
+                "部署策略 canary",
+                Some(StateDeclaration {
+                    key: "project.deployment_strategy".to_owned(),
+                    value: serde_json::json!("canary"),
+                    reason: "降低全量发布风险".to_owned(),
+                }),
+                now - Duration::seconds(20),
+            ),
+        )
+        .await
+        .expect("追加 canary State 修正");
+    let packet = engine
+        .recall(
+            context,
+            query(
+                scope.clone(),
+                RecallMode::CurrentState,
+                "project.deployment_strategy",
+                None,
+                8,
+            ),
+        )
+        .await
+        .expect("重启前召回 State");
+    let explain = engine
+        .explain(
+            context,
+            query(scope.clone(), RecallMode::Temporal, "canary", None, 8),
+        )
+        .await
+        .expect("重启前解释 State 修正");
+    let edge_id = explain
+        .traversals
+        .iter()
+        .find(|edge| edge.kind == EdgeKind::Supersedes)
+        .expect("存在持久化 Supersedes Edge")
+        .edge_id;
+    CorrectedStateFixture {
+        original,
+        correct,
+        packet,
+        edge_id,
+    }
+}
+
+#[tokio::test]
+async fn weaken_and_contradict_keep_all_disputed_state_versions_visible() {
+    let data_dir = tempfile::tempdir().expect("创建 State 冲突变更目录");
+    let engine = MemoryEngine::open(MemoryConfig::local(data_dir.path()))
+        .await
+        .expect("打开 State 冲突变更引擎");
+    let scope = MemoryScope::new(NamespaceId::new());
+    let context = common::access_context(&scope);
+    let now = Utc::now();
+    let original = common::state_fragment(
+        scope.clone(),
+        "project.deployment_strategy",
+        serde_json::json!("blue_green"),
+        "初始部署策略",
+        now - Duration::seconds(30),
+    );
+    let original_id = original.id;
+    engine
+        .observe(&context, original)
+        .await
+        .expect("写入争议目标 State");
+    engine
+        .weaken(
+            &context,
+            state_mutation(
+                original_id,
+                "降低蓝绿策略可信度",
+                None,
+                now - Duration::seconds(20),
+            ),
+        )
+        .await
+        .expect("弱化目标 State");
+    engine
+        .contradict(
+            &context,
+            state_mutation(
+                original_id,
+                "部署策略 canary 冲突",
+                Some(StateDeclaration {
+                    key: "project.deployment_strategy".to_owned(),
+                    value: serde_json::json!("canary"),
+                    reason: "保留竞争部署策略".to_owned(),
+                }),
+                now - Duration::seconds(10),
+            ),
+        )
+        .await
+        .expect("写入竞争 State");
+
+    let packet = engine
+        .recall(
+            &context,
+            query(
+                scope.clone(),
+                RecallMode::CurrentState,
+                "project.deployment_strategy",
+                None,
+                8,
+            ),
+        )
+        .await
+        .expect("召回争议 State");
+    assert_eq!(packet.current_states.len(), 2);
+    assert!(
+        packet
+            .current_states
+            .iter()
+            .all(|state| state.validity == ValidityStatus::Disputed)
+    );
+    assert_eq!(packet.conflicts.len(), 1);
+    let explain = engine
+        .explain(
+            &context,
+            query(scope, RecallMode::Semantic, "canary 冲突", None, 8),
+        )
+        .await
+        .expect("解释竞争 State");
+    assert!(
+        explain
+            .traversals
+            .iter()
+            .any(|edge| edge.kind == EdgeKind::Contradicts)
+    );
+}
+
+#[tokio::test]
 async fn ordinary_postgresql_mysql_text_remains_exact_recall_content_on_sqlite() {
     let data_dir = tempfile::tempdir().expect("创建普通文本兼容数据目录");
     let engine = MemoryEngine::open(MemoryConfig::local(data_dir.path()))
@@ -302,5 +556,32 @@ fn query(
             max_nodes,
             timeout_ms: 500,
         },
+    }
+}
+
+fn state_mutation(
+    target_fragment_id: FragmentId,
+    text: &str,
+    state: Option<StateDeclaration>,
+    occurred_at: DateTime<Utc>,
+) -> MutationCommand {
+    MutationCommand {
+        target_fragment_id,
+        content: FragmentContent::Text {
+            text: text.to_owned(),
+        },
+        state,
+        source: FragmentSource {
+            source_type: SourceType::User,
+            source_id: "trusted-state-mutation-test".to_owned(),
+            actor_id: Some("operator".to_owned()),
+            observer_id: None,
+            tool_id: None,
+            uri: None,
+        },
+        perspective: Perspective::FirstPerson,
+        occurred_at,
+        verification_method: VerificationMethod::Manual,
+        reason: "可信 State Mutation 测试".to_owned(),
     }
 }

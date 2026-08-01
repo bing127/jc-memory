@@ -255,6 +255,7 @@ fn core_mutation(command: jc_memory_protocol::MutationCommand) -> crate::Mutatio
     crate::MutationCommand {
         target_fragment_id: command.target_fragment_id,
         content: command.content,
+        state: command.state,
         source: command.source,
         perspective: command.perspective,
         occurred_at: command.occurred_at,
@@ -354,6 +355,7 @@ impl CommandError {
             MemoryError::Event(_)
             | MemoryError::Identifier(_)
             | MemoryError::Edge(_)
+            | MemoryError::InvalidStateMutation { .. }
             | MemoryError::ReviewTargetNotQuarantined { .. }
             | MemoryError::EmptyReviewReason => CommandErrorCode::InvalidArgument,
             MemoryError::DataDirectory(_)

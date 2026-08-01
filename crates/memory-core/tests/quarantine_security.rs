@@ -258,6 +258,7 @@ fn mutation(target_fragment_id: jc_memory_protocol::FragmentId, text: &str) -> M
         content: FragmentContent::Text {
             text: text.to_owned(),
         },
+        state: None,
         source: FragmentSource {
             source_type: SourceType::User,
             source_id: "quarantine-security-test".to_owned(),

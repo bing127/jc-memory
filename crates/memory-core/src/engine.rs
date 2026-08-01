@@ -13,10 +13,9 @@ use jc_memory_storage::{
     StorageError,
 };
 use sha2::{Digest as _, Sha256};
-use tokio::sync::RwLock;
 use tracing::Instrument as _;
 
-use crate::{HealthReport, HealthStatus, MemoryConfig, mutation::DerivedGraph};
+use crate::{HealthReport, HealthStatus, MemoryConfig};
 
 /// Result of persisting one authoritative cognitive fragment and event.
 #[derive(Clone, Debug, PartialEq)]
@@ -119,6 +118,12 @@ pub enum MemoryError {
         #[source]
         source: StorageError,
     },
+    /// 显式 State Mutation 的目标不存在可投影 State 或 key 不一致。
+    #[error("invalid state mutation: {reason}")]
+    InvalidStateMutation {
+        /// 不包含 State value 或权威正文的稳定拒绝原因。
+        reason: &'static str,
+    },
     /// Memory Packet 无法渲染为模型无关 JSON 上下文。
     #[error("memory packet serialization failed: {0}")]
     Packet(#[from] serde_json::Error),
@@ -179,7 +184,6 @@ impl From<StorageError> for MemoryError {
 pub struct MemoryEngine {
     pub(crate) repository: Arc<dyn MemoryRepository>,
     pub(crate) projection: SqliteProjectionStore,
-    pub(crate) derived_graph: Arc<RwLock<DerivedGraph>>,
     pub(crate) recovery: Arc<RecoveryManager>,
     event_factory: EventFactory,
     schema_version: i64,
@@ -237,7 +241,6 @@ impl MemoryEngine {
         Ok(Self {
             repository,
             projection,
-            derived_graph: Arc::new(RwLock::new(DerivedGraph::default())),
             recovery,
             event_factory: EventFactory::new(),
             schema_version,

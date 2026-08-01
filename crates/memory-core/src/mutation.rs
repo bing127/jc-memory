@@ -1,13 +1,10 @@
 //! 通过追加权威 Event 表达记忆纠正和关系变更。
 
-use std::{collections::BTreeMap, str::FromStr as _};
-
 use chrono::Utc;
-use jc_memory_activation::IndexedPoint;
-use jc_memory_graph::{CognitiveEdge, CognitivePoint, EvidenceLink};
+use jc_memory_events::validate_state_metadata;
 use jc_memory_protocol::{
-    AccessContext, CognitiveFragment, EdgeId, EdgeKind, EvidenceId, EvidenceRef, FragmentContent,
-    FragmentId, FragmentKind, Metadata, Operation, PointId, ValidityStatus, VerificationMethod,
+    AccessContext, CognitiveFragment, EdgeKind, EvidenceId, EvidenceRef, FragmentId, FragmentKind,
+    Metadata, Operation, StateDeclaration, ValidityStatus,
 };
 
 use crate::{MemoryEngine, MemoryError, MutationCommand, MutationKind, MutationReceipt};
@@ -18,26 +15,6 @@ struct MutationSpec {
     fragment_kind: FragmentKind,
     validity: ValidityStatus,
     relation: Option<EdgeKind>,
-}
-
-/// 可由权威变更 Event 重建的进程内派生图。
-#[derive(Debug, Default)]
-pub(crate) struct DerivedGraph {
-    points: BTreeMap<PointId, IndexedPoint>,
-    edges: BTreeMap<EdgeId, CognitiveEdge>,
-}
-
-impl DerivedGraph {
-    fn insert_relation(
-        &mut self,
-        target: IndexedPoint,
-        mutation: IndexedPoint,
-        edge: CognitiveEdge,
-    ) {
-        self.points.insert(target.point.id, target);
-        self.points.insert(mutation.point.id, mutation);
-        self.edges.insert(edge.id, edge);
-    }
 }
 
 impl MemoryEngine {
@@ -136,6 +113,7 @@ impl MemoryEngine {
             .repository
             .get_fragment_in_scope(&context.scope, command.target_fragment_id)
             .await?;
+        validate_state_mutation_target(&target, command.state.as_ref())?;
         let fragment_id = FragmentId::new();
         let fragment = mutation_fragment(fragment_id, &target, &command, spec);
         let receipt = self.observe_admitted(fragment).await?;
@@ -148,16 +126,6 @@ impl MemoryEngine {
         } else {
             spec.relation
         };
-        if let Some(relation) = relation {
-            self.record_relation(
-                &target,
-                &admitted,
-                receipt.event_id,
-                relation,
-                command.verification_method,
-            )
-            .await?;
-        }
         Ok(MutationReceipt {
             kind: spec.kind,
             target_fragment_id: command.target_fragment_id,
@@ -167,58 +135,39 @@ impl MemoryEngine {
             relation,
         })
     }
-
-    async fn record_relation(
-        &self,
-        target: &CognitiveFragment,
-        mutation: &CognitiveFragment,
-        event_id: jc_memory_protocol::EventId,
-        relation: EdgeKind,
-        verification_method: VerificationMethod,
-    ) -> Result<(), MemoryError> {
-        let evidence_ref_id = mutation.evidence.first().map(|evidence| evidence.id);
-        let (Some(target), Some(mutation)) = (indexed_point(target)?, indexed_point(mutation)?)
-        else {
-            return Ok(());
-        };
-        let mut edge = CognitiveEdge::new(
-            &mutation.point,
-            &target.point,
-            relation,
-            EvidenceLink {
-                fragment_id: mutation.point.source_fragments[0],
-                event_id: Some(event_id),
-                evidence_ref_id,
-            },
-        )?;
-        edge.human_confirmed = verification_method == VerificationMethod::Manual;
-        edge.tool_verified = verification_method == VerificationMethod::Tool;
-        self.derived_graph
-            .write()
-            .await
-            .insert_relation(target, mutation, edge);
-        Ok(())
-    }
 }
 
-fn indexed_point(fragment: &CognitiveFragment) -> Result<Option<IndexedPoint>, MemoryError> {
-    let Ok(mut point) = CognitivePoint::try_from(fragment) else {
-        return Ok(None);
+fn validate_state_mutation_target(
+    target: &CognitiveFragment,
+    state: Option<&StateDeclaration>,
+) -> Result<(), MemoryError> {
+    let Some(state) = state else {
+        return Ok(());
     };
-    point.id = PointId::from_str(&fragment.id.to_string())?;
-    Ok(Some(IndexedPoint {
-        point,
-        text: fragment_text(&fragment.content),
-        entities: Vec::new(),
-    }))
-}
-
-fn fragment_text(content: &FragmentContent) -> String {
-    match content {
-        FragmentContent::Text { text } => text.clone(),
-        FragmentContent::Json { value } => value.to_string(),
-        FragmentContent::Blob { blob_id, .. } => blob_id.to_string(),
+    if !matches!(
+        target.kind,
+        FragmentKind::Fact | FragmentKind::StateTransition | FragmentKind::Correction
+    ) || matches!(
+        target.validity,
+        ValidityStatus::Quarantined | ValidityStatus::Invalidated
+    ) {
+        return Err(MemoryError::InvalidStateMutation {
+            reason: "target is not projectable state",
+        });
     }
+    let target_state = validate_state_metadata(target)
+        .map_err(|_| MemoryError::InvalidStateMutation {
+            reason: "target state metadata is invalid",
+        })?
+        .ok_or(MemoryError::InvalidStateMutation {
+            reason: "target has no state metadata",
+        })?;
+    if target_state.key != state.key {
+        return Err(MemoryError::InvalidStateMutation {
+            reason: "state key does not match target",
+        });
+    }
+    Ok(())
 }
 
 fn mutation_fragment(
@@ -242,6 +191,12 @@ fn mutation_fragment(
             serde_json::to_value(relation).expect("EdgeKind 始终可以序列化")
         }),
     );
+    if let Some(state) = &command.state {
+        metadata.insert(
+            "state".to_owned(),
+            serde_json::to_value(state).expect("StateDeclaration 始终可以序列化"),
+        );
+    }
 
     CognitiveFragment {
         id,
