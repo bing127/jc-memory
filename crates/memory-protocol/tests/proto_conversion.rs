@@ -9,8 +9,9 @@ use jc_memory_protocol::{
     FragmentContent, FragmentId, FragmentKind, FragmentSource, MemoryCommand, MemoryPacket,
     MemoryRequest, MemoryResponse, MemoryScope, MutationAction, MutationCommand, MutationResult,
     NamespaceId, ObserveCommand, ObserveResult, Perspective, PointId, ProjectId, RecallCommand,
-    RecallLimits, RecallMode, ResponseEnvelope, SecurityLabel, SessionId, SourceType, StatsCommand,
-    StatsResult, SurfaceId, TenantId, TraceId, UserId, ValidityStatus, VerificationMethod,
+    RecallLimits, RecallMode, ResponseEnvelope, SecurityLabel, SessionId, SourceType,
+    StateDeclaration, StateId, StateVersionId, StateView, StatsCommand, StatsResult, SurfaceId,
+    TenantId, TraceId, UserId, ValidityStatus, VerificationMethod,
     generated::jiangcheng::memory::v1 as proto,
 };
 use prost::Message as _;
@@ -160,6 +161,18 @@ fn recall_proto_round_trip_preserves_request_and_packet() {
     packet.coverage.visited_nodes = 4;
     packet.confidence = 0.75;
     packet.recommended_context = "结构化上下文".to_owned();
+    packet.current_states.push(StateView {
+        state_id: StateId::new(),
+        version_id: StateVersionId::new(),
+        key: "project.deployment_strategy".to_owned(),
+        value: serde_json::json!("canary"),
+        valid_from: timestamp("2026-08-02T10:00:00Z"),
+        valid_to: None,
+        validity: ValidityStatus::Verified,
+        evidence: Vec::new(),
+        reason: Some("降低全量发布风险".to_owned()),
+        source_event_id: Some(EventId::new()),
+    });
     let response = ResponseEnvelope::for_request(&request, MemoryResponse::Recall(packet));
 
     let request_wire =
@@ -244,6 +257,11 @@ fn mutation_proto_round_trip_preserves_correct_and_forget() {
                 occurred_at: timestamp("2026-07-31T01:02:03Z"),
                 verification_method: VerificationMethod::Manual,
                 reason: "人工核验".into(),
+                state: Some(StateDeclaration {
+                    key: "project.deployment_strategy".to_owned(),
+                    value: serde_json::json!("canary"),
+                    reason: "降低全量发布风险".to_owned(),
+                }),
             }),
         ),
         (
@@ -265,6 +283,7 @@ fn mutation_proto_round_trip_preserves_correct_and_forget() {
                 occurred_at: timestamp("2026-07-31T02:03:04Z"),
                 verification_method: VerificationMethod::Tool,
                 reason: "保留策略".into(),
+                state: None,
             }),
         ),
     ] {

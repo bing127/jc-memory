@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     AgentId, BlobId, CognitiveFragment, EdgeId, EdgeKind, EventId, FragmentContent, FragmentId,
     FragmentSource, MemoryPacket, MemoryScope, NamespaceId, Perspective, PointId, ProjectId,
-    RecallLimits, RecallMode, SurfaceId, TenantId, UserId, VerificationMethod,
+    RecallLimits, RecallMode, StateDeclaration, SurfaceId, TenantId, UserId, VerificationMethod,
 };
 
 /// 当前稳定服务协议版本。
@@ -112,6 +112,9 @@ pub struct MutationCommand {
     pub verification_method: VerificationMethod,
     /// 可审计的变更原因。
     pub reason: String,
+    /// 纠正操作同时声明的新状态；旧客户端可以省略。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state: Option<StateDeclaration>,
 }
 
 /// 变更命令的公开动作类型。

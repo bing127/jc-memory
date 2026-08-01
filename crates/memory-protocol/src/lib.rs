@@ -50,7 +50,7 @@ pub use command::{
 pub use event::{CognitiveStage, EventDraft, MemoryEvent};
 pub use fragment::{
     CognitiveFragment, EvidenceRef, FragmentContent, FragmentKind, FragmentSource, Metadata,
-    Perspective, SecurityLabel, SourceType, ValidityStatus, VerificationMethod,
+    Perspective, SecurityLabel, SourceType, StateDeclaration, ValidityStatus, VerificationMethod,
 };
 pub use graph::{EdgeKind, PointCreationError, PointKind};
 pub use ids::{

@@ -4,8 +4,8 @@ use std::{path::PathBuf, process::Command};
 
 use jc_memory_protocol::{
     API_VERSION_V1, AccessScope, FragmentContent, MemoryCommand, MemoryRequest, MemoryScope,
-    NamespaceId, ObserveCommand, RequestValidationError,
-    generated::jiangcheng::memory::v1 as proto,
+    MutationCommand, NamespaceId, ObserveCommand, RequestValidationError, StateId, StateVersionId,
+    StateView, ValidityStatus, generated::jiangcheng::memory::v1 as proto,
 };
 use prost::Message as _;
 
@@ -127,6 +127,51 @@ fn request_envelope_requires_version_request_id_and_contains_no_grant() {
             api_version: "v2".to_owned()
         })
     );
+}
+
+#[test]
+fn legacy_mutation_json_defaults_missing_state_to_none() {
+    let command: MutationCommand = serde_json::from_value(serde_json::json!({
+        "target_fragment_id": "00000000-0000-7000-8000-000000000010",
+        "content": {"type": "text", "text": "旧版更正内容"},
+        "source": {
+            "source_type": "user",
+            "source_id": "operator",
+            "actor_id": null,
+            "observer_id": null,
+            "tool_id": null,
+            "uri": null
+        },
+        "perspective": "first_person",
+        "occurred_at": "2026-08-02T10:00:00Z",
+        "verification_method": "manual",
+        "reason": "旧版客户端未携带 State"
+    }))
+    .expect("反序列化旧版 Mutation JSON");
+
+    assert_eq!(command.state, None);
+}
+
+#[test]
+fn state_view_omits_absent_optional_fields_from_json() {
+    let state = StateView {
+        state_id: StateId::new(),
+        version_id: StateVersionId::new(),
+        key: "project.deployment_strategy".to_owned(),
+        value: serde_json::json!("blue_green"),
+        valid_from: chrono::DateTime::parse_from_rfc3339("2026-08-02T09:00:00Z")
+            .expect("解析状态生效时间")
+            .with_timezone(&chrono::Utc),
+        valid_to: None,
+        validity: ValidityStatus::Unverified,
+        evidence: Vec::new(),
+        reason: None,
+        source_event_id: None,
+    };
+
+    let json = serde_json::to_value(state).expect("序列化 StateView");
+    assert!(json.get("reason").is_none());
+    assert!(json.get("source_event_id").is_none());
 }
 
 fn protocol_fragment() -> jc_memory_protocol::CognitiveFragment {

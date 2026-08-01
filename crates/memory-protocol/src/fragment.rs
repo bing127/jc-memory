@@ -7,6 +7,17 @@ use serde::{Deserialize, Serialize};
 /// Arbitrary structured metadata attached to a fragment.
 pub type Metadata = serde_json::Map<String, serde_json::Value>;
 
+/// 调用方显式声明的结构化状态。
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct StateDeclaration {
+    /// 在精确 Scope 内稳定的状态键。
+    pub key: String,
+    /// 不经自然语言推断的状态值。
+    pub value: serde_json::Value,
+    /// 解释本次状态声明原因的可审计文本。
+    pub reason: String,
+}
+
 /// The semantic role of a cognitive fragment.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]

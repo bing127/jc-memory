@@ -41,6 +41,12 @@ pub struct StateView {
     pub validity: ValidityStatus,
     /// Authoritative records supporting this version.
     pub evidence: Vec<EvidenceView>,
+    /// 该状态版本成立或变化的显式原因。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// 产生该状态版本的权威 Event。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_event_id: Option<EventId>,
 }
 
 /// One activated version of a cognitive Surface.
