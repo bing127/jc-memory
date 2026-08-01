@@ -7,17 +7,50 @@ const memoryPort = Number(process.env.JC_WEB_E2E_MEMORY_PORT ?? 8787);
 let fragmentCount = 0;
 let eventCount = 0;
 let metricsRequestCount = 0;
+let metricsFailure = false;
+const requestCounts = {
+  health: 0,
+  ready: 0,
+  metrics: 0,
+  stats: 0,
+  runtimeList: 0,
+  runtimeDetail: 0,
+  runtimeStart: 0,
+};
 const storedFragments = [];
 
 const server = createServer(async (request, response) => {
-  if (request.method === "GET" && request.url === "/healthz") return json(response, { status: "ok" });
-  if (request.method === "GET" && request.url === "/readyz") return json(response, { status: "ready" });
+  if (request.method === "GET" && request.url === "/__fixture/requests") {
+    return json(response, requestCounts);
+  }
+  if (request.method === "POST" && request.url === "/__fixture/metrics-mode") {
+    const body = JSON.parse(await readBody(request));
+    if (typeof body.failure !== "boolean") {
+      return json(response, { code: "invalid_argument" }, 400);
+    }
+    metricsFailure = body.failure;
+    return json(response, { failure: metricsFailure });
+  }
+  if (request.method === "GET" && request.url === "/healthz") {
+    requestCounts.health += 1;
+    return json(response, { status: "ok" });
+  }
+  if (request.method === "GET" && request.url === "/readyz") {
+    requestCounts.ready += 1;
+    return json(response, { status: "ready" });
+  }
   if (request.method === "GET" && request.url === "/metrics") {
+    requestCounts.metrics += 1;
+    if (metricsFailure) {
+      response.writeHead(503, { "content-type": "text/plain" });
+      return response.end("fixture metrics unavailable");
+    }
     response.writeHead(200, { "content-type": "text/plain; version=0.0.4" });
     metricsRequestCount += 1;
     return response.end(metricsText(metricsRequestCount));
   }
   if (request.method === "POST" && request.url === "/v1/runtime/runs") {
+    requestCounts.runtimeStart += 1;
     if (request.headers["x-api-key"] !== apiKey) {
       return json(response, { code: "unauthorized" }, 401);
     }
@@ -39,6 +72,7 @@ const server = createServer(async (request, response) => {
     }
     const url = new URL(request.url, `http://127.0.0.1:${memoryPort}`);
     if (url.pathname === "/v1/runtime/runs") {
+      requestCounts.runtimeList += 1;
       return json(response, {
         items: [runtimeRun()],
         total: 1,
@@ -47,6 +81,7 @@ const server = createServer(async (request, response) => {
       });
     }
     if (url.pathname === `/v1/runtime/runs/${runtimeRunId}`) {
+      requestCounts.runtimeDetail += 1;
       return json(response, {
         run: runtimeRun(),
         transitions: [{
@@ -76,6 +111,7 @@ const server = createServer(async (request, response) => {
   const envelope = JSON.parse(await readBody(request));
   const operation = request.url.split("/").at(-1);
   if (operation === "stats") {
+    requestCounts.stats += 1;
     return command(response, envelope, "stats", {
       scope: envelope.access_scope,
       fragment_count: fragmentCount,

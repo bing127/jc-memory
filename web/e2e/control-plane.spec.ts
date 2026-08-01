@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { join } from "node:path";
 
 const namespaceId = "00000000-0000-0000-0000-000000000001";
@@ -6,8 +6,25 @@ const apiKey = "sk-jcmemory-87s92kdp5vqz4mnh3cr0xfbj6gwy1aue7t";
 const memoryPort = Number(process.env.JC_WEB_E2E_MEMORY_PORT ?? 8787);
 const performanceFixture = join(process.cwd(), "e2e", "fixtures", "performance-report.json");
 
-test("login, connect and execute the complete Memory Console path through the BFF", async ({ page }, testInfo) => {
+test("login, connect and execute the complete Memory Console path through the BFF", async ({ page, request }, testInfo) => {
+  test.setTimeout(90_000);
   const apiResponses: string[] = [];
+  const browserRequests: Array<{ method: string; url: string }> = [];
+  await page.addInitScript(() => {
+    const NativeWebSocket = window.WebSocket;
+    const urls: string[] = [];
+    class CountingWebSocket extends NativeWebSocket {
+      constructor(url: string | URL, protocols?: string | string[]) {
+        super(url, protocols);
+        urls.push(String(url));
+      }
+    }
+    Object.defineProperty(window, "WebSocket", { value: CountingWebSocket });
+    Object.defineProperty(window, "__instanceStreamUrls", { value: urls });
+  });
+  page.on("request", (browserRequest) => {
+    browserRequests.push({ method: browserRequest.method(), url: browserRequest.url() });
+  });
   page.on("response", async (response) => {
     if (response.url().includes("/api/")) {
       apiResponses.push(await response.text());
@@ -53,7 +70,7 @@ test("login, connect and execute the complete Memory Console path through the BF
   await page.getByRole("button", { name: /保存并检查连接/ }).click();
 
   await expect(page.getByRole("heading", { name: "运行总览" })).toBeVisible();
-  await expect(page.getByText("server_ready")).toBeVisible();
+  await expect(page.getByText("server_ready")).toHaveClass(/status-ok/);
   if (testInfo.project.name.includes("mobile")) {
     await page.getByRole("button", { name: "打开导航" }).click();
   }
@@ -128,6 +145,17 @@ test("login, connect and execute the complete Memory Console path through the BF
   await expect(page.getByText("Approval approved")).toHaveCount(0);
   await expect(page.getByText("Tool executed")).toHaveCount(0);
 
+  await page.waitForTimeout(500);
+  const beforeRuntimeWindow = await fixtureRequests(request);
+  await page.waitForTimeout(15_500);
+  const afterRuntimeWindow = await fixtureRequests(request);
+  expect(afterRuntimeWindow.health).toBe(beforeRuntimeWindow.health);
+  expect(afterRuntimeWindow.ready).toBe(beforeRuntimeWindow.ready);
+  expect(afterRuntimeWindow.metrics).toBe(beforeRuntimeWindow.metrics);
+  expect(afterRuntimeWindow.stats).toBe(beforeRuntimeWindow.stats);
+  expect(afterRuntimeWindow.runtimeList).toBeGreaterThan(beforeRuntimeWindow.runtimeList);
+  expect(afterRuntimeWindow.runtimeDetail).toBeGreaterThan(beforeRuntimeWindow.runtimeDetail);
+
   if (testInfo.project.name.includes("mobile")) {
     await page.getByRole("button", { name: "打开导航" }).click();
   }
@@ -158,6 +186,36 @@ test("login, connect and execute the complete Memory Console path through the BF
   expect(timelineProgress).not.toBeNull();
   expect(timelineProgress!.endX).toBeGreaterThan(timelineProgress!.startX);
   expect((timelineProgress!.endX - timelineProgress!.startX) / timelineProgress!.width).toBeLessThan(0.15);
+
+  await page.waitForTimeout(500);
+  const beforePerformanceWindow = await fixtureRequests(request);
+  const positionsBeforeFailure = await performancePositions(page);
+  await setMetricsFailure(request, true);
+  await expect(page.getByText("指标采样失败，图表保留最后成功数据且缺口不会补零。")).toBeVisible();
+  const positionsDuringFailure = await performancePositions(page);
+  expect(positionsDuringFailure.monitorTop).toBeCloseTo(positionsBeforeFailure.monitorTop, 1);
+  expect(positionsDuringFailure.chartTop).toBeCloseTo(positionsBeforeFailure.chartTop, 1);
+  await setMetricsFailure(request, false);
+  await expect(page.getByTestId("metrics-channel-status")).toHaveClass(/is-empty/);
+  const positionsAfterRecovery = await performancePositions(page);
+  expect(positionsAfterRecovery.monitorTop).toBeCloseTo(positionsBeforeFailure.monitorTop, 1);
+  expect(positionsAfterRecovery.chartTop).toBeCloseTo(positionsBeforeFailure.chartTop, 1);
+  await page.waitForTimeout(5_500);
+  const afterPerformanceWindow = await fixtureRequests(request);
+  expect(afterPerformanceWindow.metrics).toBeGreaterThan(beforePerformanceWindow.metrics);
+  expect(afterPerformanceWindow.runtimeList).toBe(beforePerformanceWindow.runtimeList);
+  expect(afterPerformanceWindow.runtimeDetail).toBe(beforePerformanceWindow.runtimeDetail);
+
+  const websocketUrls = await page.evaluate(() =>
+    (window as typeof window & { __instanceStreamUrls?: string[] }).__instanceStreamUrls ?? []
+  );
+  const streamUrls = websocketUrls.filter((url) => url.includes("/api/v1/instances/"));
+  expect(streamUrls).toHaveLength(1);
+  expect(streamUrls[0]).toContain("/api/v1/instances/");
+  expect(streamUrls[0]).toContain("/stream");
+  expect(streamUrls[0]).not.toContain("/metrics/stream");
+  expect(legacyBrowserReads(browserRequests)).toEqual([]);
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: testInfo.outputPath("performance-live.png"), fullPage: true });
   await page.getByRole("tab", { name: "静态报告" }).click();
   const reportInput = page.getByRole("button", { name: "导入压测报告" });
@@ -170,3 +228,47 @@ test("login, connect and execute the complete Memory Console path through the BF
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: testInfo.outputPath("control-plane.png"), fullPage: true });
 });
+
+interface FixtureRequestCounts {
+  health: number;
+  ready: number;
+  metrics: number;
+  stats: number;
+  runtimeList: number;
+  runtimeDetail: number;
+  runtimeStart: number;
+}
+
+async function fixtureRequests(request: APIRequestContext): Promise<FixtureRequestCounts> {
+  const response = await request.get(`http://127.0.0.1:${memoryPort}/__fixture/requests`);
+  expect(response.ok()).toBe(true);
+  return response.json() as Promise<FixtureRequestCounts>;
+}
+
+async function setMetricsFailure(request: APIRequestContext, enabled: boolean): Promise<void> {
+  const response = await request.post(`http://127.0.0.1:${memoryPort}/__fixture/metrics-mode`, {
+    data: { failure: enabled },
+  });
+  expect(response.ok()).toBe(true);
+}
+
+async function performancePositions(page: Page): Promise<{ monitorTop: number; chartTop: number }> {
+  return page.evaluate(() => {
+    const monitor = document.querySelector<HTMLElement>(".live-monitor");
+    const charts = document.querySelector<HTMLElement>(".performance-chart-grid");
+    if (!monitor || !charts) throw new Error("实时性能布局尚未渲染");
+    return {
+      monitorTop: monitor.getBoundingClientRect().top,
+      chartTop: charts.getBoundingClientRect().top,
+    };
+  });
+}
+
+function legacyBrowserReads(requests: Array<{ method: string; url: string }>) {
+  return requests.filter(({ method, url }) => {
+    if (!url.includes("/api/v1/instances/")) return false;
+    if (url.includes("/memory/stats")) return true;
+    if (method !== "GET") return false;
+    return /\/status(?:\?|$)|\/runtime\/runs(?:[/?]|$)/.test(url);
+  });
+}
