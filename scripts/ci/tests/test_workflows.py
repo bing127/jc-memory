@@ -154,6 +154,12 @@ class WorkflowContractTests(unittest.TestCase):
             r"#\[must_use\]\s*pub fn into_inner\(self\) -> platform::Stream",
         )
 
+    def test_unix_only_server_test_documents_the_empty_windows_crate(self) -> None:
+        source = (
+            ROOT / "services" / "memory-server" / "tests" / "server_binary_e2e.rs"
+        ).read_text(encoding="utf-8")
+        self.assertLess(source.index("//!"), source.index("#![cfg(unix)]"))
+
     def test_every_action_reference_uses_a_full_commit_sha(self) -> None:
         references = []
         for path in WORKFLOW_DIR.glob("*.yml"):

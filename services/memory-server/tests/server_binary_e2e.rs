@@ -1,5 +1,5 @@
-#![cfg(unix)]
 //! 真实 Server 二进制的启动、持久化和优雅重启验收。
+#![cfg(unix)]
 
 use std::{
     net::{SocketAddr, TcpListener as StdTcpListener},
