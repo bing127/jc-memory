@@ -540,15 +540,17 @@ async fn save_rebuild_checkpoint(
             reason: "checkpoint path has no parent".to_owned(),
         })?;
     tokio::fs::create_dir_all(parent).await?;
-    let temporary = path.with_extension("json.tmp");
+    let temporary = tempfile::NamedTempFile::new_in(parent)?;
     let bytes = serde_json::to_vec_pretty(checkpoint).map_err(|error| {
         RecoveryError::InvalidRebuildCheckpoint {
             reason: error.to_string(),
         }
     })?;
-    tokio::fs::write(&temporary, bytes).await?;
-    tokio::fs::File::open(&temporary).await?.sync_all().await?;
-    tokio::fs::rename(&temporary, path).await?;
+    let mut file = tokio::fs::File::from_std(temporary.reopen()?);
+    tokio::io::AsyncWriteExt::write_all(&mut file, &bytes).await?;
+    file.sync_all().await?;
+    drop(file);
+    temporary.persist(path).map_err(|error| error.error)?;
     Ok(())
 }
 

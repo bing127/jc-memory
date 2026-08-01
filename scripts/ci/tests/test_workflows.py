@@ -164,6 +164,14 @@ class WorkflowContractTests(unittest.TestCase):
                 source.index("//!"), source.index("#![cfg(unix)]"), relative_path
             )
 
+    def test_rebuild_checkpoint_uses_cross_platform_atomic_replace(self) -> None:
+        source = (
+            ROOT / "crates" / "memory-storage" / "src" / "recovery.rs"
+        ).read_text(encoding="utf-8")
+        self.assertIn("tempfile::NamedTempFile::new_in(parent)", source)
+        self.assertIn("temporary.persist(path)", source)
+        self.assertNotIn("tokio::fs::rename(&temporary, path)", source)
+
     def test_every_action_reference_uses_a_full_commit_sha(self) -> None:
         references = []
         for path in WORKFLOW_DIR.glob("*.yml"):
