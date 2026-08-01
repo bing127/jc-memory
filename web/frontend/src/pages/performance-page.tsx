@@ -1,0 +1,184 @@
+import { useState } from "react";
+import { AlertTriangle, BarChart3, FileJson, Gauge, LineChart as LineChartIcon, Upload } from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+
+import type { InstanceSummary } from "../lib/contracts.js";
+import {
+  formatMetric,
+  parseLoadTestReport,
+  reportChartData,
+  summarizeLoadTestReport,
+  type LoadTestReport,
+} from "../lib/performance.js";
+
+export function PerformancePage({ instance }: { instance: InstanceSummary }) {
+  const [report, setReport] = useState<LoadTestReport | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<"static" | "live">("static");
+  const summary = report ? summarizeLoadTestReport(report) : null;
+  const chartData = report ? reportChartData(report) : null;
+
+  async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const parsed = parseLoadTestReport(JSON.parse(await file.text()));
+      setReport(parsed);
+      setError(null);
+    } catch (cause) {
+      setReport(null);
+      setError(cause instanceof Error ? cause.message : "无法读取压测报告");
+    }
+  }
+
+  return (
+    <main className="console-page performance-page">
+      <header className="page-header">
+        <div><p className="page-kicker">PERFORMANCE OBSERVABILITY</p><h1>性能观测</h1></div>
+        <p>{instance.name} · 静态报告在浏览器本地解析，实时监控将在后续版本接入。</p>
+      </header>
+
+      <div className="performance-tabs" role="tablist" aria-label="性能视图">
+        <button type="button" role="tab" aria-selected={tab === "static"} className={tab === "static" ? "is-active" : ""} onClick={() => setTab("static")}>
+          <FileJson aria-hidden="true" />静态报告
+        </button>
+        <button type="button" role="tab" aria-selected={tab === "live"} disabled className="is-disabled" onClick={() => setTab("live")}>
+          <Gauge aria-hidden="true" />实时监控（即将接入）
+        </button>
+      </div>
+
+      {tab === "static" ? (
+        <>
+          <section className="performance-import" aria-label="压测报告导入区">
+            <div>
+              <p className="section-kicker">LOCAL FILE</p>
+              <h2>导入版本化压测报告</h2>
+              <p>选择由 `scripts/benchmark/http-load.mjs` 生成的 JSON。文件只在当前浏览器中读取，不会上传。</p>
+            </div>
+            <label className="performance-upload">
+              <Upload aria-hidden="true" />
+              <span>选择 JSON 文件</span>
+              <input aria-label="导入压测报告" type="file" accept="application/json,.json" onChange={handleFileChange} />
+            </label>
+          </section>
+
+          {error ? <div className="error-band" role="alert"><AlertTriangle aria-hidden="true" />{error}</div> : null}
+          {!report || !summary || !chartData ? (
+            <div className="performance-empty"><BarChart3 aria-hidden="true" /><span>导入报告后查看延迟、吞吐和状态码图表。</span></div>
+          ) : (
+            <ReportView report={report} summary={summary} chartData={chartData} />
+          )}
+        </>
+      ) : null}
+    </main>
+  );
+}
+
+function ReportView({ report, summary, chartData }: {
+  report: LoadTestReport;
+  summary: ReturnType<typeof summarizeLoadTestReport>;
+  chartData: ReturnType<typeof reportChartData>;
+}) {
+  return (
+    <div className="performance-report">
+      <section className="performance-metrics" aria-label="压测核心指标">
+        <Metric label="总请求数" value={summary.requests.toLocaleString("zh-CN")} />
+        <Metric label="成功率" value={summary.successRate === null ? "未采集" : `${summary.successRate.toFixed(1)}%`} />
+        <Metric label="平均吞吐" value={formatMetric(summary.throughputRps, "req/s")} />
+        <Metric label="最高 P50" value={formatMetric(summary.latencyMax.p50, "ms")} />
+        <Metric label="最高 P95" value={formatMetric(summary.latencyMax.p95, "ms")} />
+        <Metric label="最高 P99" value={formatMetric(summary.latencyMax.p99, "ms")} />
+        <Metric label="429 背压" value={summary.status429.toLocaleString("zh-CN")} />
+      </section>
+
+      <div className="performance-meta">
+        <span>目标 <code>{report.config.target}</code></span>
+        <span>提交 <code>{report.provenance.git_commit}</code></span>
+        <span>平台 <code>{report.provenance.platform}</code></span>
+        <span>{report.provenance.dirty ? "工作树有未提交修改" : "工作树干净"}</span>
+      </div>
+
+      <section className="performance-chart-grid" aria-label="性能图表">
+        <ChartPanel title="延迟分位数（毫秒）" description="按场景比较 P50、P95 和 P99">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData.latency} margin={{ top: 12, right: 16, left: 0, bottom: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#dce2de" />
+              <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+              <YAxis tick={{ fontSize: 10 }} />
+              <Tooltip formatter={(value) => formatMetric(typeof value === "number" ? value : null, "ms")} />
+              <Legend wrapperStyle={{ fontSize: 10 }} />
+              <Bar dataKey="p50" name="P50" fill="#22c979" />
+              <Bar dataKey="p95" name="P95" fill="#e3a008" />
+              <Bar dataKey="p99" name="P99" fill="#c2410c" />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartPanel>
+        <ChartPanel title="并发与吞吐" description="横轴为场景，折线同时标示并发和请求吞吐">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartData.throughput} margin={{ top: 12, right: 16, left: 0, bottom: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#dce2de" />
+              <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+              <YAxis yAxisId="left" tick={{ fontSize: 10 }} />
+              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} />
+              <Tooltip />
+              <Legend wrapperStyle={{ fontSize: 10 }} />
+              <Line yAxisId="left" type="monotone" dataKey="concurrency" name="并发" stroke="#087a45" strokeWidth={2} dot={{ r: 3 }} />
+              <Line yAxisId="right" type="monotone" dataKey="throughput" name="吞吐 req/s" stroke="#2563eb" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </ChartPanel>
+        <ChartPanel title="HTTP 状态码" description="包含 429 背压和其他失败响应">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData.statuses} margin={{ top: 12, right: 16, left: 0, bottom: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#dce2de" />
+              <XAxis dataKey="status" tick={{ fontSize: 10 }} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
+              <Tooltip />
+              <Legend wrapperStyle={{ fontSize: 10 }} />
+              <Bar dataKey="count" name="请求数" fill="#087a45" />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartPanel>
+      </section>
+
+      <section className="performance-table-wrap" aria-label="压测场景明细">
+        <table className="performance-table">
+          <caption>场景明细</caption>
+          <thead><tr><th>场景</th><th>请求 / 并发</th><th>成功率</th><th>P50</th><th>P95</th><th>P99</th><th>吞吐</th><th>429</th></tr></thead>
+          <tbody>{report.scenarios.map((scenario) => (
+            <tr key={scenario.name}>
+              <th scope="row">{scenario.name}</th>
+              <td>{scenario.requests.toLocaleString("zh-CN")} / {scenario.concurrency}</td>
+              <td>{scenario.requests ? `${((scenario.success / scenario.requests) * 100).toFixed(1)}%` : "未采集"}</td>
+              <td>{formatMetric(scenario.latency_ms.p50, "ms")}</td>
+              <td>{formatMetric(scenario.latency_ms.p95, "ms")}</td>
+              <td>{formatMetric(scenario.latency_ms.p99, "ms")}</td>
+              <td>{formatMetric(scenario.throughput_rps, "req/s")}</td>
+              <td>{(scenario.status_counts["429"] ?? 0).toLocaleString("zh-CN")}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </section>
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return <div className="performance-metric"><span>{label}</span><strong>{value}</strong></div>;
+}
+
+function ChartPanel({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+  return <section className="performance-chart-panel"><header><h2>{title}</h2><p>{description}</p></header><div className="performance-chart">{children}</div></section>;
+}

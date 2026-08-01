@@ -221,6 +221,42 @@
   .transition-body pre { @apply mt-2 max-h-44 overflow-auto border border-line bg-[#f7f9f7] p-2.5 text-[9px]; }
   .transition-evidence { @apply mt-2 flex gap-4 text-[8px] text-muted; }
   .runtime-detail > .json-viewer { @apply m-4 mt-0; }
+
+  .performance-tabs { @apply mt-5 flex gap-1 overflow-x-auto border-b border-line; }
+  .performance-tabs button { @apply inline-flex h-10 shrink-0 items-center gap-2 border-0 border-b-2 border-transparent bg-transparent px-3 text-xs font-semibold text-muted; }
+  .performance-tabs button svg { @apply size-3.5; }
+  .performance-tabs button.is-active { @apply border-brand-strong text-brand-strong; }
+  .performance-tabs button.is-disabled { @apply cursor-not-allowed text-muted/50; }
+  .performance-import { @apply mt-5 flex items-center justify-between gap-6 border border-line bg-panel p-5; }
+  .performance-import h2 { @apply m-0 text-sm font-semibold; }
+  .performance-import p { @apply mb-0 mt-2 max-w-2xl text-xs leading-5 text-muted; }
+  .section-kicker { @apply mb-2 mt-0 text-[9px] font-bold text-brand-strong; }
+  .performance-upload { @apply inline-flex h-10 shrink-0 cursor-pointer items-center gap-2 border border-sidebar bg-sidebar px-4 text-xs font-semibold text-white transition-colors hover:bg-brand-strong; }
+  .performance-upload svg { @apply size-4; }
+  .performance-upload input { @apply sr-only; }
+  .performance-empty { @apply mt-5 flex min-h-44 items-center justify-center gap-2 border border-dashed border-line text-xs text-muted; }
+  .performance-empty svg { @apply size-4; }
+  .error-band { @apply flex items-center gap-2; }
+  .error-band svg { @apply size-4 shrink-0; }
+  .performance-report { @apply mt-5 grid gap-4; }
+  .performance-metrics { @apply grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7; }
+  .performance-metric { @apply grid min-h-24 content-between border border-line bg-panel p-4; }
+  .performance-metric span { @apply text-[10px] font-semibold text-muted; }
+  .performance-metric strong { @apply overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xl font-semibold; }
+  .performance-meta { @apply flex flex-wrap gap-x-5 gap-y-2 border border-line bg-[#f8f9f8] px-4 py-3 text-[10px] text-muted; }
+  .performance-meta code { @apply font-mono text-ink; }
+  .performance-chart-grid { @apply grid gap-4 xl:grid-cols-2; }
+  .performance-chart-panel { @apply min-w-0 border border-line bg-panel p-4; }
+  .performance-chart-panel header { @apply mb-2 flex items-baseline justify-between gap-4; }
+  .performance-chart-panel h2 { @apply m-0 text-xs font-semibold; }
+  .performance-chart-panel header p { @apply m-0 text-[10px] text-muted; }
+  .performance-chart { @apply h-[280px] min-h-[280px] w-full; }
+  .performance-table-wrap { @apply overflow-x-auto border border-line bg-panel; }
+  .performance-table { @apply w-full min-w-[900px] border-collapse text-left; }
+  .performance-table caption { @apply border-b border-line px-4 py-3 text-left text-xs font-semibold; }
+  .performance-table th { @apply border-b border-line bg-[#f7f9f7] px-4 py-3 text-[10px] font-semibold text-muted; }
+  .performance-table td { @apply border-b border-line/70 px-4 py-3 text-[10px] text-muted; }
+  .performance-table tbody th { @apply bg-white text-ink; }
 }
 
 @media (max-width: 860px) {
@@ -235,6 +271,7 @@
   .page-header { @apply items-start; }
   .page-header > p { @apply hidden; }
   .packet-section { @apply border-r-0; }
+  .performance-import { @apply items-start; }
 }
 
 @media (max-width: 560px) {
@@ -243,4 +280,8 @@
   .result-meta { @apply grid-cols-1; }
   .runtime-start button { @apply w-full; }
   .packet-header { @apply grid-cols-1; }
+  .performance-import { @apply grid; }
+  .performance-upload { @apply w-full justify-center; }
+  .performance-chart-panel header { @apply block; }
+  .performance-chart-panel header p { @apply mt-1; }
 }

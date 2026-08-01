@@ -279,27 +279,27 @@ git commit -m "feat(web): 增加实例性能指标接口" -m "BFF 白名单解�
 - Modify: `web/frontend/src/components/app-shell.tsx`
 - Modify: `web/frontend/src/index.css`
 
-- [ ] **Step 1: 写报告解析和页面红灯测试**
+- [x] **Step 1: 写报告解析和页面红灯测试**
 
 测试合法 `jcmem.load-test.v1` 显示总请求、成功率、P50/P95/P99、吞吐和 429；未知版本显示中文错误；`null` 指标显示“未采集”；文件内容只在浏览器解析。
 
-- [ ] **Step 2: 运行测试并确认页面缺失**
+- [x] **Step 2: 运行测试并确认页面缺失**
 
 Run: `cd web && corepack pnpm --filter ./frontend test -- performance-page.test.tsx`
 
 Expected: FAIL，提示 `PerformancePage` 不存在。
 
-- [ ] **Step 3: 安装 Recharts 并实现静态报告 Tab**
+- [x] **Step 3: 安装 Recharts 并实现静态报告 Tab**
 
 Run: `cd web && corepack pnpm --filter ./frontend add recharts@latest`
 
 实现 Zod Schema、汇总函数和文件选择器。使用 Recharts 的 `BarChart` 展示 P50/P95/P99、`LineChart` 展示并发与吞吐、`BarChart` 展示状态码；所有图表包含文字标题、Legend、Tooltip、固定高度和表格替代信息。
 
-- [ ] **Step 4: 接入路由、导航和响应式样式**
+- [x] **Step 4: 接入路由、导航和响应式样式**
 
 新增 `/instances/:id/performance` 路由；导航使用 Lucide `Gauge` 图标。图表容器固定 `min-height`，移动端表格允许横向滚动，按钮和文本不得溢出。
 
-- [ ] **Step 5: 运行前端测试、Typecheck 和 Build**
+- [x] **Step 5: 运行前端测试、Typecheck 和 Build**
 
 Run: `cd web && corepack pnpm --filter ./frontend test`
 
@@ -309,7 +309,7 @@ Run: `cd web && corepack pnpm --filter ./frontend build`
 
 Expected: 全部退出码 0。
 
-- [ ] **Step 6: 提交静态图表**
+- [x] **Step 6: 提交静态图表**
 
 ```bash
 git add web/frontend web/pnpm-lock.yaml

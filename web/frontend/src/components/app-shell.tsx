@@ -1,4 +1,4 @@
-import { Activity, Boxes, BrainCircuit, Database, LogOut, Menu, Server, Workflow, X } from "lucide-react";
+import { Activity, Boxes, BrainCircuit, Database, Gauge, LogOut, Menu, Server, Workflow, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 
@@ -58,6 +58,7 @@ export function AppShell({ instances, children, onLogout }: AppShellProps) {
               <NavLink to={`${basePath}/memory`}><BrainCircuit aria-hidden="true" />Memory Lab</NavLink>
               <div className="nav-section">RUNTIME</div>
               <NavLink to={`${basePath}/runtime`}><Workflow aria-hidden="true" />Agent Runtime</NavLink>
+              <NavLink to={`${basePath}/performance`}><Gauge aria-hidden="true" />性能观测</NavLink>
             </>
           ) : null}
           <div className="nav-section">SYSTEM</div>
