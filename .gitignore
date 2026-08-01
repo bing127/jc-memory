@@ -22,6 +22,8 @@ __pycache__/
 .gradle/
 .swiftpm/
 .build/
+.codragraph/
+.superpowers/
 sdk/python/src/jiangcheng_memory/*.so
 sdk/python/src/jiangcheng_memory/*.dylib
 sdk/python/src/jiangcheng_memory/*.pyd
