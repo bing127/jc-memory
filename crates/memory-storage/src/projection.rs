@@ -211,9 +211,9 @@ async fn apply_graph_event(
     };
     let target_id = graph_mutation_target_id(&event.fragment, scope_hash)?;
     let target_event = load_graph_target_event(transaction, scope, scope_hash, target_id).await?;
-    let target = upsert_graph_point(transaction, scope_hash, &target_event)
-        .await?
-        .ok_or_else(|| graph_event_corrupt("target_point", scope_hash))?;
+    let Some(target) = upsert_graph_point(transaction, scope_hash, &target_event).await? else {
+        return Ok(());
+    };
     if source.id == target.id {
         return Err(graph_event_corrupt("target_fragment_id", scope_hash));
     }
@@ -1484,7 +1484,7 @@ fn decode_graph_real(
 fn state_is_recall_visible(validity: ValidityStatus) -> bool {
     !matches!(
         validity,
-        ValidityStatus::Superseded | ValidityStatus::Invalidated | ValidityStatus::Quarantined
+        ValidityStatus::Invalidated | ValidityStatus::Quarantined
     )
 }
 

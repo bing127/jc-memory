@@ -9,7 +9,8 @@ use jc_memory_protocol::{
 use jc_memory_security::{Admission, RiskAssessment, SecurityInvariantViolation};
 use jc_memory_storage::{
     BlobError, BlobOptions, BlobStore, MemoryRepository, RecoveryError, RecoveryManager,
-    RepositoryFailpoint, SqliteConfig, SqliteMemoryRepository, SqliteStore, StorageError,
+    RepositoryFailpoint, SqliteConfig, SqliteMemoryRepository, SqliteProjectionStore, SqliteStore,
+    StorageError,
 };
 use sha2::{Digest as _, Sha256};
 use tokio::sync::RwLock;
@@ -94,6 +95,30 @@ pub enum MemoryError {
     /// 有界 Recall 流水线拒绝了派生图输入或被取消、超时。
     #[error("memory recall failed: {0}")]
     Recall(#[from] RecallEngineError),
+    /// State 或 Graph 投影未能在 Recall deadline 内追平。
+    #[error("memory projection timed out")]
+    ProjectionTimedOut,
+    /// 持久化投影 Checkpoint 无法安全解码。
+    #[error("memory projection checkpoint is corrupt")]
+    ProjectionCheckpointCorrupt {
+        /// 不向公开正文暴露 Scope 细节的底层错误。
+        #[source]
+        source: StorageError,
+    },
+    /// 投影行或权威来源越过精确 Scope。
+    #[error("memory projection scope mismatch")]
+    ProjectionScopeMismatch {
+        /// 不向公开正文暴露 Scope 细节的底层错误。
+        #[source]
+        source: StorageError,
+    },
+    /// `StateVersion` 链不满足唯一当前版本等不变量。
+    #[error("memory state chain is corrupt")]
+    StateChainCorrupt {
+        /// 不向公开正文暴露状态内容的底层错误。
+        #[source]
+        source: StorageError,
+    },
     /// Memory Packet 无法渲染为模型无关 JSON 上下文。
     #[error("memory packet serialization failed: {0}")]
     Packet(#[from] serde_json::Error),
@@ -137,6 +162,13 @@ impl From<StorageError> for MemoryError {
             StorageError::NotFound { entity, id } => Self::NotFound { entity, id },
             StorageError::IdentityConflict { entity, id } => Self::Conflict { entity, id },
             source @ StorageError::CorruptRow { .. } => Self::Corrupt { source },
+            source @ StorageError::ProjectionCheckpointCorrupt { .. } => {
+                Self::ProjectionCheckpointCorrupt { source }
+            }
+            source @ StorageError::ProjectionScopeMismatch { .. } => {
+                Self::ProjectionScopeMismatch { source }
+            }
+            source @ StorageError::StateChainCorrupt { .. } => Self::StateChainCorrupt { source },
             source => Self::Storage(source),
         }
     }
@@ -146,6 +178,7 @@ impl From<StorageError> for MemoryError {
 #[derive(Clone)]
 pub struct MemoryEngine {
     pub(crate) repository: Arc<dyn MemoryRepository>,
+    pub(crate) projection: SqliteProjectionStore,
     pub(crate) derived_graph: Arc<RwLock<DerivedGraph>>,
     pub(crate) recovery: Arc<RecoveryManager>,
     event_factory: EventFactory,
@@ -199,9 +232,11 @@ impl MemoryEngine {
             repository = repository.with_failpoint(failpoint);
         }
         let repository: Arc<dyn MemoryRepository> = Arc::new(repository);
+        let projection = SqliteProjectionStore::from_store(&store);
         let recovery = Arc::new(RecoveryManager::from_stores(&store, blobs));
         Ok(Self {
             repository,
+            projection,
             derived_graph: Arc::new(RwLock::new(DerivedGraph::default())),
             recovery,
             event_factory: EventFactory::new(),

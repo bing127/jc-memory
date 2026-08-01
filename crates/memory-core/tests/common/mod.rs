@@ -59,6 +59,7 @@ pub fn observation_in_scope(scope: MemoryScope, text: &str) -> CognitiveFragment
     }
 }
 
+#[allow(dead_code)]
 pub fn state_fragment(
     scope: MemoryScope,
     key: &str,

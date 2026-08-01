@@ -337,6 +337,7 @@ async fn command_bus_appends_correct_and_forget_mutations() {
         content: FragmentContent::Text {
             text: "CommandBus 追加式纠正记录".to_owned(),
         },
+        state: None,
         source: common::observation("source").source,
         perspective: Perspective::System,
         occurred_at: chrono::Utc::now(),

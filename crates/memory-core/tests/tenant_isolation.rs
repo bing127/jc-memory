@@ -3,7 +3,7 @@
 #[allow(dead_code)]
 mod common;
 
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use jc_memory_core::{
     MemoryConfig, MemoryEngine, MemoryError, MutationCommand, RecallLimits, RecallQuery,
 };
@@ -98,6 +98,68 @@ async fn cross_tenant_recall_is_denied_before_query_without_admin() {
     ));
 }
 
+#[tokio::test]
+async fn identical_state_keys_remain_isolated_between_tenants() {
+    let data_dir = tempfile::tempdir().expect("创建 Tenant State 数据目录");
+    let engine = MemoryEngine::open(MemoryConfig::local(data_dir.path()))
+        .await
+        .expect("打开记忆引擎");
+    let namespace = NamespaceId::new();
+    let user = UserId::new();
+    let scope_a = tenant_scope(namespace, TenantId::new(), user);
+    let scope_b = tenant_scope(namespace, TenantId::new(), user);
+    let context_a = context("alice", &scope_a, &[Operation::Observe, Operation::Recall]);
+    let context_b = context("bob", &scope_b, &[Operation::Observe, Operation::Recall]);
+    let occurred_at = Utc::now() - Duration::seconds(5);
+    engine
+        .observe(
+            &context_a,
+            common::state_fragment(
+                scope_a.clone(),
+                "project.database",
+                serde_json::json!("sqlite-a"),
+                "Tenant A 独立状态",
+                occurred_at,
+            ),
+        )
+        .await
+        .expect("写入 Tenant A State");
+    engine
+        .observe(
+            &context_b,
+            common::state_fragment(
+                scope_b.clone(),
+                "project.database",
+                serde_json::json!("sqlite-b"),
+                "Tenant B 独立状态",
+                occurred_at,
+            ),
+        )
+        .await
+        .expect("写入 Tenant B State");
+
+    let packet_a = engine
+        .recall(&context_a, state_query(scope_a, "project.database"))
+        .await
+        .expect("召回 Tenant A State");
+    let packet_b = engine
+        .recall(&context_b, state_query(scope_b, "project.database"))
+        .await
+        .expect("召回 Tenant B State");
+    assert_eq!(
+        packet_a.current_states[0].value,
+        serde_json::json!("sqlite-a")
+    );
+    assert_eq!(
+        packet_b.current_states[0].value,
+        serde_json::json!("sqlite-b")
+    );
+    assert_ne!(
+        packet_a.current_states[0].state_id,
+        packet_b.current_states[0].state_id
+    );
+}
+
 fn context(principal: &str, scope: &MemoryScope, operations: &[Operation]) -> AccessContext {
     let mut context = AccessContext::new(principal, scope.clone());
     context.grants.extend(
@@ -123,6 +185,12 @@ fn query(scope: MemoryScope, text: &str) -> RecallQuery {
             timeout_ms: 100,
         },
     }
+}
+
+fn state_query(scope: MemoryScope, key: &str) -> RecallQuery {
+    let mut query = query(scope, key);
+    query.mode = RecallMode::CurrentState;
+    query
 }
 
 fn mutation(target_fragment_id: jc_memory_protocol::FragmentId, text: &str) -> MutationCommand {

@@ -99,6 +99,46 @@ async fn mutation_graph_uses_deterministic_ids_and_survives_restart() {
     assert_eq!(after_restart, before_restart);
 }
 
+#[tokio::test]
+async fn mutation_graph_skips_relation_when_target_cannot_form_a_point() {
+    let harness = Harness::new().await;
+    let target = harness
+        .append(point_fragment(
+            harness.scope.clone(),
+            FragmentKind::Observation,
+            "仅作为权威观察保留",
+            time(10),
+        ))
+        .await;
+    let mutation = harness
+        .append(mutation_fragment(
+            harness.scope.clone(),
+            target.fragment_id,
+            "correct",
+            EdgeKind::Supersedes,
+            VerificationMethod::Manual,
+            time(20),
+        ))
+        .await;
+
+    harness
+        .catch_up()
+        .await
+        .expect("追平非 Point 目标的 Graph 投影");
+    let graph = harness
+        .load(
+            &[mutation.fragment_id],
+            &[EdgeKind::Supersedes],
+            time(100),
+            10,
+        )
+        .await;
+
+    assert_eq!(graph.points.len(), 1);
+    assert_eq!(graph.points[0].point.id, point_id(mutation.fragment_id));
+    assert!(graph.edges.is_empty());
+}
+
 fn assert_projected_mutations(
     graph: &jc_memory_storage::ProjectedGraph,
     target: &EventDraft,

@@ -28,13 +28,6 @@ pub(crate) struct DerivedGraph {
 }
 
 impl DerivedGraph {
-    pub(crate) fn snapshot(&self) -> (Vec<IndexedPoint>, Vec<CognitiveEdge>) {
-        (
-            self.points.values().cloned().collect(),
-            self.edges.values().cloned().collect(),
-        )
-    }
-
     fn insert_relation(
         &mut self,
         target: IndexedPoint,
