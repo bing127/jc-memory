@@ -76,11 +76,14 @@ impl TokenStore {
     }
 }
 
+#[cfg(unix)]
 async fn restrict_permissions(path: &Path) -> Result<(), io::Error> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt as _;
-        tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).await?;
-    }
+    use std::os::unix::fs::PermissionsExt as _;
+    tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).await?;
     Ok(())
+}
+
+#[cfg(not(unix))]
+fn restrict_permissions(_path: &Path) -> std::future::Ready<Result<(), io::Error>> {
+    std::future::ready(Ok(()))
 }

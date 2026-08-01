@@ -302,6 +302,10 @@ async fn sync_directory(path: &Path) -> Result<(), io::Error> {
 }
 
 #[cfg(windows)]
+#[expect(
+    clippy::unused_async,
+    reason = "The cross-platform directory synchronization contract is asynchronous"
+)]
 async fn sync_directory(path: &Path) -> Result<(), io::Error> {
     use std::os::windows::fs::OpenOptionsExt as _;
 

@@ -125,6 +125,42 @@ async fn duplicate_event_is_idempotent_but_conflicting_payload_is_rejected() {
 }
 
 #[tokio::test]
+async fn nanosecond_fragment_payload_remains_authoritative_across_idempotent_reads() {
+    let harness = Harness::new().await;
+    let occurred_at = DateTime::from_timestamp(1_725_000_000, 123_456_789)
+        .expect("valid nanosecond fixture time");
+    let mut draft = Harness::text_event_at(
+        full_scope(),
+        "nanosecond authoritative payload",
+        occurred_at,
+    );
+    draft.recorded_at = fixed_time();
+
+    let first = harness
+        .repository
+        .append(&draft)
+        .await
+        .expect("append nanosecond payload");
+    let duplicate = harness
+        .repository
+        .append(&draft)
+        .await
+        .expect("idempotent nanosecond append");
+
+    assert!(first.created);
+    assert!(!duplicate.created);
+    assert_eq!(duplicate.event.draft.payload, draft.payload);
+    assert_eq!(
+        harness
+            .repository
+            .get_fragment(draft.fragment_id)
+            .await
+            .expect("read authoritative nanosecond fragment"),
+        draft.payload
+    );
+}
+
+#[tokio::test]
 async fn fragment_lookup_requires_the_exact_scope_before_decoding() {
     let harness = Harness::new().await;
     let scope = full_scope();

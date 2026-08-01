@@ -424,9 +424,11 @@ impl MemoryRepository for SqliteMemoryRepository {
                 f.source_json, f.perspective, f.occurred_at_us, f.observed_at_us,
                 f.confidence, f.importance, f.validity, f.security_label, f.metadata_json,
                 c.id AS stored_content_id, c.storage_kind, c.inline_value, c.blob_id,
-                c.media_type, c.byte_len AS content_byte_len, c.sha256 AS content_sha256
+                c.media_type, c.byte_len AS content_byte_len, c.sha256 AS content_sha256,
+                e.payload_json AS authoritative_payload_json
              FROM fragments AS f
              LEFT JOIN fragment_contents AS c ON c.id = f.content_id
+             LEFT JOIN events AS e ON e.fragment_id = f.id
              WHERE f.id = ?1",
         )
         .bind(&id_string)
@@ -454,9 +456,11 @@ impl MemoryRepository for SqliteMemoryRepository {
                 f.source_json, f.perspective, f.occurred_at_us, f.observed_at_us,
                 f.confidence, f.importance, f.validity, f.security_label, f.metadata_json,
                 c.id AS stored_content_id, c.storage_kind, c.inline_value, c.blob_id,
-                c.media_type, c.byte_len AS content_byte_len, c.sha256 AS content_sha256
+                c.media_type, c.byte_len AS content_byte_len, c.sha256 AS content_sha256,
+                e.payload_json AS authoritative_payload_json
              FROM fragments AS f
              LEFT JOIN fragment_contents AS c ON c.id = f.content_id
+             LEFT JOIN events AS e ON e.fragment_id = f.id
              WHERE f.id = ?1 AND f.scope_key = ?2",
         )
         .bind(&id_string)
@@ -1149,7 +1153,32 @@ async fn decode_fragment(
     };
     validate_fragment(&fragment)
         .map_err(|error| corrupt("fragments", row_id, error.to_string()))?;
-    Ok(fragment)
+    let payload_json = column::<String>(row, "authoritative_payload_json", "events", row_id)?;
+    let authoritative: CognitiveFragment = serde_json::from_str(&payload_json)
+        .map_err(|error| corrupt("events", row_id, format!("invalid payload_json: {error}")))?;
+    let mut normalized_projection = authoritative.clone();
+    normalized_projection.occurred_at = decode_time(
+        authoritative.occurred_at.timestamp_micros(),
+        "events",
+        row_id,
+        "payload.occurred_at",
+    )?;
+    normalized_projection.observed_at = decode_time(
+        authoritative.observed_at.timestamp_micros(),
+        "events",
+        row_id,
+        "payload.observed_at",
+    )?;
+    if normalized_projection != fragment {
+        return Err(corrupt(
+            "events",
+            row_id,
+            "authoritative payload projection differs from normalized fragment rows",
+        ));
+    }
+    validate_fragment(&authoritative)
+        .map_err(|error| corrupt("events", row_id, error.to_string()))?;
+    Ok(authoritative)
 }
 
 struct FragmentScalars {

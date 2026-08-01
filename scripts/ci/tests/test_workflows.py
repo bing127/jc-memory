@@ -121,6 +121,38 @@ class WorkflowContractTests(unittest.TestCase):
             r"fn set_restricted_file_permissions[\s\S]{0,500}let _ = file;",
         )
 
+    def test_windows_sidecar_keeps_async_contracts_without_strict_lints(self) -> None:
+        token = (ROOT / "services" / "memory-sidecar" / "src" / "token.rs").read_text(
+            encoding="utf-8"
+        )
+        lifecycle = (
+            ROOT / "services" / "memory-sidecar" / "src" / "lifecycle.rs"
+        ).read_text(encoding="utf-8")
+        transport = (
+            ROOT / "services" / "memory-sidecar" / "src" / "transport.rs"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn("#[cfg(not(unix))]\nasync fn restrict_permissions", token)
+        self.assertIn("std::future::ready(Ok(()))", token)
+        self.assertRegex(
+            lifecycle,
+            r"#\[cfg\(windows\)\]\s*#\[expect\(\s*clippy::unused_async,\s*"
+            r'reason = "[^"]+"\s*\)\]\s*async fn sync_directory',
+        )
+        for function in ("bind", "connect"):
+            self.assertRegex(
+                transport,
+                r"#\[expect\(\s*clippy::unused_async,\s*reason = \"[^\"]+\"\s*\)\]"
+                rf"\s*pub async fn {function}\b",
+                function,
+            )
+        self.assertIn("io::Error::other(", transport)
+        self.assertIn("ClientOptions::new().open(pipe_name(path))?", transport)
+        self.assertRegex(
+            transport,
+            r"#\[must_use\]\s*pub fn into_inner\(self\) -> platform::Stream",
+        )
+
     def test_every_action_reference_uses_a_full_commit_sha(self) -> None:
         references = []
         for path in WORKFLOW_DIR.glob("*.yml"):

@@ -116,6 +116,10 @@ mod platform {
         }
     }
 
+    #[expect(
+        clippy::unused_async,
+        reason = "The cross-platform listener binding contract is asynchronous"
+    )]
     pub async fn bind(path: &Path) -> Result<Listener, TransportError> {
         let name = pipe_name(path);
         let server = ServerOptions::new()
@@ -130,8 +134,7 @@ mod platform {
     pub async fn accept(listener: &Listener) -> Result<Stream, TransportError> {
         let mut current = listener.server.lock().await;
         let server = current.take().ok_or_else(|| {
-            TransportError::Io(io::Error::new(
-                io::ErrorKind::Other,
+            TransportError::Io(io::Error::other(
                 "named pipe listener instance is unavailable",
             ))
         })?;
@@ -150,9 +153,13 @@ mod platform {
         Ok(Stream::Server(Box::pin(server)))
     }
 
+    #[expect(
+        clippy::unused_async,
+        reason = "The cross-platform stream connection contract is asynchronous"
+    )]
     pub async fn connect(path: &Path) -> Result<Stream, TransportError> {
         Ok(Stream::Client(Box::pin(
-            ClientOptions::new().open(&pipe_name(path))?,
+            ClientOptions::new().open(pipe_name(path))?,
         )))
     }
 }
@@ -227,6 +234,7 @@ impl SidecarStream {
     }
 
     /// 拆出底层 Tokio 流以便读写行协议。
+    #[must_use]
     pub fn into_inner(self) -> platform::Stream {
         self.inner
     }
