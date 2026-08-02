@@ -908,11 +908,13 @@ fn acquire_gc_lock(root: &Path) -> Result<File, RecoveryError> {
         .open(root.join(".gc.lock"))?;
     match lock.try_lock_exclusive() {
         Ok(()) => Ok(lock),
-        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-            Err(RecoveryError::LockUnavailable)
-        }
+        Err(error) if is_lock_contended(&error) => Err(RecoveryError::LockUnavailable),
         Err(error) => Err(error.into()),
     }
+}
+
+fn is_lock_contended(error: &std::io::Error) -> bool {
+    error.raw_os_error() == fs2::lock_contended_error().raw_os_error()
 }
 
 async fn move_to_trash_and_delete(
@@ -962,4 +964,14 @@ async fn query_count(
 
 fn usize_to_u64(value: usize) -> u64 {
     u64::try_from(value).unwrap_or(u64::MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_lock_contended;
+
+    #[test]
+    fn recognizes_platform_lock_contention_error() {
+        assert!(is_lock_contended(&fs2::lock_contended_error()));
+    }
 }
