@@ -456,6 +456,45 @@ async fn malformed_surface_evidence_fails_closed() {
     ));
 }
 
+#[tokio::test]
+async fn surface_member_from_another_scope_fails_closed() {
+    let harness = Harness::new().await;
+    let source = harness
+        .append(FragmentKind::Fact, "surface-scope", "成员上下文", false)
+        .await;
+    harness
+        .insert_point(source.fragment_id, FragmentKind::Fact)
+        .await;
+    let now = Utc::now();
+    harness
+        .insert_surface(SurfaceStatus::Active, &source, now, None)
+        .await;
+    sqlx::query("UPDATE points SET scope_key = ?1 WHERE id = ?2")
+        .bind("0".repeat(64))
+        .bind(source.fragment_id.to_string())
+        .execute(harness.store.pool())
+        .await
+        .expect("把 Surface 成员改为外部 Scope");
+
+    assert!(matches!(
+        harness
+            .projection
+            .load_recall_derivations(
+                &harness.scope,
+                &[point_id(source.fragment_id)],
+                &[source.fragment_id],
+                None,
+                now,
+                2,
+            )
+            .await,
+        Err(StorageError::ProjectionDerivationCorrupt {
+            field: "surface_member_scope",
+            ..
+        })
+    ));
+}
+
 struct Harness {
     store: SqliteStore,
     repository: SqliteMemoryRepository,
