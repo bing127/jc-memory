@@ -1,6 +1,6 @@
 //! 保守经验学习的端到端契约测试。
 
-use std::{collections::BTreeSet, sync::Arc, time::Duration};
+use std::{collections::BTreeSet, str::FromStr as _, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use chrono::Utc;
@@ -13,9 +13,9 @@ use jc_memory_consolidation::{
 };
 use jc_memory_events::factory::EventFactory;
 use jc_memory_protocol::{
-    CognitiveFragment, EventId, EvidenceId, EvidenceRef, FragmentContent, FragmentId, FragmentKind,
-    FragmentSource, MemoryScope, NamespaceId, Perspective, SecurityLabel, SourceType,
-    ValidityStatus, VerificationMethod,
+    CognitiveFragment, EdgeId, EventId, EvidenceId, EvidenceRef, FragmentContent, FragmentId,
+    FragmentKind, FragmentSource, MemoryScope, NamespaceId, Perspective, PointId, SecurityLabel,
+    SourceType, SurfaceId, ValidityStatus, VerificationMethod,
 };
 use jc_memory_storage::{MemoryRepository, SqliteConfig, SqliteMemoryRepository, SqliteStore};
 
@@ -182,6 +182,114 @@ fn every_consolidation_handler_implements_the_bounded_task_contract() {
     assert_task::<StaleStateDetection>();
     assert_task::<ColdTierMovement>();
     assert_task::<Rebuild>();
+}
+
+#[tokio::test]
+async fn canonical_ids_and_recall_artifacts_are_persisted() {
+    let directory = tempfile::tempdir().expect("创建规范派生测试目录");
+    let store = SqliteStore::open(&SqliteConfig::new(directory.path().join("memory.sqlite3")))
+        .await
+        .expect("打开规范派生测试存储");
+    let repository = SqliteMemoryRepository::from_store(&store);
+    let scope = MemoryScope::new(NamespaceId::new());
+    let support_a = fact(&scope, "support-a", "约束证据 A");
+    let support_b = fact(&scope, "support-b", "约束证据 B");
+    repository.append(&support_a).await.expect("写入支持证据 A");
+    repository.append(&support_b).await.expect("写入支持证据 B");
+    let constraint_a = verified_fragment(
+        &scope,
+        "constraint-a",
+        "部署前必须通过回归测试",
+        FragmentKind::Constraint,
+        &support_a,
+    );
+    let constraint_b = verified_fragment(
+        &scope,
+        "constraint-b",
+        "部署前必须通过回归测试",
+        FragmentKind::Constraint,
+        &support_b,
+    );
+    repository
+        .append(&constraint_a)
+        .await
+        .expect("写入独立约束 A");
+    repository
+        .append(&constraint_b)
+        .await
+        .expect("写入独立约束 B");
+    for (index, succeeded) in [true, true, false, false].into_iter().enumerate() {
+        repository
+            .append(&procedure_event(
+                &scope,
+                &format!("procedure-source-{index}"),
+                if index < 2 { "small" } else { "large" },
+                succeeded,
+            ))
+            .await
+            .expect("写入 Procedure 样本");
+    }
+
+    run_task(&store, &scope, JobKind::Replay, Replay).await;
+    run_task(&store, &scope, JobKind::Deduplication, Deduplication).await;
+    run_task(&store, &scope, JobKind::SurfaceDiscovery, SurfaceDiscovery).await;
+    run_task(
+        &store,
+        &scope,
+        JobKind::SemanticPromotion,
+        SemanticPromotion,
+    )
+    .await;
+
+    let points: Vec<(String, String)> =
+        sqlx::query_as("SELECT id, source_fragment_id FROM points ORDER BY source_fragment_id")
+            .fetch_all(store.pool())
+            .await
+            .expect("读取规范 Point");
+    assert!(
+        points
+            .iter()
+            .all(|(id, fragment_id)| { PointId::from_str(id).is_ok() && id == fragment_id })
+    );
+    let edge_ids: Vec<String> = sqlx::query_scalar("SELECT id FROM edges")
+        .fetch_all(store.pool())
+        .await
+        .expect("读取规范 Edge ID");
+    assert!(edge_ids.iter().all(|id| EdgeId::from_str(id).is_ok()));
+    let surface_ids: Vec<String> = sqlx::query_scalar("SELECT DISTINCT id FROM surfaces")
+        .fetch_all(store.pool())
+        .await
+        .expect("读取规范 Surface ID");
+    assert!(surface_ids.iter().all(|id| SurfaceId::from_str(id).is_ok()));
+
+    let procedure_payload: String = sqlx::query_scalar(
+        "SELECT payload_json FROM consolidation_artifacts
+         WHERE kind = 'procedure_experience' AND subject_key = 'refactor.module'",
+    )
+    .fetch_one(store.pool())
+    .await
+    .expect("读取 Procedure Artifact");
+    let procedure: serde_json::Value =
+        serde_json::from_str(&procedure_payload).expect("解析 Procedure Artifact");
+    assert_eq!(procedure["sample_count"], 4);
+    assert_eq!(procedure["success_count"], 2);
+    assert_eq!(procedure["failure_count"], 2);
+    assert_eq!(procedure["success_rate"], 0.5);
+
+    let knowledge_payload: String = sqlx::query_scalar(
+        "SELECT payload_json FROM consolidation_artifacts
+         WHERE kind = 'semantic_promotion' LIMIT 1",
+    )
+    .fetch_one(store.pool())
+    .await
+    .expect("读取 Knowledge Artifact");
+    let knowledge: serde_json::Value =
+        serde_json::from_str(&knowledge_payload).expect("解析 Knowledge Artifact");
+    assert!(PointId::from_str(knowledge["point_id"].as_str().unwrap()).is_ok());
+    assert_eq!(knowledge["kind"], "constraint");
+    assert_eq!(knowledge["content"]["text"], "部署前必须通过回归测试");
+    assert!(knowledge["confidence"].is_number());
+    assert_eq!(knowledge["validity"], "verified");
 }
 
 #[tokio::test]
@@ -976,11 +1084,21 @@ fn verified_fact(
     text: &str,
     support: &jc_memory_protocol::EventDraft,
 ) -> jc_memory_protocol::EventDraft {
+    verified_fragment(scope, source_id, text, FragmentKind::Fact, support)
+}
+
+fn verified_fragment(
+    scope: &MemoryScope,
+    source_id: &str,
+    text: &str,
+    kind: FragmentKind,
+    support: &jc_memory_protocol::EventDraft,
+) -> jc_memory_protocol::EventDraft {
     event(
         scope,
         source_id,
         text,
-        FragmentKind::Fact,
+        kind,
         ValidityStatus::Verified,
         vec![EvidenceRef {
             id: EvidenceId::new(),

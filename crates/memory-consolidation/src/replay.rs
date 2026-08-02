@@ -38,7 +38,7 @@ pub(crate) async fn replay_event(
     };
     context
         .write_point(&PointWrite {
-            id: stable_id("point", &[&event.event_id]),
+            id: event.fragment_id.clone(),
             kind: kind.to_owned(),
             source_fragment_id: event.fragment_id.clone(),
             valid_from_us: event.recorded_at_us,
@@ -77,13 +77,26 @@ pub(crate) fn point_kind(fragment_kind: &str) -> Option<&'static str> {
 }
 
 pub(crate) fn stable_id(kind: &str, parts: &[&str]) -> String {
+    hex::encode(stable_digest(kind, parts))
+}
+
+pub(crate) fn stable_protocol_id(kind: &str, parts: &[&str]) -> String {
+    let digest = stable_digest(kind, parts);
+    let mut bytes = [0_u8; 16];
+    bytes.copy_from_slice(&digest[..16]);
+    bytes[6] = (bytes[6] & 0x0f) | 0x50;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    uuid::Uuid::from_bytes(bytes).to_string()
+}
+
+fn stable_digest(kind: &str, parts: &[&str]) -> [u8; 32] {
     let mut digest = Sha256::new();
     digest.update(kind.as_bytes());
     for part in parts {
         digest.update([0]);
         digest.update(part.as_bytes());
     }
-    hex::encode(digest.finalize())
+    digest.finalize().into()
 }
 
 pub(crate) fn evidence(event: &AuthorityEvent) -> Value {

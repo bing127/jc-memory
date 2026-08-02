@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use serde_json::json;
 
-use crate::replay::{batch_outcome, evidence, stable_id};
+use crate::replay::{batch_outcome, evidence, stable_protocol_id};
 use crate::{BatchContext, BatchOutcome, ConsolidationTask, JobError, SurfaceVersionWrite};
 
 /// 从单个证据支持的 Point 发现初始动态 Surface。
@@ -33,7 +33,7 @@ impl ConsolidationTask for SurfaceDiscovery {
             };
             context
                 .write_surface_version(&SurfaceVersionWrite {
-                    id: stable_id("surface", &[&event.content_hash]),
+                    id: stable_protocol_id("surface", &[&event.content_hash]),
                     kind: "dynamic".into(),
                     status: "active".into(),
                     semantic_center: json!({"content_hash": event.content_hash}),
@@ -109,7 +109,7 @@ impl ConsolidationTask for SurfaceMerge {
             .join("|");
         context
             .write_surface_version(&SurfaceVersionWrite {
-                id: stable_id("surface-merge-successor", &[&identity]),
+                id: stable_protocol_id("surface-merge-successor", &[&identity]),
                 kind: first.kind.clone(),
                 status: "active".into(),
                 semantic_center: json!({
@@ -171,7 +171,7 @@ impl ConsolidationTask for SurfaceSplit {
             let partition = index.to_string();
             context
                 .write_surface_version(&SurfaceVersionWrite {
-                    id: stable_id(
+                    id: stable_protocol_id(
                         "surface-split-successor",
                         &[&surface.id, &surface.version.to_string(), &partition],
                     ),

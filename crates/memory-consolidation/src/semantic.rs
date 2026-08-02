@@ -215,6 +215,11 @@ impl ConsolidationTask for SemanticPromotion {
             let evidence_json: Vec<Value> = supports.iter().map(evidence).collect();
             let support_count = u32::try_from(supports.len())
                 .map_err(|_| JobError::Task("semantic support count overflow".into()))?;
+            let confidence = supports
+                .iter()
+                .map(|support| support.confidence)
+                .sum::<f64>()
+                / f64::from(support_count);
             let scope_identity = event
                 .payload
                 .get("scope")
@@ -222,18 +227,11 @@ impl ConsolidationTask for SemanticPromotion {
                 .to_string();
             context
                 .write_point(&PointWrite {
-                    id: stable_id(
-                        "semantic-point",
-                        &[&scope_identity, point_kind, &event.content_id],
-                    ),
+                    id: event.fragment_id.clone(),
                     kind: point_kind.into(),
                     source_fragment_id: event.fragment_id.clone(),
                     valid_from_us: event.recorded_at_us,
-                    confidence: supports
-                        .iter()
-                        .map(|support| support.confidence)
-                        .sum::<f64>()
-                        / f64::from(support_count),
+                    confidence,
                     created_at_us: event.recorded_at_us,
                 })
                 .await?;
@@ -246,7 +244,14 @@ impl ConsolidationTask for SemanticPromotion {
                     kind: "semantic_promotion".into(),
                     subject_key: event.content_id.clone(),
                     source_cursor: event.sequence,
-                    payload: json!({"point_kind": point_kind, "stable": true}),
+                    payload: json!({
+                        "point_id": event.fragment_id,
+                        "kind": point_kind,
+                        "content": event.payload.get("content").cloned().unwrap_or(Value::Null),
+                        "confidence": confidence,
+                        "validity": "verified",
+                        "stable": true,
+                    }),
                     evidence: Value::Array(evidence_json),
                     created_at_us: event.recorded_at_us,
                 })
@@ -307,6 +312,15 @@ async fn persist_procedure_experience(
             Err(ExperienceLearningError::InsufficientIndependentEvidence) => continue,
             Err(error) => return Err(JobError::Task(error.to_string())),
         };
+        let success_count = learning
+            .evidence
+            .iter()
+            .filter(|sample| sample.succeeded)
+            .count();
+        let success_count = u32::try_from(success_count)
+            .map_err(|_| JobError::Task("procedure success count overflow".into()))?;
+        let failure_count = learning.sample_count.saturating_sub(success_count);
+        let success_rate = f64::from(success_count) / f64::from(learning.sample_count);
         context
             .write_artifact(&ArtifactWrite {
                 id: stable_id("procedure-experience", &[&scope_identity, &procedure_key]),
@@ -315,6 +329,9 @@ async fn persist_procedure_experience(
                 source_cursor,
                 payload: json!({
                     "sample_count": learning.sample_count,
+                    "success_count": success_count,
+                    "failure_count": failure_count,
+                    "success_rate": success_rate,
                     "confidence_interval": learning.confidence_interval,
                     "statement": learning.statement,
                 }),

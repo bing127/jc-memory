@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 
-use crate::replay::{batch_outcome, stable_id};
+use crate::replay::{batch_outcome, stable_protocol_id};
 use crate::{BatchContext, BatchOutcome, ConsolidationTask, EdgeWrite, JobError};
 
 /// 只从同内容或共同激活证据创建非因果关系。
@@ -30,7 +30,7 @@ impl ConsolidationTask for Deduplication {
             }
             context
                 .write_edge(&EdgeWrite {
-                    id: stable_id("dedup-edge", &[&candidate, &current, &kind]),
+                    id: stable_protocol_id("dedup-edge", &[&candidate, &current, &kind]),
                     source_point_id: candidate,
                     target_point_id: current,
                     kind,

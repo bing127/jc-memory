@@ -35,7 +35,7 @@
 - Modify: `crates/memory-consolidation/src/surfaces.rs`
 - Modify: `crates/memory-consolidation/tests/conservative_learning.rs`
 
-- [ ] **Step 1：写规范 ID 和可校验 Artifact 红灯测试**
+- [x] **Step 1：写规范 ID 和可校验 Artifact 红灯测试**
 
 新增测试：Replay 后 Point ID 必须能解析为 `PointId` 且等于来源 `FragmentId`；Surface/派生 Edge 必须能解析为协议 ID；Procedure Artifact 必须包含成功、失败、样本数和成功率；Constraint/Preference Artifact 必须包含可解析 Point ID、原始结构化 `content`、置信度和 Validity。
 
@@ -55,13 +55,13 @@ assert_eq!(payload["failure_count"], 2);
 assert_eq!(payload["success_rate"], 0.5);
 ```
 
-- [ ] **Step 2：运行测试并确认旧 SHA-256 ID 与缺失字段导致失败**
+- [x] **Step 2：运行测试并确认旧 SHA-256 ID 与缺失字段导致失败**
 
 Run: `CARGO_INCREMENTAL=0 cargo test -p jc-memory-consolidation --test conservative_learning canonical_ids_and_recall_artifacts --offline`
 
 Expected: FAIL，Point/Surface ID 不能解析为 UUID，Procedure/Semantic payload 缺少召回字段。
 
-- [ ] **Step 3：实现规范 ID 与完整 Artifact**
+- [x] **Step 3：实现规范 ID 与完整 Artifact**
 
 基础 Point 直接使用 `event.fragment_id`。内部 Artifact 继续使用 `stable_id`；新增 `stable_protocol_id`，将 SHA-256 前 16 字节设置 RFC 4122 version/variant 位后使用 `Uuid::from_bytes` 输出字符串，供派生 Edge/Surface 使用。
 
@@ -78,7 +78,7 @@ pub(crate) fn stable_protocol_id(kind: &str, parts: &[&str]) -> String {
 
 Procedure payload 写入 `success_count`、`failure_count`、`sample_count`、`success_rate`、`confidence_interval` 和保守 statement。Semantic payload 写入 `point_id`、`kind`、原始 `content`、派生 `confidence`、`validity` 和 `stable: true`；Evidence 仍只保存权威来源与统计样本。
 
-- [ ] **Step 4：运行 Consolidation 全测和静态门禁**
+- [x] **Step 4：运行 Consolidation 全测和静态门禁**
 
 Run: `CARGO_INCREMENTAL=0 cargo test -p jc-memory-consolidation --all-targets --all-features --offline`
 
@@ -86,7 +86,7 @@ Run: `cargo fmt --all -- --check && CARGO_INCREMENTAL=0 cargo clippy -p jc-memor
 
 Expected: 全部退出码 0。
 
-- [ ] **Step 5：提交并推送 Task 1**
+- [x] **Step 5：提交并推送 Task 1**
 
 ```bash
 git add crates/memory-consolidation
