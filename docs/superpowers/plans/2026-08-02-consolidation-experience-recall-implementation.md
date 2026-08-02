@@ -285,7 +285,7 @@ git push
 - Modify: `crates/memory-storage/src/projection_derivations.rs`
 - Modify: `crates/memory-storage/tests/recall_derivations.rs`
 
-- [ ] **Step 1：写 Surface 相关性、时间、状态和截断红灯测试**
+- [x] **Step 1：写 Surface 相关性、时间、状态和截断红灯测试**
 
 构造 active、frozen、inactive、merged、split 和未来版本。只返回查询时刻有效、成员与激活 Point 相交的 active/frozen 最新版本；完整 Surface 超过剩余节点预算时不返回半个版本并设置 `truncated`。
 
@@ -298,17 +298,17 @@ assert!(limited.surfaces.is_empty());
 assert!(limited.truncated);
 ```
 
-- [ ] **Step 2：运行测试并确认 Surface 尚未加载**
+- [x] **Step 2：运行测试并确认 Surface 尚未加载**
 
 Run: `CARGO_INCREMENTAL=0 cargo test -p jc-memory-storage --test recall_derivations surface --offline`
 
 Expected: FAIL，结果没有 Surface 或未执行时间、状态、成员预算过滤。
 
-- [ ] **Step 3：实现 Surface 查询、排序和强类型解码**
+- [x] **Step 3：实现 Surface 查询、排序和强类型解码**
 
 先按 Scope、有效区间和状态选择每个 ID 的最新版本，再要求 `EXISTS` 激活成员。批量加载成员，解析 `SurfaceId`/`PointId`，校验成员 Point 同 Scope 和 Evidence 来源，按交集权重、置信度和 ID 排序。扣减 Surface 本身与成员节点预算，不能返回部分 Surface。
 
-- [ ] **Step 4：运行完整派生读取测试与 Clippy**
+- [x] **Step 4：运行完整派生读取测试与 Clippy**
 
 Run: `CARGO_INCREMENTAL=0 cargo test -p jc-memory-storage --test recall_derivations --offline`
 
@@ -316,7 +316,7 @@ Run: `cargo fmt --all -- --check && CARGO_INCREMENTAL=0 cargo clippy -p jc-memor
 
 Expected: 全部退出码 0。
 
-- [ ] **Step 5：提交并推送 Task 5**
+- [x] **Step 5：提交并推送 Task 5**
 
 ```bash
 git add crates/memory-storage/src/projection_derivations.rs crates/memory-storage/tests/recall_derivations.rs

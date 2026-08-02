@@ -5,7 +5,7 @@ use jc_memory_events::factory::EventFactory;
 use jc_memory_protocol::{
     CognitiveFragment, EventDraft, EvidenceId, EvidenceRef, FragmentContent, FragmentId,
     FragmentKind, FragmentSource, KnowledgeKind, MemoryScope, NamespaceId, Perspective, PointId,
-    SecurityLabel, SourceType, ValidityStatus, VerificationMethod,
+    SecurityLabel, SourceType, SurfaceId, SurfaceStatus, ValidityStatus, VerificationMethod,
 };
 use jc_memory_storage::{
     MemoryRepository, SqliteConfig, SqliteMemoryRepository, SqliteProjectionStore, SqliteStore,
@@ -190,11 +190,287 @@ async fn artifact_declaring_another_scope_fails_closed() {
     ));
 }
 
+#[tokio::test]
+async fn surfaces_require_active_members_effective_time_and_complete_budget() {
+    let harness = Harness::new().await;
+    let source = harness
+        .append(FragmentKind::Fact, "surface-source", "发布上下文", false)
+        .await;
+    harness
+        .insert_point(source.fragment_id, FragmentKind::Fact)
+        .await;
+    let now = Utc::now();
+    harness
+        .insert_surface(SurfaceStatus::Active, &source, now, None)
+        .await;
+    harness
+        .insert_surface(SurfaceStatus::Frozen, &source, now, None)
+        .await;
+    harness
+        .insert_surface(SurfaceStatus::Inactive, &source, now, None)
+        .await;
+    harness
+        .insert_surface(SurfaceStatus::Merged, &source, now, None)
+        .await;
+    harness
+        .insert_surface(SurfaceStatus::Split, &source, now, None)
+        .await;
+    harness
+        .insert_surface(
+            SurfaceStatus::Active,
+            &source,
+            now + chrono::Duration::minutes(5),
+            None,
+        )
+        .await;
+
+    let activated_point = point_id(source.fragment_id);
+    let projected = harness
+        .projection
+        .load_recall_derivations(
+            &harness.scope,
+            &[activated_point],
+            &[source.fragment_id],
+            None,
+            now,
+            8,
+        )
+        .await
+        .expect("读取相关 Surface");
+    assert_eq!(projected.surfaces.len(), 2);
+    assert!(projected.surfaces.iter().all(|surface| {
+        matches!(
+            surface.status,
+            SurfaceStatus::Active | SurfaceStatus::Frozen
+        )
+    }));
+    assert!(
+        projected
+            .surfaces
+            .iter()
+            .all(|surface| surface.member_points.contains_key(&activated_point))
+    );
+    let limited = harness
+        .projection
+        .load_recall_derivations(
+            &harness.scope,
+            &[activated_point],
+            &[source.fragment_id],
+            None,
+            now,
+            1,
+        )
+        .await
+        .expect("按完整 Surface 扣减预算");
+    assert!(limited.surfaces.is_empty());
+    assert!(limited.truncated);
+}
+
+#[tokio::test]
+async fn surface_query_returns_the_latest_effective_version() {
+    let harness = Harness::new().await;
+    let source = harness
+        .append(FragmentKind::Fact, "surface-version", "版本化上下文", false)
+        .await;
+    harness
+        .insert_point(source.fragment_id, FragmentKind::Fact)
+        .await;
+    let now = Utc::now();
+    let current_version_id = SurfaceId::new();
+    harness
+        .insert_surface_version(SurfaceFixture {
+            surface_id: current_version_id,
+            version: 1,
+            status: SurfaceStatus::Active,
+            source: &source,
+            valid_from: now - chrono::Duration::minutes(2),
+            valid_to: None,
+            members: &[source.fragment_id],
+        })
+        .await;
+    harness
+        .insert_surface_version(SurfaceFixture {
+            surface_id: current_version_id,
+            version: 2,
+            status: SurfaceStatus::Frozen,
+            source: &source,
+            valid_from: now - chrono::Duration::minutes(1),
+            valid_to: None,
+            members: &[source.fragment_id],
+        })
+        .await;
+    let future_version_id = SurfaceId::new();
+    harness
+        .insert_surface_version(SurfaceFixture {
+            surface_id: future_version_id,
+            version: 1,
+            status: SurfaceStatus::Active,
+            source: &source,
+            valid_from: now - chrono::Duration::minutes(1),
+            valid_to: None,
+            members: &[source.fragment_id],
+        })
+        .await;
+    harness
+        .insert_surface_version(SurfaceFixture {
+            surface_id: future_version_id,
+            version: 2,
+            status: SurfaceStatus::Frozen,
+            source: &source,
+            valid_from: now + chrono::Duration::minutes(5),
+            valid_to: None,
+            members: &[source.fragment_id],
+        })
+        .await;
+
+    let projected = harness
+        .projection
+        .load_recall_derivations(
+            &harness.scope,
+            &[point_id(source.fragment_id)],
+            &[source.fragment_id],
+            None,
+            now,
+            4,
+        )
+        .await
+        .expect("读取查询时刻的最新 Surface 版本");
+
+    assert_eq!(projected.surfaces.len(), 2);
+    assert!(projected.surfaces.iter().any(|surface| {
+        surface.surface_id == current_version_id
+            && surface.version == 2
+            && surface.status == SurfaceStatus::Frozen
+    }));
+    assert!(projected.surfaces.iter().any(|surface| {
+        surface.surface_id == future_version_id
+            && surface.version == 1
+            && surface.status == SurfaceStatus::Active
+    }));
+}
+
+#[tokio::test]
+async fn surface_budget_stops_at_the_first_incomplete_candidate() {
+    let harness = Harness::new().await;
+    let source = harness
+        .append(
+            FragmentKind::Fact,
+            "surface-budget-a",
+            "发布上下文 A",
+            false,
+        )
+        .await;
+    let related = harness
+        .append(
+            FragmentKind::Fact,
+            "surface-budget-b",
+            "发布上下文 B",
+            false,
+        )
+        .await;
+    harness
+        .insert_point(source.fragment_id, FragmentKind::Fact)
+        .await;
+    harness
+        .insert_point(related.fragment_id, FragmentKind::Fact)
+        .await;
+    let now = Utc::now();
+    harness
+        .insert_surface_with_members(
+            SurfaceStatus::Active,
+            &source,
+            now,
+            &[source.fragment_id, related.fragment_id],
+        )
+        .await;
+    harness
+        .insert_surface(SurfaceStatus::Active, &source, now, None)
+        .await;
+
+    let limited = harness
+        .projection
+        .load_recall_derivations(
+            &harness.scope,
+            &[point_id(source.fragment_id), point_id(related.fragment_id)],
+            &[source.fragment_id, related.fragment_id],
+            None,
+            now,
+            2,
+        )
+        .await
+        .expect("遇到无法完整容纳的优先 Surface 后停止");
+
+    assert!(limited.surfaces.is_empty());
+    assert!(limited.truncated);
+}
+
+#[tokio::test]
+async fn malformed_surface_evidence_fails_closed() {
+    let harness = Harness::new().await;
+    let source = harness
+        .append(FragmentKind::Fact, "surface-evidence", "证据上下文", false)
+        .await;
+    harness
+        .insert_point(source.fragment_id, FragmentKind::Fact)
+        .await;
+    let now = Utc::now();
+    harness
+        .insert_surface(SurfaceStatus::Active, &source, now, None)
+        .await;
+    let damaged = serde_json::json!([
+        {
+            "scope": harness.scope,
+            "event_id": source.id,
+            "fragment_id": source.fragment_id,
+            "source_id": source.payload.source.source_id,
+        },
+        {
+            "scope": harness.scope,
+            "event_id": "不是规范事件标识",
+            "fragment_id": source.fragment_id,
+            "source_id": source.payload.source.source_id,
+        },
+    ]);
+    sqlx::query("UPDATE surfaces SET source_evidence_json = ?1")
+        .bind(damaged.to_string())
+        .execute(harness.store.pool())
+        .await
+        .expect("破坏 Surface Evidence");
+
+    assert!(matches!(
+        harness
+            .projection
+            .load_recall_derivations(
+                &harness.scope,
+                &[point_id(source.fragment_id)],
+                &[source.fragment_id],
+                None,
+                now,
+                2,
+            )
+            .await,
+        Err(StorageError::ProjectionDerivationCorrupt {
+            field: "surface_evidence",
+            ..
+        })
+    ));
+}
+
 struct Harness {
     store: SqliteStore,
     repository: SqliteMemoryRepository,
     projection: SqliteProjectionStore,
     scope: MemoryScope,
+}
+
+struct SurfaceFixture<'fixture> {
+    surface_id: SurfaceId,
+    version: u64,
+    status: SurfaceStatus,
+    source: &'fixture EventDraft,
+    valid_from: DateTime<Utc>,
+    valid_to: Option<DateTime<Utc>>,
+    members: &'fixture [FragmentId],
 }
 
 impl Harness {
@@ -367,6 +643,95 @@ impl Harness {
         .await
         .expect("写入 Procedure Artifact");
     }
+
+    async fn insert_surface(
+        &self,
+        status: SurfaceStatus,
+        source: &EventDraft,
+        valid_from: DateTime<Utc>,
+        valid_to: Option<DateTime<Utc>>,
+    ) {
+        self.insert_surface_version(SurfaceFixture {
+            surface_id: SurfaceId::new(),
+            version: 1,
+            status,
+            source,
+            valid_from,
+            valid_to,
+            members: &[source.fragment_id],
+        })
+        .await;
+    }
+
+    async fn insert_surface_with_members(
+        &self,
+        status: SurfaceStatus,
+        source: &EventDraft,
+        valid_from: DateTime<Utc>,
+        members: &[FragmentId],
+    ) {
+        self.insert_surface_version(SurfaceFixture {
+            surface_id: SurfaceId::new(),
+            version: 1,
+            status,
+            source,
+            valid_from,
+            valid_to: None,
+            members,
+        })
+        .await;
+    }
+
+    async fn insert_surface_version(&self, fixture: SurfaceFixture<'_>) {
+        let SurfaceFixture {
+            surface_id,
+            version,
+            status,
+            source,
+            valid_from,
+            valid_to,
+            members,
+        } = fixture;
+        let scope_key = self.scope_key(source.fragment_id).await;
+        let evidence = serde_json::json!([{
+            "scope": self.scope,
+            "event_id": source.id,
+            "fragment_id": source.fragment_id,
+            "source_id": source.payload.source.source_id,
+            "sequence": 0,
+        }]);
+        sqlx::query(
+            "INSERT INTO surfaces (
+                id, scope_key, kind, status, semantic_center_json,
+                activation_threshold, confidence, version, valid_from_us,
+                valid_to_us, source_evidence_json, created_at_us
+             ) VALUES (?1, ?2, 'dynamic', ?3, '{}', 0.5, 0.9, ?4, ?5, ?6, ?7, ?5)",
+        )
+        .bind(surface_id.to_string())
+        .bind(&scope_key)
+        .bind(surface_status_name(status))
+        .bind(i64::try_from(version).expect("Surface 版本可写入 SQLite"))
+        .bind(valid_from.timestamp_micros())
+        .bind(valid_to.map(|value| value.timestamp_micros()))
+        .bind(evidence.to_string())
+        .execute(self.store.pool())
+        .await
+        .expect("写入 Surface 版本");
+        for member in members {
+            sqlx::query(
+                "INSERT INTO surface_members (
+                    surface_id, point_id, member_weight, version, created_at_us
+                 ) VALUES (?1, ?2, 1.0, ?3, ?4)",
+            )
+            .bind(surface_id.to_string())
+            .bind(member.to_string())
+            .bind(i64::try_from(version).expect("Surface 版本可写入 SQLite"))
+            .bind(valid_from.timestamp_micros())
+            .execute(self.store.pool())
+            .await
+            .expect("写入 Surface 成员");
+        }
+    }
 }
 
 fn procedure_sample(scope: &MemoryScope, event: &EventDraft, succeeded: bool) -> serde_json::Value {
@@ -392,6 +757,16 @@ const fn kind_name(kind: FragmentKind) -> &'static str {
         FragmentKind::Constraint => "constraint",
         FragmentKind::Preference => "preference",
         _ => "fact",
+    }
+}
+
+const fn surface_status_name(status: SurfaceStatus) -> &'static str {
+    match status {
+        SurfaceStatus::Active => "active",
+        SurfaceStatus::Frozen => "frozen",
+        SurfaceStatus::Inactive => "inactive",
+        SurfaceStatus::Merged => "merged",
+        SurfaceStatus::Split => "split",
     }
 }
 

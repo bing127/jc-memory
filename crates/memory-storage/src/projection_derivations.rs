@@ -1,15 +1,16 @@
 //! Consolidation 派生项到模型无关 Recall View 的安全读取。
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::{DateTime, Utc};
 use jc_memory_protocol::{
     CognitiveFragment, EpisodeView, EventId, EvidenceView, FragmentId, FragmentKind, KnowledgeKind,
-    KnowledgeView, MemoryScope, PointId, ProcedureView, SurfaceView, ValidityStatus,
+    KnowledgeView, MemoryScope, PointId, ProcedureView, SurfaceId, SurfaceStatus, SurfaceView,
+    ValidityStatus,
 };
 use serde::Deserialize;
 use serde_json::Value;
-use sqlx::{Row as _, SqlitePool};
+use sqlx::{QueryBuilder, Row as _, Sqlite, SqlitePool, sqlite::SqliteRow};
 
 use crate::StorageError;
 
@@ -77,6 +78,23 @@ struct ValidatedEvidence {
     validity: ValidityStatus,
 }
 
+#[derive(Debug)]
+struct SurfaceCandidate {
+    view: SurfaceView,
+    intersection_weight: f32,
+}
+
+#[derive(Debug)]
+struct SurfaceAccumulator {
+    surface_id: SurfaceId,
+    version: u64,
+    status: SurfaceStatus,
+    confidence: f32,
+    evidence: Value,
+    member_points: BTreeMap<PointId, f32>,
+    intersection_weight: f32,
+}
+
 pub(crate) struct DerivationQuery<'query> {
     pub(crate) scope: &'query MemoryScope,
     pub(crate) scope_hash: &'query str,
@@ -97,7 +115,7 @@ pub(crate) async fn load(
         activated_point_ids,
         activated_fragment_ids,
         procedure_key,
-        effective_at: _effective_at,
+        effective_at,
         max_items,
     } = query;
     let rows = load_artifacts(pool, scope_hash).await?;
@@ -110,6 +128,19 @@ pub(crate) async fn load(
     let active_fragments: BTreeSet<_> = activated_fragment_ids.iter().copied().collect();
     let mut result = ProjectedRecallDerivations::default();
     let mut remaining = max_items;
+    let surfaces = load_surfaces(pool, scope, scope_hash, &active_points, effective_at).await?;
+    for surface in surfaces {
+        let cost = 1_usize.saturating_add(surface.view.member_points.len());
+        if cost > remaining {
+            result.truncated = true;
+            break;
+        }
+        remaining -= cost;
+        result
+            .evidence
+            .extend(surface.view.evidence.iter().cloned());
+        result.surfaces.push(surface.view);
+    }
     for row in rows.iter().filter(|row| row.kind == "procedure_experience") {
         validate_cursor(row, max_sequence, scope_hash)?;
         let evidence = decode_evidence(row, scope_hash)?;
@@ -165,6 +196,169 @@ pub(crate) async fn load(
         .evidence
         .dedup_by_key(|item| (item.fragment_id, item.event_id, item.evidence_ref_id));
     Ok(result)
+}
+
+async fn load_surfaces(
+    pool: &SqlitePool,
+    scope: &MemoryScope,
+    scope_hash: &str,
+    active_points: &BTreeSet<PointId>,
+    effective_at: DateTime<Utc>,
+) -> Result<Vec<SurfaceCandidate>, StorageError> {
+    if active_points.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows = query_surface_rows(pool, scope_hash, active_points, effective_at).await?;
+    let mut grouped = BTreeMap::<(SurfaceId, u64), SurfaceAccumulator>::new();
+    for row in rows {
+        let raw_surface_id: String = row.try_get("id")?;
+        let surface_id = raw_surface_id
+            .parse::<SurfaceId>()
+            .map_err(|_| corrupt("surface_id", scope_hash))?;
+        let raw_version: i64 = row.try_get("version")?;
+        let version =
+            u64::try_from(raw_version).map_err(|_| corrupt("surface_version", scope_hash))?;
+        let raw_point_id: String = row.try_get("point_id")?;
+        let point_id = raw_point_id
+            .parse::<PointId>()
+            .map_err(|_| corrupt("surface_member_id", scope_hash))?;
+        let point_scope_key: String = row.try_get("point_scope_key")?;
+        if point_scope_key != scope_hash {
+            return Err(corrupt("surface_member_scope", scope_hash));
+        }
+        let weight: f32 = row.try_get("member_weight")?;
+        let confidence: f32 = row.try_get("confidence")?;
+        if !weight.is_finite()
+            || !(0.0..=1.0).contains(&weight)
+            || !confidence.is_finite()
+            || !(0.0..=1.0).contains(&confidence)
+        {
+            return Err(corrupt("surface_score", scope_hash));
+        }
+        let raw_status: String = row.try_get("status")?;
+        let raw_evidence: String = row.try_get("source_evidence_json")?;
+        let key = (surface_id, version);
+        let accumulator = grouped.entry(key).or_insert(SurfaceAccumulator {
+            surface_id,
+            version,
+            status: parse_surface_status(&raw_status, scope_hash)?,
+            confidence,
+            evidence: parse_json(&raw_evidence, "surface_evidence", scope_hash)?,
+            member_points: BTreeMap::new(),
+            intersection_weight: 0.0,
+        });
+        accumulator.member_points.insert(point_id, weight);
+        if active_points.contains(&point_id) {
+            accumulator.intersection_weight += weight;
+        }
+    }
+    let mut surfaces = Vec::with_capacity(grouped.len());
+    for (_, accumulated) in grouped {
+        let evidence = decode_nested_evidence(&accumulated.evidence, scope_hash)?;
+        let validated = validate_evidence(pool, scope, scope_hash, &evidence).await?;
+        surfaces.push(SurfaceCandidate {
+            view: SurfaceView {
+                surface_id: accumulated.surface_id,
+                version: accumulated.version,
+                status: accumulated.status,
+                member_points: accumulated.member_points,
+                confidence: accumulated.confidence,
+                evidence: evidence_views(&validated),
+            },
+            intersection_weight: accumulated.intersection_weight,
+        });
+    }
+    surfaces.sort_by(|left, right| {
+        right
+            .intersection_weight
+            .total_cmp(&left.intersection_weight)
+            .then_with(|| right.view.confidence.total_cmp(&left.view.confidence))
+            .then_with(|| left.view.surface_id.cmp(&right.view.surface_id))
+    });
+    Ok(surfaces)
+}
+
+async fn query_surface_rows(
+    pool: &SqlitePool,
+    scope_hash: &str,
+    active_points: &BTreeSet<PointId>,
+    effective_at: DateTime<Utc>,
+) -> Result<Vec<SqliteRow>, StorageError> {
+    let effective_at_us = effective_at.timestamp_micros();
+    let mut query = QueryBuilder::<Sqlite>::new(
+        "SELECT s.id, s.version, s.status, s.confidence, s.source_evidence_json,
+                sm.point_id, sm.member_weight, p.scope_key AS point_scope_key
+         FROM surfaces s
+         JOIN surface_members sm ON sm.surface_id = s.id AND sm.version = s.version
+         JOIN points p ON p.id = sm.point_id
+         WHERE s.scope_key = ",
+    );
+    query.push_bind(scope_hash);
+    query.push(" AND s.status IN ('active', 'frozen') AND s.valid_from_us <= ");
+    query.push_bind(effective_at_us);
+    query.push(" AND (s.valid_to_us IS NULL OR ");
+    query.push_bind(effective_at_us);
+    query.push(" < s.valid_to_us) AND s.version = (SELECT MAX(v.version) FROM surfaces v WHERE v.id = s.id AND v.scope_key = s.scope_key AND v.valid_from_us <= ");
+    query.push_bind(effective_at_us);
+    query.push(" AND (v.valid_to_us IS NULL OR ");
+    query.push_bind(effective_at_us);
+    query.push(" < v.valid_to_us)) AND EXISTS (SELECT 1 FROM surface_members relevant WHERE relevant.surface_id = s.id AND relevant.version = s.version AND relevant.point_id IN (");
+    {
+        let mut separated = query.separated(", ");
+        for point_id in active_points {
+            separated.push_bind(point_id.to_string());
+        }
+    }
+    query.push(") ) ORDER BY s.id, s.version, sm.point_id");
+    Ok(query.build().fetch_all(pool).await?)
+}
+
+fn parse_surface_status(raw: &str, scope_hash: &str) -> Result<SurfaceStatus, StorageError> {
+    match raw {
+        "active" => Ok(SurfaceStatus::Active),
+        "frozen" => Ok(SurfaceStatus::Frozen),
+        "inactive" => Ok(SurfaceStatus::Inactive),
+        "merged" => Ok(SurfaceStatus::Merged),
+        "split" => Ok(SurfaceStatus::Split),
+        _ => Err(corrupt("surface_status", scope_hash)),
+    }
+}
+
+fn decode_nested_evidence(
+    value: &Value,
+    scope_hash: &str,
+) -> Result<Vec<ArtifactEvidence>, StorageError> {
+    fn collect(value: &Value, output: &mut Vec<ArtifactEvidence>) -> Result<(), ()> {
+        match value {
+            Value::Array(items) => {
+                for item in items {
+                    collect(item, output)?;
+                }
+            }
+            Value::Object(object) => {
+                if ["event_id", "fragment_id", "scope", "source_id"]
+                    .iter()
+                    .any(|field| object.contains_key(*field))
+                {
+                    let evidence = serde_json::from_value::<ArtifactEvidence>(value.clone())
+                        .map_err(|_| ())?;
+                    output.push(evidence);
+                } else {
+                    for nested in object.values() {
+                        collect(nested, output)?;
+                    }
+                }
+            }
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+        }
+        Ok(())
+    }
+    let mut evidence = Vec::new();
+    collect(value, &mut evidence).map_err(|()| corrupt("surface_evidence", scope_hash))?;
+    if evidence.is_empty() {
+        return Err(corrupt("surface_evidence", scope_hash));
+    }
+    Ok(evidence)
 }
 
 async fn load_artifacts(
