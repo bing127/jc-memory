@@ -165,7 +165,7 @@ git push
 - Modify: `crates/memory-core/src/consolidation.rs`
 - Modify: `crates/memory-core/tests/consolidation_jobs.rs`
 
-- [ ] **Step 1：写生命周期、分派与重启红灯测试**
+- [x] **Step 1：写生命周期、分派与重启红灯测试**
 
 用表驱动测试分别提交十二类 Job 并调用 `run_consolidation`，断言记录保留原 `JobKind` 且进入 `Completed`。另验证 Pause/Resume、Cancel、Retry 非法状态，以及 Core 关闭重开后仍能查询并继续 Pending Job。
 
@@ -178,13 +178,13 @@ for kind in ALL_JOB_KINDS {
 }
 ```
 
-- [ ] **Step 2：运行测试并确认生命周期方法和分派缺失**
+- [x] **Step 2：运行测试并确认生命周期方法和分派缺失**
 
 Run: `CARGO_INCREMENTAL=0 cargo test -p jc-memory-core --test consolidation_jobs lifecycle_and_dispatch --offline`
 
 Expected: FAIL，Core 生命周期方法缺失，Store `cancel` 仍不可公开调用。
 
-- [ ] **Step 3：实现最小生命周期门面与 Handler 映射**
+- [x] **Step 3：实现最小生命周期门面与 Handler 映射**
 
 将 `ConsolidationJobStore::cancel` 改为有文档的公共方法。Core 的 pause/resume/retry/cancel 全部先加载 Job、按其 Scope 授权，再调用 Store。`run_consolidation` 同样先授权，然后按 `JobKind` 构造对应 `JobRunner`：
 
@@ -205,7 +205,7 @@ match record.spec.kind {
 }
 ```
 
-- [ ] **Step 4：运行 Core 与 Consolidation 聚焦测试**
+- [x] **Step 4：运行 Core 与 Consolidation 聚焦测试**
 
 Run: `CARGO_INCREMENTAL=0 cargo test -p jc-memory-core --test consolidation_jobs --offline`
 
@@ -215,7 +215,7 @@ Run: `cargo fmt --all -- --check && CARGO_INCREMENTAL=0 cargo clippy -p jc-memor
 
 Expected: 全部退出码 0。
 
-- [ ] **Step 5：提交并推送 Task 3**
+- [x] **Step 5：提交并推送 Task 3**
 
 ```bash
 git add crates/memory-consolidation/src/job.rs crates/memory-core/src/consolidation.rs crates/memory-core/tests/consolidation_jobs.rs

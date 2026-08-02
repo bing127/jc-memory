@@ -1,6 +1,8 @@
 //! Core Consolidation Job 授权与生命周期契约。
 
-use jc_memory_core::{JobKind, JobSpec, MemoryConfig, MemoryEngine, MemoryError, ResourceLimits};
+use jc_memory_core::{
+    JobKind, JobSpec, JobStatus, MemoryConfig, MemoryEngine, MemoryError, ResourceLimits,
+};
 use jc_memory_protocol::{
     AccessContext, DenyReason, Grant, MemoryScope, NamespaceId, Operation, TenantId,
 };
@@ -65,6 +67,81 @@ async fn a_tenant_cannot_read_another_tenant_job_by_id() {
     ));
 }
 
+#[tokio::test]
+async fn lifecycle_and_dispatch_cover_every_consolidation_handler() {
+    let directory = tempfile::tempdir().expect("创建 Handler 分派测试目录");
+    let engine = MemoryEngine::open(MemoryConfig::local(directory.path()))
+        .await
+        .expect("打开记忆引擎");
+    let scope = MemoryScope::new(NamespaceId::new());
+    let operator = context("operator", &scope, &[Operation::Consolidate]);
+
+    for kind in all_job_kinds() {
+        let submitted = engine
+            .submit_consolidation(&operator, spec(scope.clone(), kind))
+            .await
+            .expect("提交 Handler Job");
+        let completed = engine
+            .run_consolidation(&operator, submitted.id)
+            .await
+            .expect("运行 Handler Job");
+        assert_eq!(completed.spec.kind, kind);
+        assert_eq!(completed.status, JobStatus::Completed);
+    }
+
+    let controlled = engine
+        .submit_consolidation(&operator, spec(scope.clone(), JobKind::Replay))
+        .await
+        .expect("提交生命周期 Job");
+    let paused = engine
+        .pause_consolidation(&operator, controlled.id)
+        .await
+        .expect("暂停 Job");
+    assert_eq!(paused.status, JobStatus::Paused);
+    let resumed = engine
+        .resume_consolidation(&operator, controlled.id)
+        .await
+        .expect("恢复 Job");
+    assert_eq!(resumed.status, JobStatus::Pending);
+    assert!(matches!(
+        engine.retry_consolidation(&operator, controlled.id).await,
+        Err(MemoryError::Consolidation(_))
+    ));
+    let cancelled = engine
+        .cancel_consolidation(&operator, controlled.id)
+        .await
+        .expect("取消 Job");
+    assert_eq!(cancelled.status, JobStatus::Cancelled);
+}
+
+#[tokio::test]
+async fn pending_job_survives_engine_restart_and_can_run() {
+    let directory = tempfile::tempdir().expect("创建 Job 重启测试目录");
+    let config = MemoryConfig::local(directory.path());
+    let scope = MemoryScope::new(NamespaceId::new());
+    let operator = context("operator", &scope, &[Operation::Consolidate]);
+    let engine = MemoryEngine::open(config.clone())
+        .await
+        .expect("打开记忆引擎");
+    let submitted = engine
+        .submit_consolidation(&operator, spec(scope, JobKind::Replay))
+        .await
+        .expect("提交待恢复 Job");
+    engine.close().await;
+
+    let reopened = MemoryEngine::open(config).await.expect("重启记忆引擎");
+    let loaded = reopened
+        .consolidation_job(&operator, submitted.id)
+        .await
+        .expect("重启后读取 Job");
+    assert_eq!(loaded.status, JobStatus::Pending);
+    let completed = reopened
+        .run_consolidation(&operator, submitted.id)
+        .await
+        .expect("重启后运行 Job");
+    assert_eq!(completed.status, JobStatus::Completed);
+}
+
 fn context(principal: &str, scope: &MemoryScope, operations: &[Operation]) -> AccessContext {
     let mut context = AccessContext::new(principal, scope.clone());
     context.grants.extend(
@@ -88,4 +165,21 @@ fn spec(scope: MemoryScope, kind: JobKind) -> JobSpec {
             max_attempts: 2,
         },
     }
+}
+
+const fn all_job_kinds() -> [JobKind; 12] {
+    [
+        JobKind::Replay,
+        JobKind::Deduplication,
+        JobKind::EdgeReinforcement,
+        JobKind::EdgeWeakening,
+        JobKind::SurfaceDiscovery,
+        JobKind::SurfaceMerge,
+        JobKind::SurfaceSplit,
+        JobKind::SemanticPromotion,
+        JobKind::ConflictDetection,
+        JobKind::StaleStateDetection,
+        JobKind::ColdTierMovement,
+        JobKind::Rebuild,
+    ]
 }

@@ -190,6 +190,7 @@ pub struct MemoryEngine {
     pub(crate) projection: SqliteProjectionStore,
     pub(crate) recovery: Arc<RecoveryManager>,
     pub(crate) consolidation_jobs: ConsolidationJobStore,
+    pub(crate) consolidation_worker_id: String,
     event_factory: EventFactory,
     schema_version: i64,
 }
@@ -249,6 +250,7 @@ impl MemoryEngine {
             projection,
             recovery,
             consolidation_jobs,
+            consolidation_worker_id: format!("core-{}", jc_memory_consolidation::JobId::new()),
             event_factory: EventFactory::new(),
             schema_version,
         })

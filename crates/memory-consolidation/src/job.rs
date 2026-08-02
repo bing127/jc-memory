@@ -510,7 +510,12 @@ impl ConsolidationJobStore {
         Ok(record)
     }
 
-    pub(crate) async fn cancel(&self, id: JobId) -> Result<JobRecord, JobError> {
+    /// 取消一个尚未结束的 Job，并释放持久化 Lease。
+    ///
+    /// # Errors
+    ///
+    /// 当前状态不可取消或数据库写入失败时返回错误。
+    pub async fn cancel(&self, id: JobId) -> Result<JobRecord, JobError> {
         self.transition(
             id,
             "cancel",
