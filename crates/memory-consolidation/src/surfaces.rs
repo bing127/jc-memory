@@ -40,7 +40,7 @@ impl ConsolidationTask for SurfaceDiscovery {
                     activation_threshold: 0.5,
                     confidence: event.confidence,
                     version: 1,
-                    valid_from_us: event.recorded_at_us,
+                    valid_from_us: event.occurred_at_us,
                     evidence: json!([evidence(event)]),
                     members: vec![(point_id, 1.0)],
                 })

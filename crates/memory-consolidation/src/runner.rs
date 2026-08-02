@@ -103,6 +103,8 @@ pub struct AuthorityEvent {
     pub payload: Value,
     /// Event 记录时间。
     pub recorded_at_us: i64,
+    /// Fragment 声明的业务发生时间。
+    pub occurred_at_us: i64,
     /// Fragment 置信度。
     pub confidence: f64,
     /// Fragment 有效性。
@@ -321,7 +323,8 @@ impl<'transaction> BatchContext<'transaction> {
         let limit = i64::from(self.limits.max_batch_size);
         let rows = sqlx::query(
             "SELECT e.sequence, e.id AS event_id, e.fragment_id, e.content_hash,
-                    e.payload_json, e.recorded_at_us, f.kind, f.content_id, f.source_json,
+                    e.payload_json, e.recorded_at_us, f.occurred_at_us,
+                    f.kind, f.content_id, f.source_json,
                     f.confidence, f.validity
              FROM events e
              JOIN fragments f ON f.id = e.fragment_id AND f.scope_key = e.scope_key
@@ -353,7 +356,8 @@ impl<'transaction> BatchContext<'transaction> {
         self.charge_io()?;
         let rows = sqlx::query(
             "SELECT e.sequence, e.id AS event_id, e.fragment_id, e.content_hash,
-                    e.payload_json, e.recorded_at_us, f.kind, f.content_id, f.source_json,
+                    e.payload_json, e.recorded_at_us, f.occurred_at_us,
+                    f.kind, f.content_id, f.source_json,
                     f.confidence, f.validity
              FROM events e
              JOIN fragments f ON f.id = e.fragment_id AND f.scope_key = e.scope_key
@@ -918,6 +922,7 @@ fn decode_authority_event(row: &sqlx::sqlite::SqliteRow) -> Result<AuthorityEven
         content_id: row.try_get("content_id")?,
         payload,
         recorded_at_us: row.try_get("recorded_at_us")?,
+        occurred_at_us: row.try_get("occurred_at_us")?,
         confidence: row.try_get("confidence")?,
         validity: row.try_get("validity")?,
     })

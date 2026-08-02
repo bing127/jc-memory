@@ -668,6 +668,7 @@ fn authority_event_from_draft(draft: &jc_memory_protocol::EventDraft) -> Authori
         content_id: String::new(),
         payload: serde_json::to_value(&draft.payload).expect("序列化外 Scope Event"),
         recorded_at_us: draft.recorded_at.timestamp_micros(),
+        occurred_at_us: draft.payload.occurred_at.timestamp_micros(),
         confidence: f64::from(draft.payload.confidence),
         validity: "unverified".into(),
     }

@@ -230,7 +230,7 @@ impl ConsolidationTask for SemanticPromotion {
                     id: event.fragment_id.clone(),
                     kind: point_kind.into(),
                     source_fragment_id: event.fragment_id.clone(),
-                    valid_from_us: event.recorded_at_us,
+                    valid_from_us: event.occurred_at_us,
                     confidence,
                     created_at_us: event.recorded_at_us,
                 })

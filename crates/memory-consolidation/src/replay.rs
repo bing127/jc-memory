@@ -41,7 +41,7 @@ pub(crate) async fn replay_event(
             id: event.fragment_id.clone(),
             kind: kind.to_owned(),
             source_fragment_id: event.fragment_id.clone(),
-            valid_from_us: event.recorded_at_us,
+            valid_from_us: event.occurred_at_us,
             confidence: event.confidence,
             created_at_us: event.recorded_at_us,
         })
