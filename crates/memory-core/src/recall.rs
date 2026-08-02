@@ -38,6 +38,14 @@ struct CoreRecall {
     explain: ExplainTrace,
 }
 
+struct RecallPacketInputs<'input> {
+    episodes: Vec<EpisodeView>,
+    evidence: Vec<EvidenceView>,
+    states: ProjectedStateSet,
+    derivations: jc_memory_storage::ProjectedRecallDerivations,
+    failure_fragments: &'input BTreeSet<FragmentId>,
+}
+
 impl MemoryEngine {
     /// 在精确 Scope 和硬预算内返回模型无关 Memory Packet。
     ///
@@ -168,6 +176,7 @@ impl MemoryEngine {
             }
         }
         let mut fragment_scopes = BTreeMap::<FragmentId, MemoryScope>::new();
+        let mut failure_fragments = BTreeSet::new();
         let mut episodes = Vec::new();
         let mut evidence = Vec::new();
         let hits = hits_by_fragment.into_values().collect::<Vec<_>>();
@@ -231,6 +240,9 @@ impl MemoryEngine {
             {
                 continue;
             }
+            if fragment.kind == jc_memory_protocol::FragmentKind::Failure {
+                failure_fragments.insert(fragment.id);
+            }
             let evidence_view = EvidenceView {
                 fragment_id: fragment.id,
                 event_id: Some(hit.event_id),
@@ -289,7 +301,49 @@ impl MemoryEngine {
             &states,
             &mut fragment_scopes,
         )?;
-        let packet = build_packet(&query, &result, &points_by_id, episodes, evidence, states)?;
+        let activated_points = result
+            .points
+            .iter()
+            .map(|point| point.point_id)
+            .collect::<Vec<_>>();
+        let activated_fragments = activated_fragment_ids(&result, &points_by_id)
+            .into_iter()
+            .collect::<Vec<_>>();
+        let used_nodes = result
+            .points
+            .len()
+            .saturating_add(states.current.len())
+            .saturating_add(states.history.len());
+        let remaining_nodes = query.limits.max_nodes.saturating_sub(used_nodes);
+        let procedure_key = (query.mode == RecallMode::Procedural).then_some(query.text.as_str());
+        let derivations = self
+            .projection
+            .load_recall_derivations(
+                &query.scope,
+                &activated_points,
+                &activated_fragments,
+                procedure_key,
+                effective_at,
+                remaining_nodes,
+            )
+            .await?;
+        crate::security::register_projected_derivation_scopes(
+            &query.scope,
+            &derivations,
+            &mut fragment_scopes,
+        )?;
+        let packet = build_packet(
+            &query,
+            &result,
+            &points_by_id,
+            RecallPacketInputs {
+                episodes,
+                evidence,
+                states,
+                derivations,
+                failure_fragments: &failure_fragments,
+            },
+        )?;
         crate::security::validate_packet(
             context,
             operation,
@@ -314,18 +368,30 @@ fn build_packet(
     query: &RecallQuery,
     result: &RecallResult,
     points_by_id: &BTreeMap<PointId, IndexedPoint>,
-    episodes: Vec<EpisodeView>,
-    mut evidence: Vec<EvidenceView>,
-    states: ProjectedStateSet,
+    inputs: RecallPacketInputs<'_>,
 ) -> Result<MemoryPacket, serde_json::Error> {
+    let RecallPacketInputs {
+        episodes,
+        mut evidence,
+        states,
+        derivations,
+        failure_fragments,
+    } = inputs;
     let mut packet = MemoryPacket::empty(RecallId::new(), query.mode);
     let activated_fragment_ids = activated_fragment_ids(result, points_by_id);
     packet.episodes = episodes
         .into_iter()
         .filter(|episode| activated_fragment_ids.contains(&episode.fragment_id))
         .collect();
+    packet.past_failures = packet
+        .episodes
+        .iter()
+        .filter(|episode| failure_fragments.contains(&episode.fragment_id))
+        .cloned()
+        .collect();
     evidence.retain(|item| activated_fragment_ids.contains(&item.fragment_id));
     evidence.extend(states.evidence);
+    evidence.extend(derivations.evidence);
     evidence.sort_by_key(|item| (item.fragment_id, item.event_id, item.evidence_ref_id));
     evidence.dedup_by_key(|item| (item.fragment_id, item.event_id, item.evidence_ref_id));
     packet.evidence = evidence;
@@ -353,7 +419,10 @@ fn build_packet(
             score: point.activation,
         })
         .collect();
-    packet.activated_surfaces = Vec::new();
+    packet.activated_surfaces = derivations.surfaces;
+    packet.procedures = derivations.procedures;
+    packet.constraints = derivations.constraints;
+    packet.preferences = derivations.preferences;
     packet.missing_evidence = packet
         .points
         .iter()
@@ -374,7 +443,7 @@ fn build_packet(
     packet.coverage.max_depth = result.trace.max_depth;
     packet.coverage.evidence_count = packet.evidence.len();
     packet.coverage.missing_evidence_count = packet.missing_evidence.len();
-    packet.coverage.truncated = result.trace.truncated || states.truncated;
+    packet.coverage.truncated = result.trace.truncated || states.truncated || derivations.truncated;
     let (confidence_sum, confidence_count) = packet
         .points
         .iter()

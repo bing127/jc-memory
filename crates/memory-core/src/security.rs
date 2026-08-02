@@ -6,7 +6,7 @@ use jc_memory_protocol::{
     AccessContext, Decision, FragmentId, MemoryPacket, MemoryScope, Operation,
 };
 use jc_memory_security::{AclEngine, OutputGuard};
-use jc_memory_storage::ProjectedStateSet;
+use jc_memory_storage::{ProjectedRecallDerivations, ProjectedStateSet};
 
 use crate::{MemoryError, engine::short_hash};
 
@@ -62,6 +62,17 @@ pub(crate) fn register_projected_state_scopes(
         }
     }
     for evidence in &states.evidence {
+        register_projection_fragment(resource, evidence.fragment_id, fragment_scopes)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn register_projected_derivation_scopes(
+    resource: &MemoryScope,
+    derivations: &ProjectedRecallDerivations,
+    fragment_scopes: &mut BTreeMap<FragmentId, MemoryScope>,
+) -> Result<(), MemoryError> {
+    for evidence in &derivations.evidence {
         register_projection_fragment(resource, evidence.fragment_id, fragment_scopes)?;
     }
     Ok(())

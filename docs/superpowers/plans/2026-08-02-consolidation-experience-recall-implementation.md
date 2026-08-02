@@ -332,7 +332,7 @@ git push
 - Modify: `crates/memory-core/src/recall.rs`
 - Create: `crates/memory-core/tests/experience_recall.rs`
 
-- [ ] **Step 1：写完整 Packet 与统一预算红灯测试**
+- [x] **Step 1：写完整 Packet 与统一预算红灯测试**
 
 通过 Core 写入权威 Fixture，运行 Replay、SurfaceDiscovery 和 SemanticPromotion Job，再 Recall。断言 Procedure、Constraint、Preference、Surface 和相关 Failure 进入 Packet，Evidence 可回溯，`recommended_context` 包含这些字段；低 `max_nodes` 时按固定顺序截断。
 
@@ -346,17 +346,17 @@ assert_eq!(packet.past_failures.len(), 1);
 assert!(packet.recommended_context.contains("deploy.guard"));
 ```
 
-- [ ] **Step 2：运行测试并确认 Packet 字段仍为空**
+- [x] **Step 2：运行测试并确认 Packet 字段仍为空**
 
 Run: `CARGO_INCREMENTAL=0 cargo test -p jc-memory-core --test experience_recall packet_contains_consolidated_memory --offline`
 
 Expected: FAIL，`activated_surfaces`、`procedures`、`constraints` 或 `preferences` 为空。
 
-- [ ] **Step 3：在统一 deadline 和节点预算内组装 Packet**
+- [x] **Step 3：在统一 deadline 和节点预算内组装 Packet**
 
 从激活结果收集 Point/Fragment ID，扣除 State 和 Point 后计算剩余预算；在同一 `with_recall_deadline` Future 内调用 `load_recall_derivations`。`build_packet` 合并派生 View 和 Evidence，`past_failures` 从已激活 Failure Episode 筛选；Coverage 合并派生截断并刷新确定性上下文。返回前把派生 Evidence 的 Fragment Scope 注册到现有安全校验集合。
 
-- [ ] **Step 4：运行 Recall、状态、隔离和污染回归**
+- [x] **Step 4：运行 Recall、状态、隔离和污染回归**
 
 Run: `CARGO_INCREMENTAL=0 cargo test -p jc-memory-core --test experience_recall --test recall_bounds --test trusted_state_recall --test tenant_isolation --test poisoning --test quarantine_security --offline`
 
@@ -364,7 +364,7 @@ Run: `cargo fmt --all -- --check && CARGO_INCREMENTAL=0 cargo clippy -p jc-memor
 
 Expected: 全部退出码 0。
 
-- [ ] **Step 5：提交并推送 Task 6**
+- [x] **Step 5：提交并推送 Task 6**
 
 ```bash
 git add crates/memory-core/src/recall.rs crates/memory-core/tests/experience_recall.rs
