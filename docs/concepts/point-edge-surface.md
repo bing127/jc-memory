@@ -14,6 +14,8 @@ Point 是从一个或多个 Fragment 派生出的最小认知单元。当前 `Po
 - `source_fragments`：一个或多个权威 Fragment 标识；
 - `occurred_at`、`confidence`、`validity`：继承或保守派生的时间与可信状态。
 
+SQLite Graph Projector 使用来源 Fragment ID 作为 Point 的确定性强类型 ID。相同 Fragment 在在线追赶、进程重启和 Rebuild 后得到相同 Point ID，不依赖进程内随机数。
+
 Observation、Claim、Inference、Prediction、ToolCall、ToolResult、Plan、Approval 和 Rejection 不会直接转换为 Fact Point。尤其是 Prediction、Inference 和 Plan，即使来自模型，也不能绕过证据提升规则成为 Verified Fact。
 
 ## Edge：带证据的有向关系
@@ -29,6 +31,8 @@ Edge 连接同一精确 Scope 内的两个 Point。每条 `CognitiveEdge` 都包
 - `ExecutedAs`、`ResultedIn` 连接决策、动作和结果。
 
 在线权重调整会把结果裁剪到 `0.0..=1.0`，并保留产生调整的权威证据。共同出现候选默认既不是 `human_confirmed`，也不是 `tool_verified`。
+
+持久化 Mutation Edge 使用产生关系的权威 Event ID 作为确定性强类型 Edge ID。Graph Projector 只在同一精确 Scope 内解析端点，并把 relation、来源 Fragment/Event/EvidenceRef 一起写入 SQLite；无法证明端点或 Scope 时整批回滚且不推进 Checkpoint。
 
 ## Surface：版本化认知子空间
 
@@ -55,7 +59,8 @@ CognitiveFragment + MemoryEvent + EvidenceRef
 ## 当前实现边界
 
 - `memory-graph`、`memory-surface` 已实现有界仓储、版本和生命周期规则；
-- Core 的 Mutation 会先追加权威 Fragment/Event，再更新进程内派生关系；关系类型和目标 Fragment 保存在权威元数据中；
-- Core 重新打开后尚未自动从元数据重建完整派生图；
-- SQLite Schema 已预留图与 Surface 表，但表存在不代表所有模块已经接入统一持久化调用链；
+- Core 的 Mutation 先追加权威 Fragment/Event/EvidenceRef，Graph Projector 再按 Event sequence 生成持久化 Point 和 Edge；
+- Recall 在 deadline 内按精确 Scope 追平 Graph Checkpoint，并按候选 Point、允许的 Edge kind 和 `max_nodes` 有界读取；
+- Core 重新打开或执行 Rebuild 后会从权威 Event 恢复相同的 Point/Edge 标识和 Mutation 关系；
+- Surface 表和模块已经存在，但自动生成 Surface 以及把全部 Surface 接入 Core Memory Packet 仍不属于本闭环的已验证范围；
 - 外部 Embedding、向量数据库和模型生成 Surface 不属于当前已验证能力。

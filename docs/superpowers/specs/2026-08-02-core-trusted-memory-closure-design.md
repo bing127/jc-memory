@@ -237,6 +237,12 @@ Recall 页面在 Current State 和 Historical State 模式下提供 State key �
 
 本阶段提交前运行适用的 Rust fmt、严格 Clippy、聚焦测试、workspace test、rustdoc、Web test/typecheck/build、两类 Playwright E2E 和 `git diff --check`。
 
+### 14.1 已落地证据与验证边界
+
+Task 1 到 Task 11 已分别形成协议、校验、SQLite Schema、State Projector、Graph Projector、Core Recall、Mutation、Recovery、跨适配器契约、Web 工作流和 E2E 提交。Web 最新全量门禁为后端 42 项、前端 35 项测试通过，Fixture 与真实 Rust Server 均在 desktop/mobile Chromium 完成 2 项闭环；生产构建仍报告既有的约 1.04 MB 主包体积警告。
+
+真实 Rust Server E2E 使用临时 SQLite 数据目录和本地 Provider Fixture，只证明浏览器、BFF、`jc-memory-server`、CommandBus、Core 与 SQLite 的本机链路。SDK 契约使用版本化 Fixture；本机 Node、Python Remote、Go、Kotlin、Swift、Java 和 Adapter 门禁通过，Python Embedded 因未安装 `jiangcheng_memory._native` 跳过，Python 3.14 下另有 19 条 `pytest-asyncio` 弃用警告。上述结果均不扩展为外部云平台、远程 Provider 或其他操作系统的实机验证。
+
 ## 15. 后续子项目顺序
 
 Core 可信记忆闭环完成后，按以下顺序继续 C 方案：
