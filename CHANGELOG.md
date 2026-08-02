@@ -32,6 +32,10 @@
 - 把有效 Surface、Procedure、Constraint、Preference 和相关 Failure 接入 Core Memory Packet，统一 Recall deadline、`max_nodes`、Evidence 去重和返回前 Scope 校验。
 - 增加同键跨 Tenant 隔离、Core 重启、Snapshot/Restore、旧 64 字符派生 ID 失败关闭和显式 Rebuild 规范化验收，重建前后权威哈希不变。
 
+### Fixed
+
+- 修复 Blob GC 文件锁竞争只识别 Unix `WouldBlock` 的问题，改为使用 `fs2` 提供的平台原生错误码，使 Windows `ERROR_LOCK_VIOLATION` 同样稳定映射为 `LockUnavailable`。
+
 ## [0.1.0]
 
 ### Added

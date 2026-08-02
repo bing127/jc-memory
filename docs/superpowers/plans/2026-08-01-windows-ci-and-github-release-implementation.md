@@ -16,7 +16,7 @@
 - Modify: `scripts/ci/tests/test_workflows.py`
 - Test: `scripts/ci/tests/test_workflows.py`
 
-- [ ] **Step 1: 新增 Windows-only 失败契约**
+- [x] **Step 1: 新增 Windows-only 失败契约**
 
 在 `WorkflowContractTests` 中加入：
 
@@ -30,7 +30,7 @@ def test_rust_quality_supports_windows_only_manual_dispatch(self) -> None:
     self.assertIn('["ubuntu-latest","windows-latest","macos-latest"]', workflow)
 ```
 
-- [ ] **Step 2: 新增 Release 聚合失败契约**
+- [x] **Step 2: 新增 Release 聚合失败契约**
 
 ```python
 def test_private_release_publishes_only_after_all_packages_succeed(self) -> None:
@@ -54,7 +54,7 @@ def test_private_release_uses_draft_as_atomic_publish_boundary(self) -> None:
     self.assertIn('--clobber', workflow)
 ```
 
-- [ ] **Step 3: 运行新增契约并确认 RED**
+- [x] **Step 3: 运行新增契约并确认 RED**
 
 Run:
 
@@ -73,7 +73,7 @@ Expected: 3 项失败，分别指出缺少 `windows_only`、`contents: write` �
 - Modify: `.github/workflows/rust.yml`
 - Test: `scripts/ci/tests/test_workflows.py`
 
-- [ ] **Step 1: 为手动触发增加布尔输入**
+- [x] **Step 1: 为手动触发增加布尔输入**
 
 ```yaml
   workflow_dispatch:
@@ -85,7 +85,7 @@ Expected: 3 项失败，分别指出缺少 `windows_only`、`contents: write` �
         type: boolean
 ```
 
-- [ ] **Step 2: 根据输入生成 matrix**
+- [x] **Step 2: 根据输入生成 matrix**
 
 ```yaml
       matrix:
@@ -94,7 +94,7 @@ Expected: 3 项失败，分别指出缺少 `windows_only`、`contents: write` �
 
 `inputs.windows_only` 在 push/PR 上求值为 false，因此这些触发器继续运行三平台。
 
-- [ ] **Step 3: 运行 Windows-only 契约**
+- [x] **Step 3: 运行 Windows-only 契约**
 
 Run:
 
@@ -110,11 +110,11 @@ Expected: PASS。
 - Modify: `.github/workflows/release.yml`
 - Test: `scripts/ci/tests/test_workflows.py`
 
-- [ ] **Step 1: 授予最小发布权限**
+- [x] **Step 1: 授予最小发布权限**
 
 把 `permissions.contents` 改为 `write`，保留 `actions: write`。
 
-- [ ] **Step 2: 下载并封装全部已验证 Artifact**
+- [x] **Step 2: 下载并封装全部已验证 Artifact**
 
 新增依赖全部构建 job 的 `publish`：
 
@@ -144,7 +144,7 @@ Expected: PASS。
           test "$found" = 1
 ```
 
-- [ ] **Step 3: 用 Draft 完成可恢复上传后自动发布**
+- [x] **Step 3: 用 Draft 完成可恢复上传后自动发布**
 
 ```yaml
       - name: 自动发布 GitHub Release
@@ -173,7 +173,7 @@ Expected: PASS。
 
 已 Published 的同 tag 会因 `test "$release_state" = true` 失败而保持不可变；上传中断留下的 Draft 可由 rerun 恢复。
 
-- [ ] **Step 4: 运行 Release 契约并确认 GREEN**
+- [x] **Step 4: 运行 Release 契约并确认 GREEN**
 
 Run:
 
@@ -191,11 +191,11 @@ Expected: PASS。
 - Modify: `services/memory-sidecar/src/transport.rs`
 - Test: `services/memory-sidecar/src/transport.rs`
 
-- [ ] **Step 1: 保留 GitHub Windows RED 证据**
+- [x] **Step 1: 保留 GitHub Windows RED 证据**
 
 GitHub job `91339804464` 已稳定失败于 `windows_endpoint_mapping_is_stable_and_bounded`：测试把 `jc-memory-<hash>` 整段当作纯十六进制。
 
-- [ ] **Step 2: 按真实协议检查摘要**
+- [x] **Step 2: 按真实协议检查摘要**
 
 把最后一个反斜杠切分断言替换为：
 
@@ -207,7 +207,7 @@ assert_eq!(suffix.len(), 16);
 assert!(suffix.chars().all(|value| value.is_ascii_hexdigit()));
 ```
 
-- [ ] **Step 3: 运行本地 sidecar 门禁**
+- [x] **Step 3: 运行本地 sidecar 门禁**
 
 Run:
 
@@ -229,7 +229,7 @@ Expected: 全部 exit 0；本地 macOS 不描述为 Windows 实机证明。
 - Modify: `services/memory-sidecar/src/transport.rs`
 - Create: `docs/superpowers/plans/2026-08-01-windows-ci-and-github-release-implementation.md`
 
-- [ ] **Step 1: 运行全部工作流契约**
+- [x] **Step 1: 运行全部工作流契约**
 
 ```bash
 python3 -m unittest scripts.ci.tests.test_workflows
@@ -238,7 +238,7 @@ bash scripts/ci/validate-workflows.sh
 
 Expected: 全部测试通过，7 个 YAML 文件校验通过。
 
-- [ ] **Step 2: 检查范围和空白错误**
+- [x] **Step 2: 检查范围和空白错误**
 
 ```bash
 git diff --check -- \
@@ -252,7 +252,7 @@ git status --short
 
 Expected: 无空白错误；仅暂存本计划列出的文件，保留 runtime、server、web 等用户修改。
 
-- [ ] **Step 3: 提交并一次性推送**
+- [x] **Step 3: 提交并一次性推送**
 
 ```bash
 git add -- \
@@ -266,6 +266,8 @@ git push origin master
 ```
 
 Expected: 设计提交和实施提交一起推送，只触发一次新的 master CI 批次。
+
+2026-08-02 静态复核：实施提交 `ac71ee1` 已同时存在于当前分支和 `master`。工作流契约 22 项通过，7 个 YAML 工作流校验通过；Sidecar 的严格 Clippy、23 项测试和 Rustdoc 均通过。以上是当前 macOS 主机的静态与本机结果，不替代 Task 6 的 GitHub Windows 实机验证。
 
 ### Task 6: GitHub 实机验证
 
@@ -289,3 +291,30 @@ Expected: 新 run 只包含 `Rust windows-latest` 一个 job，且完成 fmt、�
 - [ ] **Step 3: 验证 Release Workflow 可调度边界**
 
 读取 tag、CHANGELOG 和已有 Releases。只有在存在经用户确认的未发布 `v<version>` tag 时才实际触发 `Private Release`；否则报告 Workflow 契约已通过、真实发布待指定版本，不擅自创建 tag 或 Release。
+
+### Task 7: 修复 Storage 的 Windows 文件锁竞争识别
+
+**Files:**
+- Modify: `crates/memory-storage/src/recovery.rs`
+- Modify: `CHANGELOG.md`
+- Modify: `docs/superpowers/plans/2026-08-01-windows-ci-and-github-release-implementation.md`
+
+- [x] **Step 1: 写平台原生锁竞争错误识别红灯测试**
+
+新增 `recognizes_platform_lock_contention_error`，直接使用 `fs2::lock_contended_error()` 构造当前平台的真实竞争错误。生产 helper 尚不存在时，聚焦测试以 `E0432` 失败。
+
+- [x] **Step 2: 使用 `fs2` 平台错误码实现最小修复**
+
+`acquire_gc_lock` 不再只判断 `ErrorKind::WouldBlock`，而是比较实际错误与 `fs2::lock_contended_error()` 的 `raw_os_error()`。这样 Unix `EWOULDBLOCK` 和 Windows `ERROR_LOCK_VIOLATION` 都映射为稳定的 `RecoveryError::LockUnavailable`，其他 IO 错误继续原样返回。
+
+- [x] **Step 3: 运行 Storage 聚焦与包级门禁**
+
+2026-08-02 本机验证：RED 失败原因符合预期；GREEN 聚焦测试 1 项通过；Storage 76 项测试和全仓 483 项测试全部通过。`fmt`、严格 Clippy、Rustdoc warnings denied、22 项工作流契约、7 个 YAML 工作流校验和 `git diff --check` 均退出码 0。
+
+- [x] **Step 4: 中文三段式提交并推送功能分支**
+
+只提交本 Task 的 Rust、Changelog 和计划文件，保留 `sdk/java/bin/`、`sdk/kotlin/bin/` 未跟踪目录，不创建 worktree。
+
+- [ ] **Step 5: 完成 GitHub Windows 实机复验**
+
+功能分支推送后手动触发 `Rust Quality` 的 `windows_only=true`。只有 Windows runner 实际启动并通过，才能勾选本步骤；账户、Runner 或外部平台阻塞必须原样记录，不能用本机 Fixture 代替。
