@@ -495,6 +495,59 @@ async fn surface_member_from_another_scope_fails_closed() {
     ));
 }
 
+#[tokio::test]
+async fn surface_member_with_missing_point_fails_closed() {
+    let harness = Harness::new().await;
+    let source = harness
+        .append(
+            FragmentKind::Fact,
+            "surface-missing",
+            "缺失成员上下文",
+            false,
+        )
+        .await;
+    harness
+        .insert_point(source.fragment_id, FragmentKind::Fact)
+        .await;
+    let now = Utc::now();
+    harness
+        .insert_surface(SurfaceStatus::Active, &source, now, None)
+        .await;
+    let mut connection = harness.store.pool().acquire().await.expect("获取损坏连接");
+    sqlx::query("PRAGMA foreign_keys = OFF")
+        .execute(&mut *connection)
+        .await
+        .expect("临时关闭外键校验");
+    sqlx::query("DELETE FROM points WHERE id = ?1")
+        .bind(source.fragment_id.to_string())
+        .execute(&mut *connection)
+        .await
+        .expect("删除 Surface 成员 Point");
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&mut *connection)
+        .await
+        .expect("恢复外键校验");
+    drop(connection);
+
+    assert!(matches!(
+        harness
+            .projection
+            .load_recall_derivations(
+                &harness.scope,
+                &[point_id(source.fragment_id)],
+                &[source.fragment_id],
+                None,
+                now,
+                2,
+            )
+            .await,
+        Err(StorageError::ProjectionDerivationCorrupt {
+            field: "surface_member_point",
+            ..
+        })
+    ));
+}
+
 struct Harness {
     store: SqliteStore,
     repository: SqliteMemoryRepository,

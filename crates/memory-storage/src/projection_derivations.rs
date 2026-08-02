@@ -222,7 +222,9 @@ async fn load_surfaces(
         let point_id = raw_point_id
             .parse::<PointId>()
             .map_err(|_| corrupt("surface_member_id", scope_hash))?;
-        let point_scope_key: String = row.try_get("point_scope_key")?;
+        let point_scope_key: Option<String> = row.try_get("point_scope_key")?;
+        let point_scope_key =
+            point_scope_key.ok_or_else(|| corrupt("surface_member_point", scope_hash))?;
         if point_scope_key != scope_hash {
             return Err(corrupt("surface_member_scope", scope_hash));
         }
@@ -290,7 +292,7 @@ async fn query_surface_rows(
                 sm.point_id, sm.member_weight, p.scope_key AS point_scope_key
          FROM surfaces s
          JOIN surface_members sm ON sm.surface_id = s.id AND sm.version = s.version
-         JOIN points p ON p.id = sm.point_id
+         LEFT JOIN points p ON p.id = sm.point_id
          WHERE s.scope_key = ",
     );
     query.push_bind(scope_hash);
