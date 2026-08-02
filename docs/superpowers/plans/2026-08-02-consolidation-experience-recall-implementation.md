@@ -233,7 +233,7 @@ git push
 - Modify: `crates/memory-storage/src/lib.rs`
 - Create: `crates/memory-storage/tests/recall_derivations.rs`
 
-- [ ] **Step 1：写 Procedure、Constraint、Preference 和损坏行红灯测试**
+- [x] **Step 1：写 Procedure、Constraint、Preference 和损坏行红灯测试**
 
 在临时 SQLite 中写入两个独立 Verified 来源及对应 Artifact，要求精确 Scope 加载为强类型 View；重复 Event、跨 Scope Event、计数不一致、Prediction 支撑稳定知识和非法 Point ID 必须返回错误。
 
@@ -242,6 +242,7 @@ let projected = projection.load_recall_derivations(
     &scope,
     &[constraint_point, preference_point],
     &[first_fragment, second_fragment],
+    Some("deploy.guard"),
     Utc::now(),
     8,
 ).await.unwrap();
@@ -250,17 +251,17 @@ assert_eq!(projected.constraints[0].kind, KnowledgeKind::Constraint);
 assert_eq!(projected.preferences[0].kind, KnowledgeKind::Preference);
 ```
 
-- [ ] **Step 2：运行测试并确认派生读取入口缺失**
+- [x] **Step 2：运行测试并确认派生读取入口缺失**
 
 Run: `CARGO_INCREMENTAL=0 cargo test -p jc-memory-storage --test recall_derivations procedure_and_knowledge --offline`
 
 Expected: FAIL，`load_recall_derivations` 与 `ProjectedRecallDerivations` 不存在。
 
-- [ ] **Step 3：实现强类型读取和 Evidence 校验**
+- [x] **Step 3：实现强类型读取和 Evidence 校验**
 
 新增 `ProjectedRecallDerivations`，并让 `SqliteProjectionStore::load_recall_derivations` 把内部 pool 交给新模块。所有 SQL 以 `scope_key = ?1` 开始并参数化 ID 集合；解析 Artifact payload 后重新计算 Procedure 计数和成功率，校验 Semantic 的 Point、Validity、内容和独立来源门槛。Evidence Event 必须存在、指向声明的 Fragment 且属于同一 Scope。
 
-- [ ] **Step 4：运行 Storage 测试和静态门禁**
+- [x] **Step 4：运行 Storage 测试和静态门禁**
 
 Run: `CARGO_INCREMENTAL=0 cargo test -p jc-memory-storage --test recall_derivations --test projection_schema --offline`
 
@@ -268,7 +269,7 @@ Run: `cargo fmt --all -- --check && CARGO_INCREMENTAL=0 cargo clippy -p jc-memor
 
 Expected: 全部退出码 0。
 
-- [ ] **Step 5：提交并推送 Task 4**
+- [x] **Step 5：提交并推送 Task 4**
 
 ```bash
 git add crates/memory-storage/src crates/memory-storage/tests/recall_derivations.rs

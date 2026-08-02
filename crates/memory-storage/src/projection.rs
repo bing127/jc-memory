@@ -2127,6 +2127,38 @@ impl SqliteProjectionStore {
         Ok(graph)
     }
 
+    /// 按精确 Scope、激活集合和剩余预算读取 Consolidation 派生召回项。
+    ///
+    /// `procedure_key` 只用于 `Procedural` 模式的完整 key 精确命中；其他模式传 `None`。
+    ///
+    /// # Errors
+    ///
+    /// Artifact、强类型 ID、统计计数、Evidence 或 Scope 关系损坏时返回错误。
+    pub async fn load_recall_derivations(
+        &self,
+        scope: &MemoryScope,
+        activated_point_ids: &[PointId],
+        activated_fragment_ids: &[FragmentId],
+        procedure_key: Option<&str>,
+        effective_at: DateTime<Utc>,
+        max_items: usize,
+    ) -> Result<crate::ProjectedRecallDerivations, StorageError> {
+        let scope_hash = canonical_scope_key(scope)?;
+        crate::projection_derivations::load(
+            &self.pool,
+            crate::projection_derivations::DerivationQuery {
+                scope,
+                scope_hash: &scope_hash,
+                activated_point_ids,
+                activated_fragment_ids,
+                procedure_key,
+                effective_at,
+                max_items,
+            },
+        )
+        .await
+    }
+
     async fn project_graph_batch(
         &self,
         scope: &MemoryScope,
@@ -2322,7 +2354,7 @@ impl SqliteProjectionStore {
     }
 }
 
-fn canonical_scope_key(scope: &MemoryScope) -> Result<String, StorageError> {
+pub(crate) fn canonical_scope_key(scope: &MemoryScope) -> Result<String, StorageError> {
     let value = serde_json::to_value(scope)?;
     let bytes = serde_json::to_vec(&canonicalize(value))?;
     Ok(hex::encode(Sha256::digest(bytes)))

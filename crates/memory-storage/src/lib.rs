@@ -5,6 +5,7 @@ mod config;
 mod error;
 mod export;
 mod projection;
+mod projection_derivations;
 mod recovery;
 mod repository;
 mod snapshot;
@@ -18,6 +19,7 @@ pub use projection::{
     ProjectedGraph, ProjectedPoint, ProjectedStateSet, ProjectionCheckpoint, ProjectionFailpoint,
     ProjectionTarget, ProjectorKind, SqliteProjectionStore, StateSelector,
 };
+pub use projection_derivations::ProjectedRecallDerivations;
 pub use recovery::{
     DerivedRebuildReport, GcPolicy, GcReport, IntegrityReport, RebuildReport, RebuildStage,
     RecoveryError, RecoveryFailpoint, RecoveryManager, verify_authority_hash,

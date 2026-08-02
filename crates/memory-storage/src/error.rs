@@ -107,6 +107,14 @@ pub enum StorageError {
         /// 精确 Scope 的 canonical SHA-256。
         scope_hash: String,
     },
+    /// Consolidation 派生行不能安全转换为强类型召回 View。
+    #[error("corrupt recall derivation field {field} in scope {scope_hash}")]
+    ProjectionDerivationCorrupt {
+        /// 违反派生召回不变量的稳定字段名。
+        field: &'static str,
+        /// 请求精确 Scope 的 canonical SHA-256。
+        scope_hash: String,
+    },
 }
 
 impl StorageError {
