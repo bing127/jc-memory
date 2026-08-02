@@ -1635,6 +1635,7 @@ dependencies = [
  "jc-memory-protocol",
  "pyo3",
  "pyo3-async-runtimes",
+ "pyo3-build-config",
  "serde_json",
  "thiserror",
  "tokio",
