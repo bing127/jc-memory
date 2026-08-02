@@ -10,6 +10,7 @@ publish.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 jc-memory-activation = { path = "../memory-activation" }
+jc-memory-consolidation = { path = "../memory-consolidation" }
 jc-memory-episodic = { path = "../memory-episodic" }
 jc-memory-events = { path = "../memory-events" }
 jc-memory-graph = { path = "../memory-graph" }

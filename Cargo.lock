@@ -1476,6 +1476,7 @@ dependencies = [
  "futures",
  "hex",
  "jc-memory-activation",
+ "jc-memory-consolidation",
  "jc-memory-episodic",
  "jc-memory-events",
  "jc-memory-graph",

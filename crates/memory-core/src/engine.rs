@@ -1,6 +1,7 @@
 use std::{sync::Arc, time::Instant};
 
 use jc_memory_activation::RecallEngineError;
+use jc_memory_consolidation::{ConsolidationJobStore, JobError};
 use jc_memory_events::factory::{EventFactory, EventFactoryError};
 use jc_memory_protocol::{
     AccessContext, BlobId, CognitiveFragment, DenyReason, EventId, FragmentId, Operation,
@@ -153,6 +154,9 @@ pub enum MemoryError {
     /// Quarantine 审查理由为空。
     #[error("quarantine review reason cannot be empty")]
     EmptyReviewReason,
+    /// Consolidation Job 状态、预算或持久化操作失败。
+    #[error("memory consolidation failed: {0}")]
+    Consolidation(#[from] JobError),
 }
 
 impl From<StorageError> for MemoryError {
@@ -185,6 +189,7 @@ pub struct MemoryEngine {
     pub(crate) repository: Arc<dyn MemoryRepository>,
     pub(crate) projection: SqliteProjectionStore,
     pub(crate) recovery: Arc<RecoveryManager>,
+    pub(crate) consolidation_jobs: ConsolidationJobStore,
     event_factory: EventFactory,
     schema_version: i64,
 }
@@ -238,10 +243,12 @@ impl MemoryEngine {
         let repository: Arc<dyn MemoryRepository> = Arc::new(repository);
         let projection = SqliteProjectionStore::from_store(&store);
         let recovery = Arc::new(RecoveryManager::from_stores(&store, blobs));
+        let consolidation_jobs = ConsolidationJobStore::from_store(&store);
         Ok(Self {
             repository,
             projection,
             recovery,
+            consolidation_jobs,
             event_factory: EventFactory::new(),
             schema_version,
         })

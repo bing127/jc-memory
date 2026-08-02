@@ -368,6 +368,7 @@ impl CommandError {
             | MemoryError::ProjectionCheckpointCorrupt { .. }
             | MemoryError::ProjectionScopeMismatch { .. }
             | MemoryError::StateChainCorrupt { .. }
+            | MemoryError::Consolidation(_)
             | MemoryError::SecurityInvariantViolation(_) => CommandErrorCode::Internal,
         };
         Self::Engine { code, source }
@@ -376,6 +377,7 @@ impl CommandError {
 
 #[cfg(test)]
 mod projection_error_tests {
+    use jc_memory_consolidation::JobError;
     use jc_memory_protocol::CommandErrorCode;
     use jc_memory_storage::{ProjectorKind, StorageError};
 
@@ -413,6 +415,14 @@ mod projection_error_tests {
                     scope_hash: "fragment-secret-content".to_owned(),
                 },
             },
+            CommandErrorCode::Internal,
+        );
+    }
+
+    #[test]
+    fn consolidation_errors_are_not_exposed_as_existing_remote_commands() {
+        assert_mapping(
+            MemoryError::Consolidation(JobError::InvalidSpec("max_batch_size")),
             CommandErrorCode::Internal,
         );
     }

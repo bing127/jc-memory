@@ -3,6 +3,7 @@
 mod command_bus;
 mod commands;
 mod config;
+mod consolidation;
 mod engine;
 mod health;
 mod maintenance;
@@ -21,6 +22,7 @@ pub use config::MemoryConfig;
 pub use engine::{MemoryEngine, MemoryError, ObserveReceipt};
 pub use health::{HealthReport, HealthStatus};
 pub use jc_memory_activation::{ExplainTrace, RecallLimits, RecallQuery};
+pub use jc_memory_consolidation::{JobId, JobKind, JobRecord, JobSpec, JobStatus, ResourceLimits};
 pub use jc_memory_protocol::{AccessContext, MemoryPacket};
 pub use jc_memory_storage::{
     DerivedRebuildReport, RestoreReceipt, SnapshotManifest, SnapshotReceipt,

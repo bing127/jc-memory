@@ -105,7 +105,7 @@ git push
 - Create: `crates/memory-core/src/consolidation.rs`
 - Create: `crates/memory-core/tests/consolidation_jobs.rs`
 
-- [ ] **Step 1：写提交、查询和 Tenant 授权红灯测试**
+- [x] **Step 1：写提交、查询和 Tenant 授权红灯测试**
 
 测试要求：缺少 `Consolidate` Grant 时提交被拒绝；合法上下文可提交和查询；Tenant A 上下文即使知道 Job ID 也不能查询 Tenant B Job。
 
@@ -123,13 +123,13 @@ assert!(matches!(
 ));
 ```
 
-- [ ] **Step 2：运行测试并确认 Core API 缺失**
+- [x] **Step 2：运行测试并确认 Core API 缺失**
 
 Run: `CARGO_INCREMENTAL=0 cargo test -p jc-memory-core --test consolidation_jobs submit_and_get --offline`
 
 Expected: FAIL，`submit_consolidation` 和 `consolidation_job` 不存在。
 
-- [ ] **Step 3：接入 Job Store、错误和公共类型**
+- [x] **Step 3：接入 Job Store、错误和公共类型**
 
 为 Core 增加 `jc-memory-consolidation` 依赖。`MemoryEngine` 在 `open_inner` 中用同一 `SqliteStore` 构造 `ConsolidationJobStore`，并持有不含敏感信息的进程 Worker ID。`MemoryError` 增加：
 
@@ -140,7 +140,7 @@ Consolidation(#[from] jc_memory_consolidation::JobError),
 
 `submit_consolidation` 授权 `spec.scope`；`consolidation_job` 先按 ID 加载记录，再授权记录中的 Scope。Core `lib.rs` 导出 `JobId`、`JobKind`、`JobRecord`、`JobSpec`、`JobStatus` 和 `ResourceLimits`。
 
-- [ ] **Step 4：运行授权与 Core 回归测试**
+- [x] **Step 4：运行授权与 Core 回归测试**
 
 Run: `CARGO_INCREMENTAL=0 cargo test -p jc-memory-core --test consolidation_jobs --test tenant_isolation --offline`
 
@@ -148,7 +148,7 @@ Run: `cargo fmt --all -- --check && CARGO_INCREMENTAL=0 cargo clippy -p jc-memor
 
 Expected: 全部退出码 0。
 
-- [ ] **Step 5：提交并推送 Task 2**
+- [x] **Step 5：提交并推送 Task 2**
 
 ```bash
 git add crates/memory-core
