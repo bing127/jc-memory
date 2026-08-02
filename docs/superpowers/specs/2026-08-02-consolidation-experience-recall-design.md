@@ -127,6 +127,21 @@ pub struct ProjectedRecallDerivations {
 
 读取使用参数绑定和 `scope_key` 首列过滤。任何 Surface 成员、Point、Fragment、Event 或 Artifact Evidence 无法证明属于同一精确 Scope 时返回结构化错误，不能跳过损坏行后继续返回部分结果。
 
+### 6.1 规范强类型 ID
+
+旧 M3 Handler 的内部 `stable_id` 返回 64 字符 SHA-256 文本，而当前 `PointId`、`EdgeId` 和 `SurfaceId` 的协议值是 UUID。两种格式不能直接接线，否则 Storage 读取会把旧派生行判定为损坏。
+
+本阶段统一以下规则：
+
+- 基础 Point ID 复用来源 `FragmentId` 的 UUID 字符串，与 Graph Projector 和 Core 即时 Point 保持一致；
+- Mutation Edge 可复用来源 `EventId`，其他派生 Edge 和 Surface 使用带 RFC 4122 version/variant 位的确定性 UUID；
+- Procedure 和 Semantic Artifact 的 `id` 仍是 SQLite 内部主键，不暴露为协议强类型 ID，可以继续使用稳定 SHA-256；
+- Artifact 中的 `point_id`、Evidence Event/Fragment ID 必须能解析为对应协议强类型；
+- 旧的非 UUID Point、Edge 和 Surface 行不原地改写为新身份；通过精确 Scope 的 `Rebuild` 删除后，按权威 Event 重新生成规范派生行；
+- Rebuild 前后的权威 Fragment、Event、EvidenceRef 数量与哈希必须一致。
+
+迁移测试先构造旧 64 字符派生 ID，证明 Recall 失败关闭；随后运行 Rebuild，证明新行可以解析、Packet 可召回且权威哈希未变化。
+
 ## 7. 相关性规则
 
 ### 7.1 Surface
@@ -238,7 +253,8 @@ Job 和派生产物全部保存在当前唯一底层数据库 SQLite 中。`Memo
 12. 所有派生 Evidence 可回溯到同 Scope 的 Fragment/Event；
 13. 跨 Scope 引用、损坏 JSON、计数不一致和缺失引用均失败关闭；
 14. `recommended_context` 包含新增 Packet 字段且保持确定性；
-15. 原有 State、Graph、Mutation、隔离和污染测试继续通过。
+15. 旧 64 字符派生 ID 经精确 Scope Rebuild 后变为规范 UUID，权威哈希不变；
+16. 原有 State、Graph、Mutation、隔离和污染测试继续通过。
 
 阶段完成前运行 Rust 聚焦测试、workspace fmt、严格 Clippy、workspace test、rustdoc 和 `git diff --check`。本阶段只证明当前主机的 Core/SQLite 行为，不把结果描述为远程协议、Web、外部平台或其他操作系统实机验证。
 
