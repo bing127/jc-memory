@@ -318,3 +318,5 @@ Expected: 新 run 只包含 `Rust windows-latest` 一个 job，且完成 fmt、�
 - [ ] **Step 5: 完成 GitHub Windows 实机复验**
 
 功能分支推送后手动触发 `Rust Quality` 的 `windows_only=true`。只有 Windows runner 实际启动并通过，才能勾选本步骤；账户、Runner 或外部平台阻塞必须原样记录，不能用本机 Fixture 代替。
+
+2026-08-02 外部验证记录：功能分支 `feat/windows-lock-contention` 的 workflow run `30737112685` 正确只生成 `Rust windows-latest` job `91467818447`，证明 Windows-only matrix 生效；但该 job 的 `runner_name` 为空、`steps` 为空，GitHub 在启动 runner 前即以账户付款失败或 spending limit 不足拒绝执行。因此 Task 6 的 GitHub 实机步骤和本步骤继续保持未勾选，不能把本机门禁描述为 Windows 实机通过。
