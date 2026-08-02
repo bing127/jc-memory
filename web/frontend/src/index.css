@@ -122,6 +122,12 @@
   .lab-tabs [role="tab"] svg { @apply size-3.5; }
   .lab-tabs [role="tab"][data-state="active"] { @apply bg-sidebar text-white; }
   .lab-form { @apply grid gap-4 p-5; }
+  .segmented-control { @apply inline-grid w-fit grid-cols-2 border border-line bg-[#f3f5f3] p-1; }
+  .segmented-control button { @apply h-8 min-w-20 border-0 bg-transparent px-3 text-xs font-semibold text-muted; }
+  .segmented-control button[aria-pressed="true"] { @apply bg-sidebar text-white; }
+  .checkbox-field { @apply flex items-center gap-2 text-xs font-semibold text-ink; }
+  .checkbox-field input { @apply size-4 accent-[#16834a]; }
+  .state-declaration-fields { @apply grid gap-3 border-l-2 border-brand-strong bg-[#f7faf8] p-4; }
   .operation-note { @apply m-0 border-l-2 border-line pl-3 text-[11px] leading-5 text-muted; }
   .danger-form { @apply border-t-2 border-red-600; }
   .danger-note { @apply border-red-600 text-red-800; }
@@ -148,6 +154,30 @@
   .packet-section h3 span { @apply grid min-w-6 place-items-center bg-[#eef1ef] px-1 py-1 text-[9px] text-muted; }
   .packet-section p { @apply mb-0 mt-5 text-[11px] text-muted; }
   .packet-section pre { @apply max-h-56 overflow-auto whitespace-pre-wrap text-[10px]; }
+  .packet-conflicts { @apply border-l-2 border-l-amber-600 bg-amber-50 text-amber-950; }
+  .state-packet-sections { @apply grid border-b border-line xl:grid-cols-2; }
+  .state-section { @apply min-w-0 border-b border-line p-4 last:border-b-0 xl:border-b-0 xl:border-r xl:last:border-r-0; }
+  .state-section > h3 { @apply m-0 flex items-center justify-between text-[11px] font-semibold; }
+  .state-section > h3 span { @apply grid min-w-6 place-items-center bg-[#eef1ef] px-1 py-1 text-[9px] text-muted; }
+  .state-section > p { @apply mb-0 mt-5 text-[11px] text-muted; }
+  .state-table-wrap { @apply mt-3 max-w-full overflow-x-auto; }
+  .state-table { @apply w-full min-w-[680px] border-collapse text-left text-[10px]; }
+  .state-table th, .state-table td { @apply border-b border-line/70 px-3 py-2 align-top; }
+  .state-table thead th { @apply bg-[#f7f9f7] font-semibold text-muted; }
+  .state-table tbody th { @apply font-normal text-ink; }
+  .state-value { @apply whitespace-pre-wrap break-words text-ink; }
+  .state-validity { @apply inline-flex border border-line bg-[#eef4ef] px-2 py-1 text-[9px] font-semibold text-[#27633d]; }
+  .state-context { @apply grid min-w-0 gap-1 text-[10px] leading-4 text-muted; }
+  .state-context code { @apply break-all text-[9px] text-ink; }
+  .state-timeline { @apply mt-3 grid list-none gap-0 p-0; }
+  .state-timeline li { @apply relative grid grid-cols-[12px_minmax(0,1fr)] gap-3 pb-4 last:pb-0; }
+  .state-timeline li::before { content: ""; @apply absolute bottom-0 left-[5px] top-2 border-l border-line; }
+  .state-timeline li:last-child::before { @apply hidden; }
+  .state-timeline-marker { @apply mt-1.5 size-3 border-2 border-brand-strong bg-white; }
+  .state-timeline article { @apply min-w-0 border-b border-line/70 pb-3; }
+  .state-timeline header { @apply flex min-w-0 flex-wrap items-center justify-between gap-2; }
+  .state-timeline header code:first-child { @apply break-all text-[10px] font-semibold; }
+  .state-time-range { @apply my-2 flex flex-wrap gap-2 text-[9px] text-muted; }
   .json-viewer { @apply overflow-hidden border border-[#27302b] bg-[#0b0f0d] text-[#dbe5de]; }
   .json-viewer header { @apply flex h-11 items-center justify-between border-b border-white/10 px-2 pl-4 text-[10px] font-bold text-white/45; }
   .json-viewer button { @apply text-white/65 hover:bg-white/8 hover:text-white; }

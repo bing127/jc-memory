@@ -25,6 +25,11 @@ const scopeSchema = z.strictObject({
 });
 
 const baseBodySchema = z.strictObject({ scope: scopeSchema });
+const stateSchema = z.strictObject({
+  key: z.string().min(1).max(256).regex(/^[A-Za-z0-9._-]+$/),
+  value: z.unknown(),
+  reason: z.string().min(1).max(2_048).refine((value) => value.trim().length > 0),
+});
 const observeBodySchema = baseBodySchema.extend({
   fragment: z.record(z.string(), z.unknown()),
 });
@@ -56,6 +61,7 @@ const mutationBodySchema = baseBodySchema.extend({
   occurredAt: z.iso.datetime(),
   verificationMethod: z.enum(["manual", "tool", "external_source", "cross_evidence"]),
   reason: z.string().trim().min(1).max(2_048),
+  state: stateSchema.nullable().optional(),
 });
 const recallModeSchema = z.enum([
   "exact",
@@ -152,19 +158,20 @@ function parseOperation(
   }
   if (operation === "observe") {
     const parsed = observeBodySchema.safeParse(body);
-    return parsed.success
+    return parsed.success && hasValidStateMetadata(parsed.data.fragment)
       ? { scope: parsed.data.scope, payload: { fragment: parsed.data.fragment } }
       : null;
   }
   if (operation === "commit") {
     const parsed = commitBodySchema.safeParse(body);
-    return parsed.success
+    return parsed.success && parsed.data.fragments.every(hasValidStateMetadata)
       ? { scope: parsed.data.scope, payload: { fragments: parsed.data.fragments } }
       : null;
   }
   if (operation === "correct" || operation === "forget") {
     const parsed = mutationBodySchema.safeParse(body);
     if (!parsed.success) return null;
+    const originalState = (body as { state?: unknown }).state;
     return {
       scope: parsed.data.scope,
       payload: {
@@ -182,6 +189,7 @@ function parseOperation(
         occurred_at: parsed.data.occurredAt,
         verification_method: parsed.data.verificationMethod,
         reason: parsed.data.reason,
+        ...(originalState === undefined ? {} : { state: originalState }),
       },
     };
   }
@@ -203,6 +211,14 @@ function parseOperation(
       },
     },
   };
+}
+
+function hasValidStateMetadata(fragment: Record<string, unknown>): boolean {
+  const metadata = fragment.metadata;
+  if (typeof metadata !== "object" || metadata === null || !("state" in metadata)) {
+    return true;
+  }
+  return stateSchema.safeParse((metadata as Record<string, unknown>).state).success;
 }
 
 export function toAccessScope(
