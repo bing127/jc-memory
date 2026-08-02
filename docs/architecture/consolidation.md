@@ -10,6 +10,8 @@ Worker 通过限时 Lease 独占 Job。Lease 过期后，另一个 Worker 可以
 
 每个批次使用 `BEGIN IMMEDIATE`。Handler 成功、结果不变量和资源预算都通过后，派生写入与 Checkpoint 在同一事务提交；失败、取消或超时会回滚整个批次，cursor 不推进。Checkpoint 保存 cursor、已提交批次数、处理条目数、累计 CPU 代理时间、IO 次数、Lease 和下次重试时间。
 
+`MemoryEngine` 持有同一 SQLite 上的 `ConsolidationJobStore`，并公开 `submit_consolidation`、`consolidation_job`、`run_consolidation`、`pause_consolidation`、`resume_consolidation`、`retry_consolidation` 和 `cancel_consolidation`。提交按 `JobSpec.scope` 执行 `Operation::Consolidate` 授权；后续查询和生命周期操作使用 Job 持久化的 Scope 再授权，调用方不能自报 Scope。`run_consolidation` 根据持久化 `JobKind` 静态分派到 12 个已有 Handler。该门面当前是 Embedded Core API，不代表远程 CommandBus、HTTP/gRPC 或 Web 已公开对应命令。
+
 ## 2. 资源限制
 
 | 限制 | 执行位置 | 超限结果 |
@@ -55,13 +57,22 @@ Restore 在目标数据目录同级 staging 中复制 Manifest 文件，重新�
 
 当前有两个不同层级的重建入口：
 
-- `jc-memory-consolidation::Rebuild` 真正从 Event 流重建 Point 与 inline FTS，并受通用 Job Checkpoint 和资源预算约束；
+- `jc-memory-consolidation::Rebuild` 先删除目标 Scope 的 Artifact、Surface/Member、Edge、Point、冷层索引与 inline FTS，再从 Event 流重建规范 UUID Point 和 inline FTS，并受通用 Job Checkpoint 和资源预算约束；
 - `MemoryEngine::rebuild_derived` 固定按 FTS、Embedding、Edge Candidate、Surface Member、Summary/Cache 顺序持久化阶段 Checkpoint。M3 的 FTS 阶段真实重建索引；其余阶段只校验本地表和 Scope 契约，因为外部 Embedding 与 Summary backend 尚未接入。
 
-因此 M3 可以证明权威哈希在 Snapshot/Restore 后一致、FTS/Point 可由权威记录重建、阶段中断可续跑，但不声称已经生成外部向量、模型摘要或完整 Core 启动时自动恢复的进程内图。
+`Rebuild` 不隐式编排 Surface 和 Semantic 流水线。需要恢复这些派生项时，调用方必须在 Rebuild 成功后显式提交 `SurfaceDiscovery`、`SemanticPromotion` 等 Job。旧 64 字符 Point/Surface ID 在 Recall 中失败关闭；精确 Scope Rebuild 后恢复为协议 UUID，且 Fragment、Event、EvidenceRef 权威哈希不变。
 
-## 6. 验证映射
+因此当前可以证明权威哈希在 Snapshot/Restore 后一致、FTS/Point 可由权威记录重建、阶段中断可续跑，但不声称已经生成外部向量、模型摘要或完整 Core 启动时自动恢复的进程内图。
+
+## 6. 经验召回接线
+
+`MemoryEngine::recall` 在同一 Recall deadline 内先完成 State 与 Point 激活，再用剩余 `max_nodes` 读取派生项。读取顺序固定为 Surface、Procedure、Constraint/Preference；Surface 按交集权重、置信度和 ID 排序，整个 Surface 与成员共享预算，容量不足时不返回半个版本并标记 `coverage.truncated`。
+
+Surface 只返回有效时间内的最新 Active/Frozen 版本，且必须与激活 Point 相交。Procedural 模式支持完整 `procedure_key` 精确命中；Constraint 和 Preference 必须保留独立 Verified Evidence。`past_failures` 只从已激活的权威 Failure Episode 筛选。所有派生 Evidence 在 Packet 返回前重新注册精确 Scope，并继续经过 OutputGuard。
+
+## 7. 验证映射
 
 - `conservative_learning.rs`：12 种 Handler 契约、保守经验、派生写入、版本化 Surface、跨 Scope 引用拒绝；
 - `job_recovery.rs`：Pause/Resume/Retry、持久化 Checkpoint、Lease 接管、取消、并发 claim、事务回滚，以及批量/CPU/IO/墙钟预算；
 - `snapshot_restore.rs`：权威哈希、Manifest round-trip、损坏拒绝、Scope 拒绝、原子发布、固定阶段和 Checkpoint 续跑。
+- `experience_recall.rs`：完整 Packet、统一预算、同键跨 Tenant 隔离、Core 重启、Snapshot/Restore、旧 ID 失败关闭和显式 Rebuild。

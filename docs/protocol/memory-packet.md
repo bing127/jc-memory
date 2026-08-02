@@ -44,9 +44,11 @@ Memory Packet 是 Recall 的模型无关只读响应。它传递结构化记忆�
 
 ## Core 当前填充范围
 
-当前 `MemoryEngine::recall` 从 SQLite 和进程内派生图填充 `episodes`、`points`、`paths`、`evidence`、`missing_evidence`、`coverage`、`confidence` 与 `recommended_context`。只有真正激活的 Point 对应 Episode/Evidence 才会返回。
+当前 `MemoryEngine::recall` 从 SQLite 和派生图填充 State、`episodes`、`points`、`paths`、Surface、Procedure、Constraint、Preference、PastFailure、`evidence`、`missing_evidence`、`coverage`、`confidence` 与 `recommended_context`。只有真正激活的 Point 对应 Episode/Evidence 才会返回；PastFailure 也只从这些已激活 Episode 中筛选。
 
-协议中的 State、Surface、Procedure、Constraint、Preference、PastFailure 和 Conflict View 已完成类型与序列化契约；相应模块也有独立领域测试，但当前 Core 尚未把这些模块全部接入统一持久化 Packet 组装。空数组表示本次调用没有由当前 Core 路径提供该类数据，不应解释为全局不存在。
+State 与 Point 先共享 `max_nodes`，剩余预算再按 Surface、Procedure、Constraint/Preference 的固定顺序扣减。一个 Surface 的成本是 Surface 本身加完整成员数，不会返回部分成员。所有读取位于同一 Recall deadline 内；预算不足或候选被排除时，`coverage.truncated` 会显式反映截断。
+
+Conflict 仍由当前 State 投影路径填充。空数组只表示本次查询在精确 Scope、有效时间、相关性和预算限制下没有返回该类数据，不应解释为全局不存在。当前连通范围是 Embedded Core + SQLite；远程 API、Web 控制台、Runtime 自动采集和外部平台实机未由本阶段验证。
 
 ## 示例骨架
 

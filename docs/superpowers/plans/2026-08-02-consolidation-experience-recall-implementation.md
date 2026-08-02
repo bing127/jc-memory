@@ -421,11 +421,11 @@ git push
 - Modify: `CHANGELOG.md`
 - Modify: `docs/superpowers/plans/2026-08-02-consolidation-experience-recall-implementation.md`
 
-- [ ] **Step 1：更新中文架构和协议真值说明**
+- [x] **Step 1：更新中文架构和协议真值说明**
 
 记录 Core Job 门面、已接线 Packet 字段、相关性与预算、规范 ID 和重建边界。将 `memory-packet.md` 中“Core 尚未全部接入”的说明改为本阶段真实完成状态；仍明确远程 API、Web、Runtime 自动采集和外部平台未验证。
 
-- [ ] **Step 2：运行全仓 Rust 门禁**
+- [x] **Step 2：运行全仓 Rust 门禁**
 
 Run: `cargo fmt --all -- --check`
 
@@ -439,7 +439,7 @@ Run: `git diff --check`
 
 Expected: 全部退出码 0。
 
-- [ ] **Step 3：检查占位实现、工作树和提交范围**
+- [x] **Step 3：检查占位实现、工作树和提交范围**
 
 Run: `rg -n 'TODO|unimplemented!\(|todo!\(' crates/memory-core crates/memory-storage crates/memory-consolidation`
 
@@ -449,9 +449,17 @@ Run: `git status --short`
 
 Expected: 仅有本 Task 文档改动和用户原有 `sdk/java/bin/`、`sdk/kotlin/bin/`。
 
-- [ ] **Step 4：勾选计划并提交验收记录**
+- [x] **Step 4：勾选计划并提交验收记录**
 
 把本计划所有已完成复选框改为 `[x]`，写明实际测试数量、当前主机、SQLite、Fixture/实机边界和已知警告。
+
+验收记录（2026-08-02）：
+
+- `cargo test --workspace --all-features --offline -- --list` 共枚举 482 项测试；全仓测试门禁退出码为 0，并包含 1 项 compile-fail doctest。
+- 验收主机为 Darwin 25.6.0、Apple Silicon arm64；`rustc` 与 `cargo` 均为 1.97.1，SQLite 为 3.51.0。
+- `fmt`、严格 `clippy -D warnings`、全仓测试、`rustdoc -D warnings` 和 `git diff --check` 全部退出码为 0；目标 Core、Storage、Consolidation crate 未检出新增 `TODO`、`todo!` 或 `unimplemented!`。
+- 验收范围限定为本机 Embedded Core、SQLite、临时目录和版本化 Fixture；未执行远程 CommandBus、HTTP/gRPC、Web、Runtime 自动采集或外部平台实机验证，不将 Fixture 结果描述为实机结果。
+- 提交范围只包含本 Task 的四份中文文档；用户原有的 `sdk/java/bin/` 与 `sdk/kotlin/bin/` 保持未跟踪且不提交。
 
 ```bash
 git add docs/architecture/consolidation.md docs/protocol/memory-packet.md CHANGELOG.md \
@@ -462,7 +470,7 @@ git commit -m "docs(core): 记录巩固经验召回验收" \
 git push
 ```
 
-- [ ] **Step 5：创建并推送阶段 Tag**
+- [x] **Step 5：创建并推送阶段 Tag**
 
 Run: `git tag -a core-consolidation-experience-recall -m "Core Consolidation 与经验召回闭环"`
 

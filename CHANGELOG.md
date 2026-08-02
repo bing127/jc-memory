@@ -28,6 +28,9 @@
 - 增加 12 种保守巩固 Handler，以及带 Lease、Checkpoint、Pause/Resume/Retry/Cancel 和资源预算的持久化 Job Runner。
 - 增加 Snapshot/Restore、固定阶段派生重建、治理 Export、先计划后执行的 Retention、Key Provider 契约和无正文凭证的 Hard Delete。
 - 增加 M3 访问控制、Quarantine、Retention、威胁模型、巩固/重建架构文档与 ADR 0007-0008。
+- 为 `MemoryEngine` 增加受 `Operation::Consolidate` 保护的 Job 提交、查询、运行、暂停、恢复、重试和取消门面，按持久化 `JobKind` 分派 12 类 Handler。
+- 把有效 Surface、Procedure、Constraint、Preference 和相关 Failure 接入 Core Memory Packet，统一 Recall deadline、`max_nodes`、Evidence 去重和返回前 Scope 校验。
+- 增加同键跨 Tenant 隔离、Core 重启、Snapshot/Restore、旧 64 字符派生 ID 失败关闭和显式 Rebuild 规范化验收，重建前后权威哈希不变。
 
 ## [0.1.0]
 
@@ -60,9 +63,9 @@
 ### M3 已知边界
 
 - M3 验证限定为本地 Rust、SQLite 和文件系统调用链；没有验证远程身份、HTTP/gRPC/MCP、TLS、KMS/HSM、云备份或外部模型。
-- `Operation::Consolidate` 尚未接入 Core Job 提交门面；直接使用 `jc-memory-consolidation` 的调用方必须在外层授权。
+- `Operation::Consolidate` 已接入 Embedded Core Job 门面；尚未扩展为远程 CommandBus、HTTP/gRPC 或 Web 命令。
 - `MemoryEngine::rebuild_derived` 的 FTS 阶段真实重建索引；Embedding、Edge Candidate、Surface Member 和 Summary/Cache 阶段当前只验证本地表与 Scope 契约。
-- 状态、语义和 Surface 尚未全部汇入 Core 的持久化 Memory Packet；进程内 Mutation 图尚未在 Core 重启时自动恢复。
+- State、Surface、Procedure、Constraint、Preference 和 PastFailure 已汇入 Core 的持久化 Memory Packet；进程内 Mutation 图尚未在 Core 重启时自动恢复。
 - 当前结果不声明 Runtime、服务、SDK、Adapter、训练/ONNX、Benchmark、跨平台实机或公开发布已经完成。
 
 ### M3 Verification
