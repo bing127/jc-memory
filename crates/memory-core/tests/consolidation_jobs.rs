@@ -142,6 +142,35 @@ async fn pending_job_survives_engine_restart_and_can_run() {
     assert_eq!(completed.status, JobStatus::Completed);
 }
 
+#[tokio::test]
+async fn completed_job_and_checkpoint_survive_engine_restart() {
+    let directory = tempfile::tempdir().expect("创建完成 Job 重启目录");
+    let config = MemoryConfig::local(directory.path());
+    let scope = MemoryScope::new(NamespaceId::new());
+    let operator = context("operator", &scope, &[Operation::Consolidate]);
+    let engine = MemoryEngine::open(config.clone())
+        .await
+        .expect("打开记忆引擎");
+    let submitted = engine
+        .submit_consolidation(&operator, spec(scope, JobKind::Replay))
+        .await
+        .expect("提交完成态 Job");
+    let completed = engine
+        .run_consolidation(&operator, submitted.id)
+        .await
+        .expect("运行完成态 Job");
+    assert_eq!(completed.status, JobStatus::Completed);
+    engine.close().await;
+
+    let reopened = MemoryEngine::open(config).await.expect("重启记忆引擎");
+    let loaded = reopened
+        .consolidation_job(&operator, submitted.id)
+        .await
+        .expect("重启后读取完成态 Job");
+    assert_eq!(loaded.status, JobStatus::Completed);
+    assert_eq!(loaded.checkpoint, completed.checkpoint);
+}
+
 fn context(principal: &str, scope: &MemoryScope, operations: &[Operation]) -> AccessContext {
     let mut context = AccessContext::new(principal, scope.clone());
     context.grants.extend(

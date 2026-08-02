@@ -381,21 +381,21 @@ git push
 - Modify: `crates/memory-core/tests/experience_recall.rs`
 - Modify: `crates/memory-core/tests/snapshot_restore.rs`
 
-- [ ] **Step 1：写跨 Tenant、重启和旧派生 ID 红灯验收**
+- [x] **Step 1：写跨 Tenant、重启和旧派生 ID 红灯验收**
 
 两个 Tenant 使用相同 `procedure_key` 和相同正文时必须各自返回自己的 Evidence。关闭并重新打开 Engine 后 Job 和 Packet 保持一致。手工插入旧 64 字符 Point/Surface ID 时 Recall 必须失败；运行精确 Scope Rebuild 后强类型 ID 可解析、Packet 恢复且 `verify_authority_hash` 不变。
 
-- [ ] **Step 2：运行验收并确认旧 ID 还不能恢复**
+- [x] **Step 2：运行验收并确认旧 ID 还不能恢复**
 
 Run: `CARGO_INCREMENTAL=0 cargo test -p jc-memory-core --test experience_recall --test consolidation_jobs --test snapshot_restore legacy_consolidation_ids --offline`
 
 Expected: 在旧 ID Fixture 上 FAIL，或 Rebuild 后仍存在非 UUID 派生行。
 
-- [ ] **Step 3：补齐精确 Scope Rebuild 的规范化顺序**
+- [x] **Step 3：补齐精确 Scope Rebuild 的规范化顺序**
 
 复用现有 `Rebuild` Handler 与 Core `rebuild_derived` 权威哈希门禁：Rebuild 先删除目标 Scope 的旧 Artifact/Surface/Member/Edge/Point，再按 Event 重放规范 Point 与 FTS；随后由调用方显式提交 `SurfaceDiscovery`、`SemanticPromotion` 等所需 Job。Core 不隐式编排整条流水线。任一 Job 失败时不推进自身 Checkpoint，不得修改权威 Fragment、Event、EvidenceRef 或其他 Scope 行。
 
-- [ ] **Step 4：运行 Core、Storage、Consolidation 全量聚焦测试**
+- [x] **Step 4：运行 Core、Storage、Consolidation 全量聚焦测试**
 
 Run: `CARGO_INCREMENTAL=0 cargo test -p jc-memory-core -p jc-memory-storage -p jc-memory-consolidation --all-targets --all-features --offline`
 
@@ -403,7 +403,7 @@ Run: `cargo fmt --all -- --check && CARGO_INCREMENTAL=0 cargo clippy -p jc-memor
 
 Expected: 全部退出码 0。
 
-- [ ] **Step 5：提交并推送 Task 7**
+- [x] **Step 5：提交并推送 Task 7**
 
 ```bash
 git add crates/memory-core/tests crates/memory-storage crates/memory-consolidation

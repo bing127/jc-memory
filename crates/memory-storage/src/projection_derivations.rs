@@ -118,6 +118,7 @@ pub(crate) async fn load(
         effective_at,
         max_items,
     } = query;
+    validate_protocol_ids(pool, scope_hash).await?;
     let rows = load_artifacts(pool, scope_hash).await?;
     let max_sequence: i64 =
         sqlx::query_scalar("SELECT COALESCE(MAX(sequence), -1) FROM events WHERE scope_key = ?1")
@@ -196,6 +197,29 @@ pub(crate) async fn load(
         .evidence
         .dedup_by_key(|item| (item.fragment_id, item.event_id, item.evidence_ref_id));
     Ok(result)
+}
+
+async fn validate_protocol_ids(pool: &SqlitePool, scope_hash: &str) -> Result<(), StorageError> {
+    let point_ids: Vec<String> =
+        sqlx::query_scalar("SELECT id FROM points WHERE scope_key = ?1 ORDER BY id")
+            .bind(scope_hash)
+            .fetch_all(pool)
+            .await?;
+    if point_ids.iter().any(|id| id.parse::<PointId>().is_err()) {
+        return Err(corrupt("point_id", scope_hash));
+    }
+    let surface_ids: Vec<String> =
+        sqlx::query_scalar("SELECT id FROM surfaces WHERE scope_key = ?1 ORDER BY id")
+            .bind(scope_hash)
+            .fetch_all(pool)
+            .await?;
+    if surface_ids
+        .iter()
+        .any(|id| id.parse::<SurfaceId>().is_err())
+    {
+        return Err(corrupt("surface_id", scope_hash));
+    }
+    Ok(())
 }
 
 async fn load_surfaces(
