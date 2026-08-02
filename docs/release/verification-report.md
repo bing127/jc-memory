@@ -35,6 +35,22 @@
 | 本地 `scripts/release/package.sh` + `scripts/release/verify.sh` Fixture | 退出码 0 | Manifest、PRIVATE、SBOM、元数据、SHA-256 和签名接口 |
 | `git diff --check` | 退出码 0 | 空白和补丁格式 |
 
+## Recall 性能与可观测增量验收
+
+增量验证分支为 `feat/performance-observability`。提交 `b5b14b3` 消除最近候选对 FTS 虚表的联接，提交 `384ee96` 使压测器能够通过环境变量访问受保护 BFF，且不把 Cookie、Origin 或 API Key 写入报告。
+
+TDD 证据：`recent_candidates_read_authoritative_content_without_fts_dependency` 在修复前因返回 0 条而失败，修复后与既有最近候选测试共 2 项通过；BFF Header 测试在修复前捕获到 `cookie/origin` 均为 `undefined`，修复后 HTTP 压测执行器 4 项测试通过。
+
+正式 `target/benchmarks/recall-after.json` 使用提交 `384ee96`、干净工作树和真实 BFF -> Rust -> SQLite 链路。每个场景预热 20 次，数据库规模为 2032 Fragment/2032 Event，结果如下：
+
+| 场景 | 请求/并发 | 成功 | 429/timeout | 吞吐 | P50/P95/P99 |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Recall c8 | 400/8 | 400 | 0/0 | 125.94/s | 61.58/85.59/113.54ms |
+| Recall c32 | 800/32 | 800 | 0/0 | 123.40/s | 252.58/305.02/313.25ms |
+| Recall c64 | 800/64 | 800 | 0/0 | 118.52/s | 523.56/599.77/604.42ms |
+
+压测后 Fragment/Event 仍为 2032/2032。历史基线与当前报告的数据库规模、服务限额、请求数和并发数相同，但旧请求体没有版本化保存，因此文档中的吞吐与延迟百分比只作为参考对比，不作为严格同请求体 A/B 证明。
+
 ## 私有 Release
 
 实现提交 `e41d372` 增加 `.github/workflows/release.yml` 和 `scripts/release/`。workflow 通过 `workflow_dispatch` 接收 `version`、`ref` 和 `prerelease`，要求 `ref` 是对应 `v<version>` tag，并在 Native job 固定 `RUSTUP_TOOLCHAIN=1.97.1`。

@@ -1,0 +1,28 @@
+{
+  "schema_version": "jcmem.load-test.v1",
+  "provenance": {
+    "git_commit": "e2e-fixture",
+    "dirty": false,
+    "platform": "fixture"
+  },
+  "config": {
+    "target": "http://127.0.0.1:8787",
+    "warmup_requests": 1,
+    "timeout_ms": 30000,
+    "real_rust_sqlite": false
+  },
+  "scenarios": [
+    {
+      "name": "recall-fixture",
+      "requests": 50,
+      "concurrency": 8,
+      "success": 48,
+      "failure": 2,
+      "status_counts": { "200": 48, "429": 2 },
+      "errors": {},
+      "throughput_rps": 10,
+      "latency_ms": { "p50": 500, "p95": 1000, "p99": null, "max": 2000 },
+      "real_rust_sqlite": false
+    }
+  ]
+}

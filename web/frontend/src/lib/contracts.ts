@@ -26,6 +26,58 @@ export interface InstanceStatus {
   serverReady: boolean;
 }
 
+export interface OverviewSnapshot {
+  status: InstanceStatus;
+  stats: {
+    request_id: string;
+    response: {
+      payload: { fragment_count: number; event_count: number };
+    };
+  };
+}
+
+export type PerformanceOperationName =
+  | "observe"
+  | "commit"
+  | "recall"
+  | "stats"
+  | "correct"
+  | "forget"
+  | "explain"
+  | "command";
+
+export interface PerformanceOperation {
+  operation: PerformanceOperationName;
+  total: number;
+  success: number;
+  error: number;
+  rateLimited: number;
+  timeouts: number;
+  latencyMs: { p50: number | null; p95: number | null; p99: number | null };
+}
+
+export interface PerformanceSnapshot {
+  sampledAt: string;
+  inFlight: number;
+  operations: PerformanceOperation[];
+}
+
+export type InstanceStreamSubscription =
+  | { topic: "overview" }
+  | { topic: "metrics" }
+  | { topic: "runtime.list" }
+  | { topic: "runtime.detail"; runId: string };
+
+export type InstanceStreamTopic = InstanceStreamSubscription["topic"];
+
+export type InstanceTransportState = "connecting" | "connected" | "disconnected";
+
+export interface InstanceStreamTopicState<T = unknown> {
+  data: T | null;
+  sampledAt: string | null;
+  error: string | null;
+}
+
 export interface ApiErrorBody {
   code: string;
   message: string;

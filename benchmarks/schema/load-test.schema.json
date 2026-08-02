@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jiangcheng-memory.local/schema/jcmem.load-test.v1.json",
+  "title": "Jiangcheng Memory HTTP load test report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "provenance", "config", "scenarios"],
+  "properties": {
+    "schema_version": { "const": "jcmem.load-test.v1" },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["git_commit", "dirty", "platform"],
+      "properties": {
+        "git_commit": { "type": "string", "minLength": 1 },
+        "dirty": { "type": "boolean" },
+        "platform": { "type": "string", "minLength": 1 }
+      }
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target", "warmup_requests", "timeout_ms", "real_rust_sqlite"],
+      "properties": {
+        "target": { "type": "string", "minLength": 1 },
+        "warmup_requests": { "type": "integer", "minimum": 0 },
+        "timeout_ms": { "type": "integer", "minimum": 1 },
+        "real_rust_sqlite": { "type": "boolean" }
+      }
+    },
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name", "requests", "concurrency", "success", "failure",
+          "status_counts", "errors", "throughput_rps", "latency_ms",
+          "real_rust_sqlite"
+        ],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "requests": { "type": "integer", "minimum": 0 },
+          "concurrency": { "type": "integer", "minimum": 1 },
+          "success": { "type": "integer", "minimum": 0 },
+          "failure": { "type": "integer", "minimum": 0 },
+          "status_counts": {
+            "type": "object",
+            "additionalProperties": { "type": "integer", "minimum": 0 }
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": { "type": "integer", "minimum": 0 }
+          },
+          "throughput_rps": { "type": ["number", "null"], "minimum": 0 },
+          "latency_ms": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["p50", "p95", "p99", "max"],
+            "properties": {
+              "p50": { "type": ["number", "null"], "minimum": 0 },
+              "p95": { "type": ["number", "null"], "minimum": 0 },
+              "p99": { "type": ["number", "null"], "minimum": 0 },
+              "max": { "type": ["number", "null"], "minimum": 0 }
+            }
+          },
+          "real_rust_sqlite": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

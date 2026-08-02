@@ -14,8 +14,9 @@ use crate::{
     MemoryRequest, MemoryResponse, MemoryScope, MissingEvidence, MutationAction, MutationCommand,
     MutationResult, ObserveCommand, ObserveResult, Perspective, PointKind, PointView,
     ProcedureView, RecallLimits, RecallMode, RecallPath, RequestValidationError, ResponseEnvelope,
-    SecurityLabel, SourceType, StateView, StatsCommand, StatsResult, SurfaceStatus, SurfaceView,
-    ValidityStatus, VerificationMethod, generated::jiangcheng::memory::v1 as proto,
+    SecurityLabel, SourceType, StateDeclaration, StateView, StatsCommand, StatsResult,
+    SurfaceStatus, SurfaceView, ValidityStatus, VerificationMethod,
+    generated::jiangcheng::memory::v1 as proto,
 };
 
 /// 领域协议与 Protobuf 之间的稳定转换错误。
@@ -427,6 +428,7 @@ fn mutation_command_to_proto(command: MutationCommand) -> proto::MutationCommand
         occurred_at: Some(datetime_to_proto(command.occurred_at)),
         verification_method: verification_method_to_proto(command.verification_method),
         reason: command.reason,
+        state: command.state.map(state_declaration_to_proto),
     }
 }
 
@@ -444,6 +446,28 @@ fn mutation_command_from_proto(
         )?,
         verification_method: verification_method_from_proto(command.verification_method)?,
         reason: command.reason,
+        state: command
+            .state
+            .map(state_declaration_from_proto)
+            .transpose()?,
+    })
+}
+
+fn state_declaration_to_proto(value: StateDeclaration) -> proto::StateDeclaration {
+    proto::StateDeclaration {
+        key: value.key,
+        value: Some(json_value_to_proto(value.value)),
+        reason: value.reason,
+    }
+}
+
+fn state_declaration_from_proto(
+    value: proto::StateDeclaration,
+) -> Result<StateDeclaration, ProtoConversionError> {
+    Ok(StateDeclaration {
+        key: value.key,
+        value: json_value_from_proto(required(value.value, "mutation.state.value")?)?,
+        reason: value.reason,
     })
 }
 
@@ -800,6 +824,8 @@ fn state_view_to_proto(value: StateView) -> proto::StateView {
         valid_to: value.valid_to.map(datetime_to_proto),
         validity: validity_to_proto(value.validity),
         evidence: value.evidence.iter().map(evidence_view_to_proto).collect(),
+        reason: value.reason,
+        source_event_id: value.source_event_id.map(|id| id.to_string()),
     }
 }
 
@@ -823,6 +849,8 @@ fn state_view_from_proto(value: proto::StateView) -> Result<StateView, ProtoConv
             .into_iter()
             .map(evidence_view_from_proto)
             .collect::<Result<_, _>>()?,
+        reason: value.reason,
+        source_event_id: parse_optional_id("recall.state.source_event_id", value.source_event_id)?,
     })
 }
 

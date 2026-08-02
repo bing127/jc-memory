@@ -134,6 +134,79 @@ async fn tools_call_returns_structured_content_for_observe_and_commit() {
 }
 
 #[tokio::test]
+async fn mcp_recall_preserves_non_empty_current_and_historical_state() {
+    let directory = tempfile::tempdir().expect("创建 MCP State 目录");
+    let engine = MemoryEngine::open(MemoryConfig::local(directory.path()))
+        .await
+        .expect("打开 MCP State 引擎");
+    let server = McpServer::new(EmbeddedCommandBus::new(engine));
+    let blue_fragment_id = "00000000-0000-7000-8000-000000000211";
+    let canary_evidence_id = "00000000-0000-7000-8000-000000000251";
+
+    let blue = mcp_call(
+        &server,
+        "memory_observe",
+        state_observe_request(
+            "mcp-state-blue",
+            blue_fragment_id,
+            "blue_green",
+            "生产环境先使用蓝绿发布",
+            "2026-07-30T00:00:00Z",
+            None,
+        ),
+    )
+    .await;
+    let canary = mcp_call(
+        &server,
+        "memory_observe",
+        state_observe_request(
+            "mcp-state-canary",
+            "00000000-0000-7000-8000-000000000212",
+            "canary",
+            "验证通过后切换为金丝雀发布",
+            "2026-07-31T00:00:00Z",
+            Some((canary_evidence_id, blue_fragment_id)),
+        ),
+    )
+    .await;
+    let blue_event_id = blue["response"]["payload"]["event_id"]
+        .as_str()
+        .expect("blue_green Observe 返回 Event ID");
+    let canary_event_id = canary["response"]["payload"]["event_id"]
+        .as_str()
+        .expect("canary Observe 返回 Event ID");
+    let recalled = mcp_call(&server, "memory_recall", state_recall_request()).await;
+    let packet = &recalled["response"]["payload"];
+
+    assert_eq!(
+        packet["current_states"][0]["key"],
+        "project.deployment_strategy"
+    );
+    assert_eq!(packet["current_states"][0]["value"], "canary");
+    assert_eq!(packet["historical_states"][0]["value"], "blue_green");
+    assert_eq!(
+        packet["current_states"][0]["reason"],
+        "验证通过后切换为金丝雀发布"
+    );
+    assert_eq!(
+        packet["current_states"][0]["source_event_id"],
+        canary_event_id
+    );
+    assert_eq!(
+        packet["historical_states"][0]["source_event_id"],
+        blue_event_id
+    );
+    assert_eq!(
+        packet["current_states"][0]["evidence"][0]["evidence_ref_id"],
+        canary_evidence_id
+    );
+    assert_eq!(
+        contract_state_values("recall-current-state.json"),
+        json!(["canary", "blue_green"])
+    );
+}
+
+#[tokio::test]
 async fn configured_auth_token_is_required_for_tool_calls() {
     let server = McpServer::with_auth_token(FixtureBus, "mcp-fixture-token")
         .expect("创建带认证的 MCP Server");
@@ -221,4 +294,93 @@ async fn mcp_can_forward_a_call_through_the_authenticated_sidecar() {
     task.await
         .expect("等待 MCP Sidecar")
         .expect("MCP Sidecar 正常退出");
+}
+
+async fn mcp_call<B>(server: &McpServer<B>, tool: &str, request: Value) -> Value
+where
+    B: CommandBus + 'static,
+{
+    let response = server
+        .handle(json!({
+            "jsonrpc":"2.0",
+            "id":11,
+            "method":"tools/call",
+            "params":{"name":tool,"arguments":{"request":request}}
+        }))
+        .await;
+    assert_eq!(response["result"]["isError"], false, "{response}");
+    response["result"]["structuredContent"].clone()
+}
+
+fn state_observe_request(
+    request_id: &str,
+    fragment_id: &str,
+    value: &str,
+    reason: &str,
+    occurred_at: &str,
+    evidence: Option<(&str, &str)>,
+) -> Value {
+    let evidence = evidence
+        .into_iter()
+        .map(|(id, fragment_id)| {
+            json!({
+                "id": id,
+                "fragment_id": fragment_id,
+                "event_id": null,
+                "method": "manual",
+                "note": "人工确认部署策略变更"
+            })
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "api_version":"v1",
+        "request_id":request_id,
+        "access_scope":{"namespace_id":"00000000-0000-7000-8000-000000000203"},
+        "command":{"command":"observe","payload":{"fragment":{
+            "id":fragment_id,
+            "scope":{"namespace_id":"00000000-0000-7000-8000-000000000203"},
+            "kind":"fact",
+            "content":{"type":"text","text":format!("部署策略 {value}")},
+            "source":{"source_type":"user","source_id":"mcp-state-contract"},
+            "perspective":"first_person",
+            "occurred_at":occurred_at,
+            "observed_at":occurred_at,
+            "confidence":1.0,
+            "importance":0.5,
+            "validity":"unverified",
+            "security_label":"internal",
+            "evidence":evidence,
+            "metadata":{"state":{
+                "key":"project.deployment_strategy",
+                "value":value,
+                "reason":reason
+            }}
+        }}}
+    })
+}
+
+fn state_recall_request() -> Value {
+    json!({
+        "api_version":"v1",
+        "request_id":"mcp-state-recall",
+        "access_scope":{"namespace_id":"00000000-0000-7000-8000-000000000203"},
+        "command":{"command":"recall","payload":{
+            "mode":"current_state",
+            "text":"project.deployment_strategy",
+            "entities":[],
+            "at_time":null,
+            "limits":{"max_seeds":4,"max_neighbors":4,"max_hops":2,"max_nodes":8,"timeout_ms":500}
+        }}
+    })
+}
+
+fn contract_state_values(name: &str) -> Value {
+    let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../sdk/contracts/fixtures")
+        .join(name);
+    let fixture: Value = serde_json::from_slice(&std::fs::read(source).unwrap()).unwrap();
+    json!([
+        fixture["response"]["response"]["payload"]["current_states"][0]["value"],
+        fixture["response"]["response"]["payload"]["historical_states"][0]["value"],
+    ])
 }

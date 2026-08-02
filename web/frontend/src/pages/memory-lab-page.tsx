@@ -61,11 +61,33 @@ export function MemoryLabPage({ instance }: { instance: InstanceSummary }) {
 }
 
 function ObserveForm({ pending, onSubmit }: { pending: boolean; onSubmit(body: { scope: ScopeSelector; fragment: Record<string, unknown> }): void }) {
+  const [mode, setMode] = useState<"text" | "state">("text");
   const [text, setText] = useState("");
   const [kind, setKind] = useState("fact");
   const [sourceId, setSourceId] = useState("control-plane-user");
+  const [validity, setValidity] = useState("unverified");
+  const [occurredAt, setOccurredAt] = useState(localDateTimeValue(new Date()));
+  const [stateKey, setStateKey] = useState("project.deployment_strategy");
+  const [stateValue, setStateValue] = useState('"blue_green"');
+  const [stateReason, setStateReason] = useState("");
+  const [stateError, setStateError] = useState<string | null>(null);
   function submit(event: FormEvent) {
     event.preventDefault();
+    if (mode === "state") {
+      let value: unknown;
+      try {
+        value = JSON.parse(stateValue);
+      } catch {
+        setStateError("请输入有效的 JSON value");
+        return;
+      }
+      setStateError(null);
+      onSubmit({
+        scope: emptyScope,
+        fragment: buildStateFragment({ stateKey, value, stateReason, kind, validity, occurredAt }),
+      });
+      return;
+    }
     onSubmit({
       scope: emptyScope,
       fragment: buildTextFragment(text, kind, sourceId),
@@ -73,12 +95,40 @@ function ObserveForm({ pending, onSubmit }: { pending: boolean; onSubmit(body: {
   }
   return (
     <form className="lab-form" onSubmit={submit}>
-      <div className="form-grid">
-        <label className="form-field"><span>Fragment Kind</span><select value={kind} onChange={(e) => setKind(e.target.value)}>{["observation", "claim", "fact", "constraint", "preference", "failure", "success"].map((value) => <option key={value}>{value}</option>)}</select></label>
-        <label className="form-field"><span>Source ID</span><Input value={sourceId} onChange={(e) => setSourceId(e.target.value)} required /></label>
+      <div className="segmented-control" role="group" aria-label="Observe mode">
+        <button type="button" aria-pressed={mode === "text"} onClick={() => {
+          setMode("text");
+          if (!textFragmentKinds.includes(kind)) setKind("fact");
+        }}>Text</button>
+        <button type="button" aria-pressed={mode === "state"} onClick={() => {
+          setMode("state");
+          if (!stateFragmentKinds.includes(kind)) setKind("fact");
+        }}>State</button>
       </div>
-      <label className="form-field"><span>原始文本</span><textarea value={text} onChange={(e) => setText(e.target.value)} rows={7} required /></label>
-      <Button type="submit" disabled={pending}>{pending ? "正在写入" : "Observe Fragment"}<Send aria-hidden="true" size={16} /></Button>
+      {mode === "text" ? (
+        <>
+          <div className="form-grid">
+            <label className="form-field"><span>Fragment Kind</span><select value={kind} onChange={(e) => setKind(e.target.value)}>{textFragmentKinds.map((value) => <option key={value}>{value}</option>)}</select></label>
+            <label className="form-field"><span>Source ID</span><Input value={sourceId} onChange={(e) => setSourceId(e.target.value)} required /></label>
+          </div>
+          <label className="form-field"><span>原始文本</span><textarea value={text} onChange={(e) => setText(e.target.value)} rows={7} required /></label>
+        </>
+      ) : (
+        <>
+          <div className="form-grid">
+            <label className="form-field"><span>State key</span><Input value={stateKey} onChange={(event) => setStateKey(event.target.value)} pattern="[A-Za-z0-9._-]+" maxLength={256} required /></label>
+            <label className="form-field"><span>Fragment Kind</span><select value={kind} onChange={(event) => setKind(event.target.value)}>{stateFragmentKinds.map((value) => <option key={value}>{value}</option>)}</select></label>
+          </div>
+          <label className="form-field"><span>JSON value</span><textarea value={stateValue} onChange={(event) => { setStateValue(event.target.value); setStateError(null); }} rows={5} required aria-invalid={stateError !== null} /></label>
+          {stateError ? <p className="form-error">{stateError}</p> : null}
+          <label className="form-field"><span>Reason</span><textarea value={stateReason} onChange={(event) => setStateReason(event.target.value)} rows={3} maxLength={2_048} required /></label>
+          <div className="form-grid">
+            <label className="form-field"><span>Validity</span><select value={validity} onChange={(event) => setValidity(event.target.value)}><option value="unverified">unverified</option><option value="verified">verified</option><option value="disputed">disputed</option></select></label>
+            <label className="form-field"><span>Occurred at</span><Input type="datetime-local" value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} required /></label>
+          </div>
+        </>
+      )}
+      <Button type="submit" disabled={pending}>{pending ? "正在写入" : mode === "state" ? "Observe State" : "Observe Fragment"}<Send aria-hidden="true" size={16} /></Button>
     </form>
   );
 }
@@ -119,10 +169,25 @@ function MutationForm({
   const [reason, setReason] = useState("");
   const [verificationMethod, setVerificationMethod] = useState("manual");
   const [confirmation, setConfirmation] = useState("");
+  const [stateEnabled, setStateEnabled] = useState(false);
+  const [stateKey, setStateKey] = useState("project.deployment_strategy");
+  const [stateValue, setStateValue] = useState('"blue_green"');
+  const [stateReason, setStateReason] = useState("");
+  const [stateError, setStateError] = useState<string | null>(null);
   const isForget = operation === "forget";
   function submit(event: FormEvent) {
     event.preventDefault();
     if (isForget && confirmation !== targetFragmentId) return;
+    let state: { key: string; value: unknown; reason: string } | undefined;
+    if (stateEnabled) {
+      try {
+        state = { key: stateKey, value: JSON.parse(stateValue), reason: stateReason };
+      } catch {
+        setStateError("请输入有效的 State JSON value");
+        return;
+      }
+    }
+    setStateError(null);
     onSubmit({
       scope: emptyScope,
       targetFragmentId,
@@ -139,6 +204,7 @@ function MutationForm({
       occurredAt: new Date().toISOString(),
       verificationMethod,
       reason,
+      ...(state === undefined ? {} : { state }),
     });
   }
   return (
@@ -152,6 +218,21 @@ function MutationForm({
         <label className="form-field"><span>{isForget ? "失效原因" : "修正原因"}</span><Input value={reason} onChange={(event) => setReason(event.target.value)} required /></label>
       </div>
       <label className="form-field"><span>{isForget ? "失效说明" : "修正内容"}</span><textarea value={content} onChange={(event) => setContent(event.target.value)} rows={5} required /></label>
+      {!isForget ? (
+        <div className="state-declaration-fields">
+          <label className="checkbox-field"><input type="checkbox" checked={stateEnabled} onChange={(event) => setStateEnabled(event.target.checked)} />附带 State declaration</label>
+          {stateEnabled ? (
+            <>
+              <div className="form-grid">
+                <label className="form-field"><span>State key</span><Input value={stateKey} onChange={(event) => setStateKey(event.target.value)} pattern="[A-Za-z0-9._-]+" maxLength={256} required /></label>
+                <label className="form-field"><span>State JSON value</span><Input value={stateValue} onChange={(event) => { setStateValue(event.target.value); setStateError(null); }} required aria-invalid={stateError !== null} /></label>
+              </div>
+              {stateError ? <p className="form-error">{stateError}</p> : null}
+              <label className="form-field"><span>State reason</span><Input value={stateReason} onChange={(event) => setStateReason(event.target.value)} maxLength={2_048} required /></label>
+            </>
+          ) : null}
+        </div>
+      ) : null}
       {isForget ? (
         <>
           <p className="operation-note danger-note">Forget 只追加 Invalidated 记录，不执行 Hard Delete，也不会移除原始证据。</p>
@@ -189,11 +270,48 @@ function buildTextFragment(text: string, kind: string, sourceId: string): Record
   };
 }
 
+const textFragmentKinds = ["observation", "claim", "fact", "constraint", "preference", "failure", "success"];
+const stateFragmentKinds = ["fact", "state_transition", "correction"];
+
+function buildStateFragment(input: {
+  stateKey: string;
+  value: unknown;
+  stateReason: string;
+  kind: string;
+  validity: string;
+  occurredAt: string;
+}): Record<string, unknown> {
+  const observedAt = new Date().toISOString();
+  return {
+    id: crypto.randomUUID(),
+    session_id: null,
+    trace_id: null,
+    kind: input.kind,
+    content: { type: "text", text: `${input.stateKey} = ${JSON.stringify(input.value)}` },
+    source: { source_type: "user", source_id: "control-plane-user", actor_id: null, observer_id: null, tool_id: null, uri: null },
+    perspective: "first_person",
+    occurred_at: new Date(input.occurredAt).toISOString(),
+    observed_at: observedAt,
+    confidence: 1,
+    importance: 0.5,
+    validity: input.validity,
+    security_label: "internal",
+    evidence: [],
+    metadata: { state: { key: input.stateKey, value: input.value, reason: input.stateReason } },
+  };
+}
+
+function localDateTimeValue(date: Date): string {
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
 function RecallForm({ operation, pending, onSubmit }: { operation: "recall" | "explain"; pending: boolean; onSubmit(body: { scope: ScopeSelector } & Record<string, unknown>): void }) {
   const [mode, setMode] = useState<(typeof recallModes)[number]>("semantic");
   const [text, setText] = useState("");
   const [entities, setEntities] = useState("");
   const [limits, setLimits] = useState({ maxSeeds: 8, maxNeighbors: 16, maxHops: 3, maxNodes: 64, timeoutMs: 2000 });
+  const stateMode = mode === "current_state" || mode === "historical_state";
   function submit(event: FormEvent) {
     event.preventDefault();
     onSubmit({ scope: emptyScope, mode, text, entities: entities.split(",").map((item) => item.trim()).filter(Boolean), atTime: null, limits });
@@ -202,9 +320,9 @@ function RecallForm({ operation, pending, onSubmit }: { operation: "recall" | "e
     <form className="lab-form" onSubmit={submit}>
       <div className="form-grid">
         <label className="form-field"><span>Recall Mode</span><select value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>{recallModes.map((value) => <option key={value}>{value}</option>)}</select></label>
-        <label className="form-field"><span>Entities（逗号分隔）</span><Input value={entities} onChange={(e) => setEntities(e.target.value)} /></label>
+        {!stateMode ? <label className="form-field"><span>Entities（逗号分隔）</span><Input value={entities} onChange={(e) => setEntities(e.target.value)} /></label> : null}
       </div>
-      <label className="form-field"><span>Query Text</span><textarea value={text} onChange={(e) => setText(e.target.value)} rows={4} required /></label>
+      <label className="form-field"><span>{stateMode ? "State key" : "Query Text"}</span><textarea value={text} onChange={(e) => setText(e.target.value)} rows={4} required /></label>
       <div className="limit-grid">
         {Object.entries(limits).map(([key, value]) => (
           <label className="form-field" key={key}><span>{key}</span><Input type="number" min={key === "maxHops" ? 0 : 1} value={value} onChange={(e) => setLimits((current) => ({ ...current, [key]: Number(e.target.value) }))} /></label>

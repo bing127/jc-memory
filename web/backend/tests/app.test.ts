@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import WebSocket from "ws";
 
 import { buildApp } from "../src/app.js";
 
@@ -118,6 +119,57 @@ describe("control-plane BFF", () => {
     await app.close();
   });
 
+  test("proxies metrics as a normalized performance snapshot", async () => {
+    const upstreamFetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input)).toBe("http://127.0.0.1:8787/metrics");
+      expect(new Headers(init?.headers).get("x-api-key")).toBeNull();
+      return new Response([
+        'jc_memory_requests_total{operation="recall",transport="http"} 2',
+        'jc_memory_requests_total{operation="recall",transport="http",outcome="success"} 2',
+        'jc_memory_request_duration_seconds_bucket{operation="recall",transport="http",le="0.025"} 2',
+        'jc_memory_request_duration_seconds_bucket{operation="recall",transport="http",le="+Inf"} 2',
+        "jc_memory_requests_in_flight 1",
+        "jc_memory_server_ready 1",
+      ].join("\n"));
+    });
+    const app = await createApp(upstreamFetch);
+    const cookie = await login(app);
+    const instanceId = await createInstance(app, cookie);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/v1/instances/${instanceId}/metrics`,
+      headers: { cookie },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      inFlight: 1,
+      operations: [{ operation: "recall", total: 2, success: 2, latencyMs: { p95: 25 } }],
+    });
+    expect(response.body).not.toContain(apiKey);
+    expect(upstreamFetch).toHaveBeenCalledOnce();
+    await app.close();
+  });
+
+  test("closes an unauthenticated instance WebSocket with a policy violation", async () => {
+    const app = await createApp(vi.fn());
+    await app.listen({ host: "127.0.0.1", port: 0 });
+    const address = app.server.address();
+    if (!address || typeof address === "string") throw new Error("测试服务器未监听 TCP 地址");
+
+    const socket = new WebSocket(
+      `ws://127.0.0.1:${address.port}/api/v1/instances/00000000-0000-0000-0000-000000000001/stream`,
+    );
+    const close = await new Promise<{ code: number; reason: string }>((resolve, reject) => {
+      socket.once("close", (code, reason) => resolve({ code, reason: reason.toString() }));
+      socket.once("error", reject);
+    });
+
+    expect(close).toEqual({ code: 1008, reason: "unauthorized" });
+    await app.close();
+  });
+
   test("rejects unsafe instance URLs before saving credentials", async () => {
     const app = await createApp(vi.fn());
     const cookie = await login(app);
@@ -194,6 +246,72 @@ describe("control-plane BFF", () => {
     await app.close();
   });
 
+  test("validates Observe State and preserves it while binding the instance scope", async () => {
+    const state = {
+      key: "project.deployment_strategy",
+      value: { strategy: "canary", percentage: 10 },
+      reason: "降低全量发布风险",
+    };
+    const upstreamFetch = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      const envelope = JSON.parse(String(init?.body));
+      expect(envelope.command.payload.fragment.scope).toEqual(envelope.access_scope);
+      expect(envelope.command.payload.fragment.metadata.state).toEqual(state);
+      return Response.json({
+        api_version: "v1",
+        request_id: envelope.request_id,
+        response: { response: "observe", payload: { created: true } },
+      });
+    });
+    const app = await createApp(upstreamFetch);
+    const cookie = await login(app);
+    const instanceId = await createInstance(app, cookie);
+    const fragment = fragmentFixture("00000000-0000-0000-0000-000000000111");
+    fragment.metadata = { state };
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/v1/instances/${instanceId}/memory/observe`,
+      headers: { cookie, origin },
+      payload: { scope: emptyScope(), fragment },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(upstreamFetch).toHaveBeenCalledOnce();
+    await app.close();
+  });
+
+  test.each([
+    ["包含空格的 key", { key: "project deployment", value: "canary", reason: "有效原因" }],
+    ["空原因", { key: "project.deployment_strategy", value: "canary", reason: "   " }],
+    ["超长原因", { key: "project.deployment_strategy", value: "canary", reason: "x".repeat(2_049) }],
+    ["原文超长原因", { key: "project.deployment_strategy", value: "canary", reason: `${"x".repeat(2_048)} ` }],
+  ])("rejects Observe State with %s", async (_case, state) => {
+    const upstreamFetch = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      const envelope = JSON.parse(String(init?.body));
+      return Response.json({
+        api_version: "v1",
+        request_id: envelope.request_id,
+        response: { response: "observe", payload: { created: true } },
+      });
+    });
+    const app = await createApp(upstreamFetch);
+    const cookie = await login(app);
+    const instanceId = await createInstance(app, cookie);
+    const fragment = fragmentFixture("00000000-0000-0000-0000-000000000112");
+    fragment.metadata = { state };
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/v1/instances/${instanceId}/memory/observe`,
+      headers: { cookie, origin },
+      payload: { scope: emptyScope(), fragment },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(upstreamFetch).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   test("binds every Commit fragment to the selected instance scope", async () => {
     const upstreamFetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       expect(String(input)).toBe("http://127.0.0.1:8787/v1/memory/commit");
@@ -223,6 +341,32 @@ describe("control-plane BFF", () => {
 
     expect(response.statusCode).toBe(200);
     expect(upstreamFetch).toHaveBeenCalledOnce();
+    await app.close();
+  });
+
+  test("rejects Commit fragments with invalid State metadata", async () => {
+    const upstreamFetch = vi.fn();
+    const app = await createApp(upstreamFetch);
+    const cookie = await login(app);
+    const instanceId = await createInstance(app, cookie);
+    const fragment = fragmentFixture("00000000-0000-0000-0000-000000000202");
+    fragment.metadata = {
+      state: {
+        key: "project deployment",
+        value: "canary",
+        reason: "有效原因",
+      },
+    };
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/v1/instances/${instanceId}/memory/commit`,
+      headers: { cookie, origin },
+      payload: { scope: emptyScope(), fragments: [fragment] },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(upstreamFetch).not.toHaveBeenCalled();
     await app.close();
   });
 
@@ -293,6 +437,55 @@ describe("control-plane BFF", () => {
       await app.close();
     },
   );
+
+  test("maps optional Mutation State without changing its JSON value", async () => {
+    const targetFragmentId = "00000000-0000-0000-0000-000000000301";
+    const state = {
+      key: "project.deployment_strategy",
+      value: ["canary", { percentage: 10 }],
+      reason: "  修正后的可信状态  ",
+    };
+    const upstreamFetch = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      const envelope = JSON.parse(String(init?.body));
+      expect(envelope.command.payload.state).toEqual(state);
+      return Response.json({
+        api_version: "v1",
+        request_id: envelope.request_id,
+        response: { response: "mutation", payload: { action: "correct", target_fragment_id: targetFragmentId } },
+      });
+    });
+    const app = await createApp(upstreamFetch);
+    const cookie = await login(app);
+    const instanceId = await createInstance(app, cookie);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/v1/instances/${instanceId}/memory/correct`,
+      headers: { cookie, origin },
+      payload: {
+        scope: emptyScope(),
+        targetFragmentId,
+        content: { type: "text", text: "修正内容" },
+        source: {
+          sourceType: "user",
+          sourceId: "control-plane-owner",
+          actorId: null,
+          observerId: null,
+          toolId: null,
+          uri: null,
+        },
+        perspective: "first_person",
+        occurredAt: "2026-08-01T00:00:00.000Z",
+        verificationMethod: "manual",
+        reason: "来源信息已更新",
+        state,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(upstreamFetch).toHaveBeenCalledOnce();
+    await app.close();
+  });
 
   test("rejects mutation commands without an auditable reason", async () => {
     const upstreamFetch = vi.fn();

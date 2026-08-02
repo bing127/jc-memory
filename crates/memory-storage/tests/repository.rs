@@ -193,6 +193,51 @@ async fn fragment_lookup_requires_the_exact_scope_before_decoding() {
 }
 
 #[tokio::test]
+async fn batch_fragment_lookup_preserves_input_order_and_rejects_foreign_scope() {
+    let harness = Harness::new().await;
+    let scope = full_scope();
+    let first = Harness::text_event(scope.clone(), "first scoped fragment", Vec::new());
+    let second = Harness::text_event(scope.clone(), "second scoped fragment", Vec::new());
+    let foreign = Harness::text_event(
+        MemoryScope::new(NamespaceId::new()),
+        "foreign scoped fragment",
+        Vec::new(),
+    );
+    harness
+        .repository
+        .append_batch(&[first.clone(), second.clone(), foreign.clone()])
+        .await
+        .expect("append batch lookup fixtures");
+
+    let ids = [second.fragment_id, first.fragment_id];
+    let fragments = harness
+        .repository
+        .get_fragments_in_scope(&scope, &ids)
+        .await
+        .expect("batch read exact scoped fragments");
+    assert_eq!(
+        fragments
+            .iter()
+            .map(|fragment| fragment.id)
+            .collect::<Vec<_>>(),
+        ids
+    );
+
+    let error = harness
+        .repository
+        .get_fragments_in_scope(&scope, &[first.fragment_id, foreign.fragment_id])
+        .await
+        .expect_err("foreign fragment must not cross the requested scope");
+    assert!(matches!(
+        error,
+        StorageError::NotFound {
+            entity: "fragment",
+            ..
+        }
+    ));
+}
+
+#[tokio::test]
 async fn append_rejects_a_stage_that_disagrees_with_the_fragment() {
     let harness = Harness::new().await;
     let mut draft = Harness::text_event(full_scope(), "stage invariant", Vec::new());
@@ -425,6 +470,34 @@ async fn recent_candidates_respect_scope_cutoff_order_and_limit() {
             .expect("honor zero candidate limit")
             .is_empty()
     );
+}
+
+#[tokio::test]
+async fn recent_candidates_read_authoritative_content_without_fts_dependency() {
+    let harness = Harness::new().await;
+    let scope = full_scope();
+    let draft = Harness::text_event(scope.clone(), "权威最近候选不能依赖派生 FTS", Vec::new());
+    harness
+        .repository
+        .append(&draft)
+        .await
+        .expect("写入权威候选");
+    sqlx::query("DELETE FROM fragment_fts WHERE fragment_id = ?1")
+        .bind(draft.fragment_id.to_string())
+        .execute(harness.store.pool())
+        .await
+        .expect("删除派生 FTS 行");
+
+    let candidates = harness
+        .repository
+        .recent_fragments(&scope, None, 10)
+        .await
+        .expect("从权威内容读取最近候选");
+
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].fragment_id, draft.fragment_id);
+    assert_eq!(candidates[0].event_id, draft.id);
+    assert_eq!(candidates[0].body, "权威最近候选不能依赖派生 FTS");
 }
 
 #[tokio::test]

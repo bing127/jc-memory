@@ -93,6 +93,88 @@ async fn real_server_binary_persists_authority_across_clean_restart() {
     restarted.stop().await;
 }
 
+#[tokio::test]
+async fn real_server_binary_returns_non_empty_current_and_historical_state() {
+    let directory = tempfile::tempdir().expect("创建二进制 State E2E 数据目录");
+    let (mut server, http) = start_ready_server(directory.path()).await;
+    let blue_fragment_id = "00000000-0000-7000-8000-000000000311";
+    let canary_evidence_id = "00000000-0000-7000-8000-000000000351";
+
+    let (status, blue) = http_json(
+        http,
+        "POST",
+        "/v1/memory/observe",
+        Some(&state_observe_request(
+            "binary-state-blue",
+            blue_fragment_id,
+            "blue_green",
+            "生产环境先使用蓝绿发布",
+            "2026-07-30T00:00:00Z",
+            None,
+        )),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let blue_event_id = blue["response"]["payload"]["event_id"]
+        .as_str()
+        .expect("blue_green Observe 返回 Event ID");
+    let (status, canary) = http_json(
+        http,
+        "POST",
+        "/v1/memory/observe",
+        Some(&state_observe_request(
+            "binary-state-canary",
+            "00000000-0000-7000-8000-000000000312",
+            "canary",
+            "验证通过后切换为金丝雀发布",
+            "2026-07-31T00:00:00Z",
+            Some((canary_evidence_id, blue_fragment_id)),
+        )),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let canary_event_id = canary["response"]["payload"]["event_id"]
+        .as_str()
+        .expect("canary Observe 返回 Event ID");
+    let (status, recalled) = http_json(
+        http,
+        "POST",
+        "/v1/memory/recall",
+        Some(&state_recall_request()),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let packet = &recalled["response"]["payload"];
+
+    assert_eq!(
+        packet["current_states"][0]["key"],
+        "project.deployment_strategy"
+    );
+    assert_eq!(packet["current_states"][0]["value"], "canary");
+    assert_eq!(packet["historical_states"][0]["value"], "blue_green");
+    assert_eq!(
+        packet["current_states"][0]["reason"],
+        "验证通过后切换为金丝雀发布"
+    );
+    assert_eq!(
+        packet["current_states"][0]["source_event_id"],
+        canary_event_id
+    );
+    assert_eq!(
+        packet["historical_states"][0]["source_event_id"],
+        blue_event_id
+    );
+    assert_eq!(
+        packet["current_states"][0]["evidence"][0]["evidence_ref_id"],
+        canary_evidence_id
+    );
+    assert_eq!(
+        contract_state_values("recall-current-state.json"),
+        json!(["canary", "blue_green"])
+    );
+    server.stop().await;
+}
+
 async fn start_ready_server(data_dir: &Path) -> (ServerProcess, SocketAddr) {
     let mut last_error = String::new();
     for _ in 0..5 {
@@ -224,6 +306,102 @@ fn observe_request() -> Value {
             }
         }
     })
+}
+
+fn state_observe_request(
+    request_id: &str,
+    fragment_id: &str,
+    value: &str,
+    reason: &str,
+    occurred_at: &str,
+    evidence: Option<(&str, &str)>,
+) -> Value {
+    let evidence = evidence
+        .into_iter()
+        .map(|(id, fragment_id)| {
+            json!({
+                "id": id,
+                "fragment_id": fragment_id,
+                "event_id": null,
+                "method": "manual",
+                "note": "人工确认部署策略变更"
+            })
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "api_version": API_VERSION_V1,
+        "request_id": request_id,
+        "access_scope": scope_json(),
+        "command": {
+            "command": "observe",
+            "payload": {
+                "fragment": {
+                    "id": fragment_id,
+                    "scope": scope_json(),
+                    "session_id": null,
+                    "trace_id": null,
+                    "kind": "fact",
+                    "content": {"type": "text", "text": format!("部署策略 {value}")},
+                    "source": {
+                        "source_type": "user",
+                        "source_id": "binary-state-e2e",
+                        "actor_id": null,
+                        "observer_id": null,
+                        "tool_id": null,
+                        "uri": null
+                    },
+                    "perspective": "first_person",
+                    "occurred_at": occurred_at,
+                    "observed_at": occurred_at,
+                    "confidence": 1.0,
+                    "importance": 0.5,
+                    "validity": "unverified",
+                    "security_label": "internal",
+                    "evidence": evidence,
+                    "metadata": {"state": {
+                        "key": "project.deployment_strategy",
+                        "value": value,
+                        "reason": reason
+                    }}
+                }
+            }
+        }
+    })
+}
+
+fn state_recall_request() -> Value {
+    json!({
+        "api_version": API_VERSION_V1,
+        "request_id": "binary-state-recall",
+        "access_scope": scope_json(),
+        "command": {
+            "command": "recall",
+            "payload": {
+                "mode": "current_state",
+                "text": "project.deployment_strategy",
+                "entities": [],
+                "at_time": null,
+                "limits": {
+                    "max_seeds": 4,
+                    "max_neighbors": 4,
+                    "max_hops": 2,
+                    "max_nodes": 8,
+                    "timeout_ms": 500
+                }
+            }
+        }
+    })
+}
+
+fn contract_state_values(name: &str) -> Value {
+    let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../sdk/contracts/fixtures")
+        .join(name);
+    let fixture: Value = serde_json::from_slice(&std::fs::read(source).unwrap()).unwrap();
+    json!([
+        fixture["response"]["response"]["payload"]["current_states"][0]["value"],
+        fixture["response"]["response"]["payload"]["historical_states"][0]["value"],
+    ])
 }
 
 fn stats_request() -> MemoryRequest {

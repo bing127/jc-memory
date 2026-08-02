@@ -1,6 +1,8 @@
 # M1 存储架构
 
-本文以 M1 本地可信存储为基础，并同步记录截至 M3 的 Schema 与恢复边界。Schema 中的表或字段不代表对应上层业务调用链已经接通；当前嵌入式门面已公开 Observe、Fragment、Health、Recall、Explain、Stats、Mutation、Quarantine 审查和 Snapshot/Restore/Rebuild。
+本文以 M1 本地可信存储为基础，并同步记录截至 `0006_trusted_memory_projection.sql` 的 Schema 与恢复边界。Schema 中的表或字段不代表对应上层业务调用链已经接通；当前嵌入式门面已公开 Observe、Fragment、Health、Recall、Explain、Stats、Mutation、Quarantine 审查和 Snapshot/Restore/Rebuild。
+
+疆诚记忆的权威记录和派生投影统一使用 SQLite；项目没有 PostgreSQL 或 MySQL 存储后端。文档和测试中出现的 PostgreSQL/MySQL 仅是被记忆的业务内容。
 
 ## 1. 权威边界
 
@@ -39,9 +41,9 @@ Observe 只对 SQLite Busy/Locked 进行最多 3 次尝试，并为每次重试�
 | `blob_refs` | `(blob_id, owner_type, owner_id)` | 记录权威行对 Blob 的正引用计数，供审计和 GC 判断可达性 |
 | `fragment_fts` | FTS5 虚表，无关系主键 | 保存 `fragment_id`、`scope_key` 和可搜索 body；完全派生，可从 inline Fragment 内容重建 |
 
-### 3.2 后续里程碑的 Schema 预留
+### 3.2 派生与后续能力表
 
-这些表由初始 Migration 创建，但 M1 没有声称已经实现相应认知、召回、Runtime 或服务能力。
+这些表跨多个 Migration 建立。State、Point、Edge 与 Projection Checkpoint 已接入当前可信记忆闭环；其他表是否存在不代表对应认知、Runtime 或服务调用链已经接通。
 
 | 领域 | 表 | 主键与主要关系 |
 | --- | --- | --- |
@@ -49,6 +51,7 @@ Observe 只对 SQLite Busy/Locked 进行最多 3 次尝试，并为每次重试�
 | 点线面 | `points`、`edges`、`surfaces`、`surface_members` | Point 引用来源 Fragment；Edge 引用首尾 Point、来源 Fragment 和可选 ModelVersion；Surface 引用可选 ModelVersion；成员表以 `(surface_id, point_id, version)` 为主键 |
 | 实体 | `entities`、`entity_aliases` | Entity 引用来源 Fragment；Alias 以 `(entity_id, alias)` 为主键并引用 Entity 和来源 Fragment |
 | 状态 | `states`、`state_versions` | State 指向当前版本；版本引用 State、来源 Fragment 和可选前序版本 |
+| 投影进度 | `projection_checkpoints` | 以 `(scope_key, projector)` 为主键，分别记录 State 与 Graph 已提交的 Event sequence |
 | 召回 | `recall_sessions`、`recall_activations` | Session 以 `id` 为主键；Activation 以 `(recall_session_id, point_id, depth)` 为主键并引用 Session、Point 和可选 Edge |
 | Runtime | `transitions`、`hypotheses`、`capabilities`、`approvals`、`decisions`、`actions`、`outcomes`、`capability_runs` | Transition 是流程根；其余表分别引用 Transition、Hypothesis、Approval、Capability、Action、来源 Fragment 等关系 |
 | 治理与恢复 | `audit_logs`、`snapshots`、`quarantine`、`consolidation_jobs` | 各自以 `id` 为主键；Quarantine 引用 Fragment；其余保存 Scope 下的审计、快照与任务元数据 |
@@ -64,6 +67,8 @@ M1 活跃索引包括 Fragment 的 Scope/occurred time、Scope/observed time、k
 - `idx_recall_sessions_scope_started`、`idx_recall_sessions_query`；
 - `idx_transitions_trace`、`idx_capabilities_scope_kind_version`、`idx_approvals_scope_status`；
 - `idx_audit_logs_scope_created`、`idx_snapshots_scope_created`、`idx_quarantine_scope_status`、`idx_consolidation_jobs_scope_status`。
+
+`0006_trusted_memory_projection.sql` 另外为 State 来源 Fragment、来源 Event、有效时间和 Point 来源 Fragment 建立索引。`projection_checkpoints` 的主键同时隔离精确 Scope 和 Projector，State 与 Graph 可以独立追赶，不能共享或跨 Tenant 复用进度。
 
 这些索引提供物理过滤路径，但不替代后续服务层的 AccessContext 与权限判断。
 
@@ -112,6 +117,8 @@ BlobId 永远是原始明文的 lowercase SHA-256，与压缩和加密选项无�
 | 引用的 Blob 缺失或损坏 | `audit` 报告 missing/corrupt；读取校验失败 | 不伪造或返回损坏内容 |
 | FTS 内容不一致 | `audit` 报告 mismatch | 权威 Fragment/Event 不变 |
 | FTS rebuild 在 swap 前中断 | 同一事务回滚临时重建 | 旧 FTS 继续可用 |
+| State/Graph 批次在 Checkpoint 前失败 | 同一 SQLite 写事务回滚派生行和 Checkpoint | 权威 Event 不变，下次从原 sequence 重放 |
+| 派生层阶段重建中断 | 保留 `.maintenance/` 中最近完成阶段 | 恢复后按固定顺序续跑并再次校验权威哈希 |
 | SQLite Busy/Locked | Busy Timeout 后有限重试 | 不转化为冲突或静默丢写 |
 | Migration 失败 | SQLx Migration 返回失败并关闭池 | 不把失败版本记录为成功 |
 
@@ -119,14 +126,33 @@ GC 的默认策略是 dry run。实际删除必须显式使用 `GcPolicy::delete
 
 ## 8. Migration 策略
 
-- Migration 以递增编号嵌入二进制，Engine 打开数据库时自动运行；当前 Schema version 为 3。
+- Migration 以递增编号嵌入二进制，Engine 打开数据库时自动运行；当前 Schema version 为 6。
 - `0001_initial.sql` 建立权威存储、认知/Runtime 预留表、FTS 与基础治理表；`0002_consolidation_derived.sql` 增加可版本化 Surface、巩固产物和冷层索引；`0003_governance.sql` 增加目标摘要、请求结果、治理凭证和可恢复 Retention 计划。
+- `0004_runtime.sql` 与 `0005_runtime_control.sql` 扩展 Runtime 持久化和控制状态；`0006_trusted_memory_projection.sql` 增加 State 原因、来源 Event、精确 Scope Projection Checkpoint 以及 State/Point 读取索引。
 - `_sqlx_migrations` 是已应用版本的判定来源；重复打开同一路径必须幂等。
 - 已发布 Migration 不原地修改；后续变更添加新版本，并为升级和失败回滚编写测试。
 - 破坏性迁移必须先定义备份、校验和回滚路径，不能依赖 FTS 或其他派生表作为恢复来源。
 - 权威字段迁移后必须重新验证内容哈希、外键和完整性；派生索引可以在提交后重建。
 
-## 9. 本地数据目录
+## 9. 可信投影与固定重建顺序
+
+State 与 Graph Projector 都按精确 Scope 和 Event sequence 读取权威 Event。每个批次在一个 SQLite 写事务内完成派生行写入与 `projection_checkpoints` 推进；任一校验、SQL 或 Failpoint 失败都会同时回滚二者。Recall 在自身 deadline 内分别追平 State 和 Graph，Checkpoint 损坏或超时会返回结构化错误，不以空 Packet 伪装成功。
+
+Point ID 使用来源 Fragment ID 的强类型表示，Edge ID 使用产生关系的 Mutation Event ID，因此相同权威输入在重启、重放和 Rebuild 后得到相同标识。State ID 使用首次声明该 key 的来源 Fragment ID，StateVersion ID 使用各版本来源 Fragment ID；精确 Scope 与 State key 的唯一约束阻止跨 Scope 或跨 key 复用。
+
+`rebuild_derived` 对单个精确 Scope 获取维护 Lease，清理该 Scope 的 State、Point、Edge 与 Projection Checkpoint，然后按以下固定顺序执行：
+
+1. State Projection；
+2. Graph Projection；
+3. FTS；
+4. Embedding 契约检查；
+5. Edge Candidate 契约检查；
+6. Surface Member 契约检查；
+7. Summary/Cache 契约检查。
+
+当前 State、Graph 和 FTS 阶段会生成实际本地派生数据；其余阶段只验证版本化本地表契约，不代表已经调用外部 Embedding 或模型服务。每个成功阶段后原子保存 Job Checkpoint，续跑时跳过已完成阶段；最终必须确认 Fragment、Event 与 EvidenceRef 的权威哈希未变化。
+
+## 10. 本地数据目录
 
 ```text
 <data_dir>/
@@ -144,7 +170,7 @@ GC 的默认策略是 dry run。实际删除必须显式使用 `GcPolicy::delete
 
 治理锁、暂存目录、Rebuild Checkpoint、`.gc.lock` 和 `.trash/` 均按需创建。调用方负责保护整个数据目录的文件系统权限、备份和磁盘容量。
 
-## 10. M1 验证方法与边界
+## 11. 验证方法与边界
 
 提交前使用以下命令验证：
 
@@ -158,4 +184,4 @@ git diff --check
 
 当前验证主机为 macOS 26.6（Apple Silicon，`aarch64-apple-darwin`），Rust `1.97.1`。系统 `sqlite3` 为 3.51.0，独立 FTS5 探针成功；仓库 Migration/FTS 测试进一步验证了本项目调用路径。该记录不是 Linux、Windows、macOS x64 或移动平台的实机验证。
 
-最终测试数量和命令耗时在 Task 11 提交前以同一主机的最新门禁输出为准，并记录在 `CHANGELOG.md` 的 M1 验收条目中。
+Fixture、版本化 SDK 契约和本地真实 Rust Server E2E 分别记录，不能互相替代。缺少 SDK 工具链时脚本必须明确报告跳过；本地结果不代表外部云平台、Linux、Windows、macOS x64 或移动平台实机验证。

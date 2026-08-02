@@ -22,6 +22,9 @@ serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 
+[build-dependencies]
+pyo3-build-config.workspace = true
+
 [lints.rust]
 unsafe_code = "allow"
 missing_docs = "warn"

@@ -39,7 +39,7 @@ async fn observe_returns_authoritative_event_and_survives_reopen() {
     assert_eq!(health.status, HealthStatus::Healthy);
     assert!(health.database_ok);
     assert!(health.blob_store_ok);
-    assert_eq!(health.schema_version, 5);
+    assert_eq!(health.schema_version, 6);
 }
 
 #[tokio::test]

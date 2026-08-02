@@ -6,6 +6,7 @@ use jc_memory_protocol::{
     AccessContext, Decision, FragmentId, MemoryPacket, MemoryScope, Operation,
 };
 use jc_memory_security::{AclEngine, OutputGuard};
+use jc_memory_storage::ProjectedStateSet;
 
 use crate::{MemoryError, engine::short_hash};
 
@@ -43,4 +44,42 @@ pub(crate) fn validate_packet(
     OutputGuard
         .filter_and_assert(context, operation, resource, packet, fragment_scopes)
         .map_err(MemoryError::SecurityInvariantViolation)
+}
+
+pub(crate) fn register_projected_state_scopes(
+    resource: &MemoryScope,
+    states: &ProjectedStateSet,
+    fragment_scopes: &mut BTreeMap<FragmentId, MemoryScope>,
+) -> Result<(), MemoryError> {
+    for state in states.current.iter().chain(&states.history) {
+        for evidence in &state.evidence {
+            register_projection_fragment(resource, evidence.fragment_id, fragment_scopes)?;
+        }
+    }
+    for conflict in &states.conflicts {
+        for evidence in &conflict.evidence {
+            register_projection_fragment(resource, evidence.fragment_id, fragment_scopes)?;
+        }
+    }
+    for evidence in &states.evidence {
+        register_projection_fragment(resource, evidence.fragment_id, fragment_scopes)?;
+    }
+    Ok(())
+}
+
+fn register_projection_fragment(
+    resource: &MemoryScope,
+    fragment_id: FragmentId,
+    fragment_scopes: &mut BTreeMap<FragmentId, MemoryScope>,
+) -> Result<(), MemoryError> {
+    if fragment_scopes
+        .get(&fragment_id)
+        .is_some_and(|scope| scope != resource)
+    {
+        return Err(MemoryError::SecurityInvariantViolation(
+            jc_memory_security::SecurityInvariantViolation::FragmentScopeMismatch(fragment_id),
+        ));
+    }
+    fragment_scopes.insert(fragment_id, resource.clone());
+    Ok(())
 }

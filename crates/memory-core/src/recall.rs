@@ -2,17 +2,23 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
+    future::Future,
     str::FromStr as _,
+    time::{Duration, Instant},
 };
 
-use jc_memory_activation::{ExplainTrace, IndexedPoint, RecallEngine, RecallQuery, RecallResult};
+use chrono::Utc;
+use jc_memory_activation::{
+    ExplainTrace, IndexedPoint, RecallEngine, RecallEngineError, RecallQuery, RecallResult,
+    edge_kinds_for,
+};
 use jc_memory_graph::CognitivePoint;
 use jc_memory_protocol::{
     AccessContext, EpisodeView, EvidenceView, FragmentId, MemoryPacket, MemoryScope,
     MissingEvidence, Operation, PointId, PointView, RecallId, RecallMode, RecallPath,
     ValidityStatus,
 };
-use jc_memory_storage::QuarantineDisposition;
+use jc_memory_storage::{ProjectedStateSet, QuarantineDisposition, StateSelector};
 
 use crate::{MemoryEngine, MemoryError};
 
@@ -91,41 +97,120 @@ impl MemoryEngine {
         query: RecallQuery,
     ) -> Result<CoreRecall, MemoryError> {
         crate::security::authorize(context, operation, &query.scope)?;
-        let search_limit = u32::try_from(query.limits.max_nodes).unwrap_or(u32::MAX);
-        let mut hits_by_fragment: BTreeMap<_, _> = self
+        let timeout = Duration::from_millis(query.limits.timeout_ms);
+        let deadline = Instant::now() + timeout;
+        with_recall_deadline(
+            deadline,
+            self.execute_recall_inner(context, operation, query, deadline),
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_lines)]
+    async fn execute_recall_inner(
+        &self,
+        context: &AccessContext,
+        operation: Operation,
+        query: RecallQuery,
+        deadline: Instant,
+    ) -> Result<CoreRecall, MemoryError> {
+        self.catch_up_projections(&query.scope, deadline).await?;
+        let effective_at = query.at_time.unwrap_or_else(Utc::now);
+        let mut states = ProjectedStateSet::default();
+        let mut exact_state_loaded = false;
+        if matches!(
+            query.mode,
+            RecallMode::CurrentState | RecallMode::HistoricalState
+        ) {
+            states = self
+                .projection
+                .load_states(
+                    &query.scope,
+                    StateSelector::ExactKey(query.text.clone()),
+                    effective_at,
+                    query.limits.max_nodes,
+                )
+                .await?;
+            exact_state_loaded =
+                states.truncated || !states.current.is_empty() || !states.history.is_empty();
+        }
+        let state_nodes = states.current.len() + states.history.len();
+        let graph_budget = query.limits.max_nodes.saturating_sub(state_nodes);
+        let search_limit = u32::try_from(graph_budget).unwrap_or(u32::MAX);
+        let search_hits = self
             .repository
             .search_fts(&query.scope, &query.text, search_limit)
-            .await?
+            .await?;
+        let mut graph_seed_fragments = search_hits
+            .iter()
+            .take(query.limits.max_seeds)
+            .map(|hit| hit.fragment_id)
+            .collect::<Vec<_>>();
+        let mut hits_by_fragment: BTreeMap<_, _> = search_hits
             .into_iter()
             .map(|hit| (hit.fragment_id, hit))
             .collect();
         if query.mode != RecallMode::Exact {
-            for hit in self
+            let recent_hits = self
                 .repository
-                .recent_fragments(&query.scope, query.at_time, search_limit)
-                .await?
-            {
+                .recent_fragments(&query.scope, Some(effective_at), search_limit)
+                .await?;
+            if graph_seed_fragments.is_empty() {
+                graph_seed_fragments.extend(
+                    recent_hits
+                        .iter()
+                        .take(query.limits.max_seeds)
+                        .map(|hit| hit.fragment_id),
+                );
+            }
+            for hit in recent_hits {
                 hits_by_fragment.entry(hit.fragment_id).or_insert(hit);
             }
         }
-        let (derived_points, derived_edges) = self.derived_graph.read().await.snapshot();
         let mut fragment_scopes = BTreeMap::<FragmentId, MemoryScope>::new();
-        for indexed in &derived_points {
-            for fragment_id in &indexed.point.source_fragments {
-                fragment_scopes.insert(*fragment_id, indexed.point.scope.clone());
-            }
-        }
-        let mut point_candidates: BTreeMap<_, _> = derived_points
-            .into_iter()
-            .map(|indexed| (indexed.point.id, indexed))
-            .collect();
         let mut episodes = Vec::new();
         let mut evidence = Vec::new();
-        for hit in hits_by_fragment.into_values() {
-            let mut fragment = self
-                .repository
-                .get_fragment_in_scope(&query.scope, hit.fragment_id)
-                .await?;
+        let hits = hits_by_fragment.into_values().collect::<Vec<_>>();
+        let fragment_ids = hits.iter().map(|hit| hit.fragment_id).collect::<Vec<_>>();
+        let graph = self
+            .projection
+            .load_graph(
+                &query.scope,
+                &graph_seed_fragments,
+                edge_kinds_for(query.mode),
+                effective_at,
+                graph_budget,
+            )
+            .await?;
+        let mut point_candidates = BTreeMap::new();
+        for projected in graph.points {
+            for fragment_id in &projected.point.source_fragments {
+                fragment_scopes.insert(*fragment_id, projected.point.scope.clone());
+            }
+            point_candidates.insert(
+                projected.point.id,
+                IndexedPoint {
+                    point: projected.point,
+                    text: projected.text,
+                    entities: projected.entities,
+                },
+            );
+        }
+        let fragments = self
+            .repository
+            .get_fragments_in_scope(&query.scope, &fragment_ids)
+            .await?;
+        let mut fragments_by_id = fragments
+            .into_iter()
+            .map(|fragment| (fragment.id, fragment))
+            .collect::<BTreeMap<_, _>>();
+        for hit in hits {
+            let mut fragment = fragments_by_id.remove(&hit.fragment_id).ok_or_else(|| {
+                MemoryError::Storage(jc_memory_storage::StorageError::NotFound {
+                    entity: "fragment",
+                    id: hit.fragment_id.to_string(),
+                })
+            })?;
             fragment_scopes.insert(fragment.id, fragment.scope.clone());
             if fragment.validity == ValidityStatus::Quarantined {
                 match self
@@ -171,11 +256,40 @@ impl MemoryEngine {
         }
 
         let points_by_id = point_candidates.clone();
-        let engine =
-            RecallEngine::try_from_parts(point_candidates.into_values(), derived_edges, [])?;
-        let result = engine.recall(query.clone()).await?;
+        let engine = RecallEngine::try_from_parts(point_candidates.into_values(), graph.edges, [])?;
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(MemoryError::Recall(RecallEngineError::TimedOut));
+        }
+        let mut activation_query = query.clone();
+        activation_query.at_time = Some(effective_at);
+        activation_query.limits.max_nodes = graph_budget;
+        activation_query.limits.timeout_ms = u64::try_from(remaining.as_millis())
+            .unwrap_or(u64::MAX)
+            .max(1);
+        let result = engine.recall(activation_query).await?;
         let explain = engine.explain(&result, query.limits);
-        let packet = build_packet(&query, &result, &points_by_id, episodes, evidence)?;
+        if !exact_state_loaded {
+            let source_fragments = activated_fragment_ids(&result, &points_by_id)
+                .into_iter()
+                .collect::<Vec<_>>();
+            let remaining_nodes = query.limits.max_nodes.saturating_sub(result.points.len());
+            states = self
+                .projection
+                .load_states(
+                    &query.scope,
+                    StateSelector::SourceFragments(source_fragments),
+                    effective_at,
+                    remaining_nodes,
+                )
+                .await?;
+        }
+        crate::security::register_projected_state_scopes(
+            &query.scope,
+            &states,
+            &mut fragment_scopes,
+        )?;
+        let packet = build_packet(&query, &result, &points_by_id, episodes, evidence, states)?;
         crate::security::validate_packet(
             context,
             operation,
@@ -187,28 +301,37 @@ impl MemoryEngine {
     }
 }
 
+async fn with_recall_deadline<T, F>(deadline: Instant, future: F) -> Result<T, MemoryError>
+where
+    F: Future<Output = Result<T, MemoryError>>,
+{
+    tokio::time::timeout_at(deadline.into(), future)
+        .await
+        .map_err(|_| MemoryError::Recall(RecallEngineError::TimedOut))?
+}
+
 fn build_packet(
     query: &RecallQuery,
     result: &RecallResult,
     points_by_id: &BTreeMap<PointId, IndexedPoint>,
     episodes: Vec<EpisodeView>,
-    evidence: Vec<EvidenceView>,
+    mut evidence: Vec<EvidenceView>,
+    states: ProjectedStateSet,
 ) -> Result<MemoryPacket, serde_json::Error> {
     let mut packet = MemoryPacket::empty(RecallId::new(), query.mode);
-    let activated_fragment_ids: BTreeSet<_> = result
-        .points
-        .iter()
-        .filter_map(|activated| points_by_id.get(&activated.point_id))
-        .flat_map(|indexed| indexed.point.source_fragments.iter().copied())
-        .collect();
+    let activated_fragment_ids = activated_fragment_ids(result, points_by_id);
     packet.episodes = episodes
         .into_iter()
         .filter(|episode| activated_fragment_ids.contains(&episode.fragment_id))
         .collect();
-    packet.evidence = evidence
-        .into_iter()
-        .filter(|item| activated_fragment_ids.contains(&item.fragment_id))
-        .collect();
+    evidence.retain(|item| activated_fragment_ids.contains(&item.fragment_id));
+    evidence.extend(states.evidence);
+    evidence.sort_by_key(|item| (item.fragment_id, item.event_id, item.evidence_ref_id));
+    evidence.dedup_by_key(|item| (item.fragment_id, item.event_id, item.evidence_ref_id));
+    packet.evidence = evidence;
+    packet.current_states = states.current;
+    packet.historical_states = states.history;
+    packet.conflicts.extend(states.conflicts);
     packet.points = result
         .points
         .iter()
@@ -251,7 +374,7 @@ fn build_packet(
     packet.coverage.max_depth = result.trace.max_depth;
     packet.coverage.evidence_count = packet.evidence.len();
     packet.coverage.missing_evidence_count = packet.missing_evidence.len();
-    packet.coverage.truncated = result.trace.truncated;
+    packet.coverage.truncated = result.trace.truncated || states.truncated;
     let (confidence_sum, confidence_count) = packet
         .points
         .iter()
@@ -267,6 +390,18 @@ fn build_packet(
     Ok(packet)
 }
 
+fn activated_fragment_ids(
+    result: &RecallResult,
+    points_by_id: &BTreeMap<PointId, IndexedPoint>,
+) -> BTreeSet<FragmentId> {
+    result
+        .points
+        .iter()
+        .filter_map(|activated| points_by_id.get(&activated.point_id))
+        .flat_map(|indexed| indexed.point.source_fragments.iter().copied())
+        .collect()
+}
+
 fn fragment_entities(metadata: &serde_json::Map<String, serde_json::Value>) -> Vec<String> {
     metadata
         .get("entities")
@@ -276,4 +411,27 @@ fn fragment_entities(metadata: &serde_json::Map<String, serde_json::Value>) -> V
         .filter_map(serde_json::Value::as_str)
         .map(ToOwned::to_owned)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::with_recall_deadline;
+    use std::time::{Duration, Instant};
+
+    #[tokio::test]
+    async fn recall_deadline_covers_the_full_async_pipeline() {
+        let deadline = Instant::now() + Duration::from_millis(1);
+        let result = with_recall_deadline(deadline, async {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            Ok::<_, crate::MemoryError>(())
+        })
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(crate::MemoryError::Recall(
+                jc_memory_activation::RecallEngineError::TimedOut
+            ))
+        ));
+    }
 }

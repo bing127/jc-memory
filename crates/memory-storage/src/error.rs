@@ -1,3 +1,5 @@
+use crate::projection::ProjectorKind;
+
 /// Errors produced by the storage layer.
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {
@@ -70,6 +72,40 @@ pub enum StorageError {
     InjectedFailure {
         /// Stable failpoint identifier.
         point: &'static str,
+    },
+    /// 权威 Event 无法在不猜测数据的情况下生成投影。
+    #[error("corrupt {projector} projection event field {field} in scope {scope_hash}")]
+    ProjectionEventCorrupt {
+        /// 发现损坏 Event 的 Projector。
+        projector: ProjectorKind,
+        /// 无法可靠读取的稳定字段名。
+        field: &'static str,
+        /// 精确 Scope 的 canonical SHA-256。
+        scope_hash: String,
+    },
+    /// 持久化 Checkpoint 包含非法 sequence 或时间。
+    #[error("corrupt {projector} projection checkpoint in scope {scope_hash}")]
+    ProjectionCheckpointCorrupt {
+        /// Checkpoint 所属的 Projector。
+        projector: ProjectorKind,
+        /// 精确 Scope 的 canonical SHA-256。
+        scope_hash: String,
+    },
+    /// 投影 Event 或派生记录不属于请求的精确 Scope。
+    #[error("{projector} projection scope mismatch in scope {scope_hash}")]
+    ProjectionScopeMismatch {
+        /// 检测 Scope 不一致的 Projector。
+        projector: ProjectorKind,
+        /// 请求 Scope 的 canonical SHA-256。
+        scope_hash: String,
+    },
+    /// `StateVersion` 链违反单一当前版本等结构不变量。
+    #[error("corrupt state chain field {field} in scope {scope_hash}")]
+    StateChainCorrupt {
+        /// 无法满足不变量的稳定字段名。
+        field: &'static str,
+        /// 精确 Scope 的 canonical SHA-256。
+        scope_hash: String,
     },
 }
 

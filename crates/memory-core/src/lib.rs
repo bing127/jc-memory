@@ -7,6 +7,7 @@ mod engine;
 mod health;
 mod maintenance;
 mod mutation;
+mod projector;
 mod quarantine;
 mod recall;
 mod security;

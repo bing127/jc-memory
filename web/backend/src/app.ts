@@ -1,5 +1,6 @@
 import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
+import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 
 import { createAuthService, registerSessionRoutes } from "./auth.js";
@@ -47,6 +48,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
 
   app.addHook("onClose", async () => database.close());
   await app.register(cookie);
+  await app.register(websocket);
   await app.register(cors, {
     origin: options.config.allowedOrigins,
     credentials: true,

@@ -278,6 +278,130 @@ fn validate_response(response: &Value, kind: &str, path: &Path) -> Result<(), Sd
             path.display()
         )));
     }
+    if matches!(kind, "recall_current_state" | "recall_historical_state") {
+        validate_state_packet(object, path)?;
+    }
+    Ok(())
+}
+
+fn validate_state_packet(
+    response: &serde_json::Map<String, Value>,
+    path: &Path,
+) -> Result<(), SdkContractError> {
+    let payload = response
+        .get("response")
+        .and_then(Value::as_object)
+        .and_then(|response| response.get("payload"))
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            SdkContractError::Invalid(format!(
+                "State Fixture 缺少 Recall payload: {}",
+                path.display()
+            ))
+        })?;
+    let mut has_evidence_ref_id = false;
+    for field in ["current_states", "historical_states"] {
+        let states = payload
+            .get(field)
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                SdkContractError::Invalid(format!("State Fixture 缺少 {field}: {}", path.display()))
+            })?;
+        if states.is_empty() {
+            return Err(SdkContractError::Invalid(format!(
+                "State Fixture {field} 不得为空: {}",
+                path.display()
+            )));
+        }
+        for state in states {
+            validate_state_item(state, field, path, &mut has_evidence_ref_id)?;
+        }
+    }
+    if !has_evidence_ref_id {
+        return Err(SdkContractError::Invalid(format!(
+            "State Fixture 缺少 EvidenceRef ID: {}",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
+fn validate_state_item(
+    state: &Value,
+    field: &str,
+    path: &Path,
+    has_evidence_ref_id: &mut bool,
+) -> Result<(), SdkContractError> {
+    let state = state.as_object().ok_or_else(|| {
+        SdkContractError::Invalid(format!(
+            "State Fixture {field} 条目必须是对象: {}",
+            path.display()
+        ))
+    })?;
+    for id_field in ["state_id", "version_id", "source_event_id"] {
+        if state
+            .get(id_field)
+            .and_then(Value::as_str)
+            .is_none_or(str::is_empty)
+        {
+            return Err(SdkContractError::Invalid(format!(
+                "State Fixture {field} 缺少 {id_field}: {}",
+                path.display()
+            )));
+        }
+    }
+    for text_field in ["key", "reason"] {
+        if state
+            .get(text_field)
+            .and_then(Value::as_str)
+            .is_none_or(str::is_empty)
+        {
+            return Err(SdkContractError::Invalid(format!(
+                "State Fixture {field} 缺少 {text_field}: {}",
+                path.display()
+            )));
+        }
+    }
+    if state.get("value").is_none_or(Value::is_null) {
+        return Err(SdkContractError::Invalid(format!(
+            "State Fixture {field} 缺少 value: {}",
+            path.display()
+        )));
+    }
+    let evidence = state
+        .get("evidence")
+        .and_then(Value::as_array)
+        .filter(|evidence| !evidence.is_empty())
+        .ok_or_else(|| {
+            SdkContractError::Invalid(format!(
+                "State Fixture {field} 缺少 Evidence ID: {}",
+                path.display()
+            ))
+        })?;
+    for item in evidence {
+        let item = item.as_object().ok_or_else(|| {
+            SdkContractError::Invalid(format!(
+                "State Fixture {field} Evidence 必须是对象: {}",
+                path.display()
+            ))
+        })?;
+        for id_field in ["fragment_id", "event_id"] {
+            if item
+                .get(id_field)
+                .and_then(Value::as_str)
+                .is_none_or(str::is_empty)
+            {
+                return Err(SdkContractError::Invalid(format!(
+                    "State Fixture {field} Evidence 缺少 {id_field}: {}",
+                    path.display()
+                )));
+            }
+        }
+        *has_evidence_ref_id |= item
+            .get("evidence_ref_id")
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.is_empty());
+    }
     Ok(())
 }
 

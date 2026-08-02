@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 
 import { AppShell } from "./components/app-shell.js";
@@ -11,6 +11,10 @@ import { MemoryLabPage } from "./pages/memory-lab-page.js";
 import { OverviewPage } from "./pages/overview-page.js";
 import { CapabilitiesPage } from "./pages/capabilities-page.js";
 import { RuntimePage } from "./pages/runtime-page.js";
+
+const PerformancePage = lazy(() =>
+  import("./pages/performance-page.js").then((module) => ({ default: module.PerformancePage })),
+);
 
 export function App() {
   const [client] = useState(
@@ -90,6 +94,13 @@ function AuthenticatedApp() {
         ))}
         {instances.data.map((instance) => (
           <Route key={`${instance.id}-runtime`} path={`/instances/${instance.id}/runtime`} element={<RuntimePage instance={instance} />} />
+        ))}
+        {instances.data.map((instance) => (
+          <Route
+            key={`${instance.id}-performance`}
+            path={`/instances/${instance.id}/performance`}
+            element={<Suspense fallback={<div className="app-loading" role="status">正在加载性能图表</div>}><PerformancePage instance={instance} /></Suspense>}
+          />
         ))}
         <Route path="/capabilities" element={<CapabilitiesPage />} />
         <Route path="*" element={<Navigate to={instances.data[0] ? `/instances/${instances.data[0].id}/overview` : "/instances"} replace />} />

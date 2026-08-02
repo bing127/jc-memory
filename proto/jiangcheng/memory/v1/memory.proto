@@ -212,6 +212,13 @@ message RecallCommand {
 // StatsCommand 读取当前授权 Scope 的权威记录统计。
 message StatsCommand {}
 
+// StateDeclaration 保存调用方显式提供的状态值与原因。
+message StateDeclaration {
+  string key = 1 [json_name = "key"];
+  JsonValue value = 2 [json_name = "value"];
+  string reason = 3 [json_name = "reason"];
+}
+
 // MutationCommand 描述纠正或失效一条权威 Fragment 的变更输入。
 message MutationCommand {
   string target_fragment_id = 1 [json_name = "targetFragmentId"];
@@ -221,6 +228,7 @@ message MutationCommand {
   google.protobuf.Timestamp occurred_at = 5 [json_name = "occurredAt"];
   VerificationMethod verification_method = 6 [json_name = "verificationMethod"];
   string reason = 7 [json_name = "reason"];
+  optional StateDeclaration state = 8 [json_name = "state"];
 }
 
 // RequestEnvelope 是所有命令共享的稳定请求外壳。
@@ -329,6 +337,8 @@ message StateView {
   optional google.protobuf.Timestamp valid_to = 6 [json_name = "validTo"];
   ValidityStatus validity = 7 [json_name = "validity"];
   repeated EvidenceView evidence = 8 [json_name = "evidence"];
+  optional string reason = 9 [json_name = "reason"];
+  optional string source_event_id = 10 [json_name = "sourceEventId"];
 }
 
 // SurfaceMemberPoint 保存 Surface 成员 Point 及其权重。

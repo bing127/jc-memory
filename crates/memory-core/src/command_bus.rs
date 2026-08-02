@@ -255,6 +255,7 @@ fn core_mutation(command: jc_memory_protocol::MutationCommand) -> crate::Mutatio
     crate::MutationCommand {
         target_fragment_id: command.target_fragment_id,
         content: command.content,
+        state: command.state,
         source: command.source,
         perspective: command.perspective,
         occurred_at: command.occurred_at,
@@ -348,10 +349,13 @@ impl CommandError {
             MemoryError::Conflict { .. } | MemoryError::Constraint { .. } => {
                 CommandErrorCode::Conflict
             }
-            MemoryError::Busy { .. } => CommandErrorCode::ResourceExhausted,
+            MemoryError::Busy { .. } | MemoryError::ProjectionTimedOut => {
+                CommandErrorCode::ResourceExhausted
+            }
             MemoryError::Event(_)
             | MemoryError::Identifier(_)
             | MemoryError::Edge(_)
+            | MemoryError::InvalidStateMutation { .. }
             | MemoryError::ReviewTargetNotQuarantined { .. }
             | MemoryError::EmptyReviewReason => CommandErrorCode::InvalidArgument,
             MemoryError::DataDirectory(_)
@@ -361,8 +365,69 @@ impl CommandError {
             | MemoryError::Recovery(_)
             | MemoryError::Recall(_)
             | MemoryError::Packet(_)
+            | MemoryError::ProjectionCheckpointCorrupt { .. }
+            | MemoryError::ProjectionScopeMismatch { .. }
+            | MemoryError::StateChainCorrupt { .. }
             | MemoryError::SecurityInvariantViolation(_) => CommandErrorCode::Internal,
         };
         Self::Engine { code, source }
+    }
+}
+
+#[cfg(test)]
+mod projection_error_tests {
+    use jc_memory_protocol::CommandErrorCode;
+    use jc_memory_storage::{ProjectorKind, StorageError};
+
+    use super::CommandError;
+    use crate::MemoryError;
+
+    #[test]
+    fn projection_errors_have_stable_safe_command_codes() {
+        assert_mapping(
+            MemoryError::ProjectionTimedOut,
+            CommandErrorCode::ResourceExhausted,
+        );
+        assert_mapping(
+            MemoryError::ProjectionCheckpointCorrupt {
+                source: StorageError::ProjectionCheckpointCorrupt {
+                    projector: ProjectorKind::State,
+                    scope_hash: "scope-blue_green".to_owned(),
+                },
+            },
+            CommandErrorCode::Internal,
+        );
+        assert_mapping(
+            MemoryError::ProjectionScopeMismatch {
+                source: StorageError::ProjectionScopeMismatch {
+                    projector: ProjectorKind::Graph,
+                    scope_hash: "scope-canary".to_owned(),
+                },
+            },
+            CommandErrorCode::Internal,
+        );
+        assert_mapping(
+            MemoryError::StateChainCorrupt {
+                source: StorageError::StateChainCorrupt {
+                    field: "current_version_id",
+                    scope_hash: "fragment-secret-content".to_owned(),
+                },
+            },
+            CommandErrorCode::Internal,
+        );
+    }
+
+    fn assert_mapping(source: MemoryError, expected: CommandErrorCode) {
+        let error = CommandError::engine(source);
+        assert_eq!(error.code(), expected);
+        let public = error.to_string();
+        for secret in [
+            "blue_green",
+            "canary",
+            "fragment-secret-content",
+            "test-api-key",
+        ] {
+            assert!(!public.contains(secret));
+        }
     }
 }

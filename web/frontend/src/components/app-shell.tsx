@@ -1,8 +1,9 @@
-import { Activity, Boxes, BrainCircuit, Database, LogOut, Menu, Server, Workflow, X } from "lucide-react";
+import { Activity, Boxes, BrainCircuit, Database, Gauge, LogOut, Menu, Server, Workflow, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 
 import type { InstanceSummary } from "../lib/contracts.js";
+import { InstanceStreamProvider } from "../lib/instance-stream.js";
 import { Button } from "./ui/button.js";
 
 interface AppShellProps {
@@ -58,6 +59,7 @@ export function AppShell({ instances, children, onLogout }: AppShellProps) {
               <NavLink to={`${basePath}/memory`}><BrainCircuit aria-hidden="true" />Memory Lab</NavLink>
               <div className="nav-section">RUNTIME</div>
               <NavLink to={`${basePath}/runtime`}><Workflow aria-hidden="true" />Agent Runtime</NavLink>
+              <NavLink to={`${basePath}/performance`}><Gauge aria-hidden="true" />性能观测</NavLink>
             </>
           ) : null}
           <div className="nav-section">SYSTEM</div>
@@ -67,16 +69,18 @@ export function AppShell({ instances, children, onLogout }: AppShellProps) {
           <LogOut aria-hidden="true" size={16} />退出登录
         </Button>
       </aside>
-      <div className="console-main">
-        <header className="console-topbar">
-          <div>
-            <Server aria-hidden="true" />
-            <span><small>当前实例</small><strong>{selected?.name ?? "尚未连接实例"}</strong></span>
-          </div>
-          {selected ? <div className="console-connection"><span aria-hidden="true" />REST {selected.protocolVersion}</div> : null}
-        </header>
-        {children}
-      </div>
+      <InstanceStreamProvider instanceId={selected?.id ?? null}>
+        <div className="console-main">
+          <header className="console-topbar">
+            <div>
+              <Server aria-hidden="true" />
+              <span><small>当前实例</small><strong>{selected?.name ?? "尚未连接实例"}</strong></span>
+            </div>
+            {selected ? <div className="console-connection"><span aria-hidden="true" />REST {selected.protocolVersion}</div> : null}
+          </header>
+          {children}
+        </div>
+      </InstanceStreamProvider>
     </div>
   );
 }
