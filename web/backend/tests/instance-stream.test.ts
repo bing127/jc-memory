@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import WebSocket from "ws";
 
 import { buildApp } from "../src/app.js";
+import type { StreamIntervals } from "../src/config.js";
 
 const origin = "http://127.0.0.1:5173";
 const namespaceId = "00000000-0000-0000-0000-000000000001";
@@ -173,6 +174,19 @@ describe("统一实例 WebSocket", () => {
     await app.close();
   }, 10_000);
 
+  test("使用注入的指标周期连续采样而不是使用固定周期", async () => {
+    const upstreamFetch = upstreamFixture();
+    const { app, socket } = await openStream(upstreamFetch, { metrics: 20 });
+    const firstSnapshot = waitForMessage(socket, (message) => message.topic === "metrics");
+    sendSubscriptions(socket, [{ topic: "metrics" }]);
+    await firstSnapshot;
+    await new Promise((resolve) => setTimeout(resolve, 75));
+
+    expect(metricCallCount(upstreamFetch)).toBeGreaterThanOrEqual(3);
+    await closeSocket(socket);
+    await app.close();
+  });
+
   test("拒绝非法 Origin 且不会开始上游采样", async () => {
     const upstreamFetch = upstreamFixture();
     const app = await createApp(upstreamFetch);
@@ -259,8 +273,11 @@ function upstreamFixture() {
   });
 }
 
-async function openStream(fetch: typeof globalThis.fetch) {
-  const app = await createApp(fetch);
+async function openStream(
+  fetch: typeof globalThis.fetch,
+  intervalOverrides: Partial<StreamIntervals> = {},
+) {
+  const app = await createApp(fetch, intervalOverrides);
   const cookie = await login(app);
   const instanceId = await createInstance(app, cookie);
   await app.listen({ host: "127.0.0.1", port: 0 });
@@ -347,7 +364,10 @@ async function waitForClose(socket: WebSocket): Promise<{ code: number; reason: 
   });
 }
 
-async function createApp(fetch: typeof globalThis.fetch) {
+async function createApp(
+  fetch: typeof globalThis.fetch,
+  intervalOverrides: Partial<StreamIntervals> = {},
+) {
   const directory = await mkdtemp(join(tmpdir(), "jc-memory-stream-"));
   temporaryDirectories.push(directory);
   return buildApp({
@@ -361,6 +381,14 @@ async function createApp(fetch: typeof globalThis.fetch) {
       sessionTtlMs: 60_000,
       bindHost: "127.0.0.1",
       bindPort: 8790,
+      upstreamTimeoutMs: 30_000,
+      streamIntervals: {
+        overview: 15_000,
+        metrics: 1_000,
+        runtimeList: 10_000,
+        runtimeDetail: 5_000,
+        ...intervalOverrides,
+      },
     },
     fetch,
     logger: false,

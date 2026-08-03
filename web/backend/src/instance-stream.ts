@@ -3,6 +3,7 @@ import type WebSocket from "ws";
 import { z } from "zod";
 
 import type { InstanceConnection } from "./instances.js";
+import type { StreamIntervals } from "./config.js";
 import { parseServerMetrics } from "./metrics.js";
 import { uuidStringSchema } from "./protocol.js";
 import type { UpstreamClient } from "./upstream.js";
@@ -39,17 +40,11 @@ interface StreamTask {
   failed: boolean;
 }
 
-const topicIntervals: Record<Topic, number> = {
-  overview: 15_000,
-  metrics: 1_000,
-  "runtime.list": 10_000,
-  "runtime.detail": 5_000,
-};
-
 export function attachInstanceStream(
   socket: WebSocket,
   connection: InstanceConnection,
   upstream: UpstreamClient,
+  intervals: StreamIntervals,
 ): void {
   const tasks = new Map<Topic, StreamTask>();
   let closed = false;
@@ -127,7 +122,7 @@ export function attachInstanceStream(
       closed: false,
       failed: false,
     };
-    task.timer = setInterval(() => void sample(task), topicIntervals[subscription.topic]);
+    task.timer = setInterval(() => void sample(task), intervalFor(subscription.topic, intervals));
     task.timer.unref?.();
     return task;
   }
@@ -175,6 +170,13 @@ export function attachInstanceStream(
     if (closed || socket.readyState !== 1) return;
     socket.send(JSON.stringify({ version: 1, type: "protocol_error", code, message }));
   }
+}
+
+function intervalFor(topic: Topic, intervals: StreamIntervals): number {
+  if (topic === "overview") return intervals.overview;
+  if (topic === "metrics") return intervals.metrics;
+  if (topic === "runtime.list") return intervals.runtimeList;
+  return intervals.runtimeDetail;
 }
 
 async function sampleTopic(

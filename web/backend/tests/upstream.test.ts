@@ -122,6 +122,32 @@ describe("memory-server upstream policy", () => {
     expect(JSON.stringify(publicError)).not.toContain(connection.apiKey);
   });
 
+  test("使用调用方传入的上游超时构造 AbortSignal", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    const fetchMock = vi.fn(async () => Response.json({
+      api_version: "v1",
+      request_id: "request-stats-timeout",
+      response: { response: "stats", payload: {} },
+    }));
+    const client = createUpstreamClient({ fetch: fetchMock, timeoutMs: 321 });
+
+    await client.execute(connection, {
+      operation: "stats",
+      requestId: "request-stats-timeout",
+      accessScope: {
+        namespace_id: connection.namespaceId,
+        tenant_id: null,
+        user_id: null,
+        agent_id: null,
+        project_id: null,
+      },
+      payload: {},
+    });
+
+    expect(timeout).toHaveBeenCalledWith(321);
+    timeout.mockRestore();
+  });
+
   test.each([
     { upstreamStatus: 404, code: "not_found", status: 404 },
     { upstreamStatus: 503, code: "unavailable", status: 503 },

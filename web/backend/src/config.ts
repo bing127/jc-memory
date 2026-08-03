@@ -11,6 +11,15 @@ export interface ControlPlaneConfig {
   sessionTtlMs: number;
   bindHost: string;
   bindPort: number;
+  upstreamTimeoutMs: number;
+  streamIntervals: StreamIntervals;
+}
+
+export interface StreamIntervals {
+  overview: number;
+  metrics: number;
+  runtimeList: number;
+  runtimeDetail: number;
 }
 
 const environmentSchema = z.object({
@@ -24,6 +33,11 @@ const environmentSchema = z.object({
   JC_WEB_SESSION_TTL_MS: z.coerce.number().int().positive().default(28_800_000),
   JC_WEB_BIND_HOST: z.string().min(1).default("127.0.0.1"),
   JC_WEB_BIND_PORT: z.coerce.number().int().min(1).max(65_535).default(8790),
+  JC_WEB_UPSTREAM_TIMEOUT_MS: z.coerce.number().int().min(1).max(300_000).default(30_000),
+  JC_WEB_STREAM_OVERVIEW_INTERVAL_MS: z.coerce.number().int().min(250).max(300_000).default(15_000),
+  JC_WEB_STREAM_METRICS_INTERVAL_MS: z.coerce.number().int().min(250).max(300_000).default(1_000),
+  JC_WEB_STREAM_RUNTIME_LIST_INTERVAL_MS: z.coerce.number().int().min(250).max(300_000).default(10_000),
+  JC_WEB_STREAM_RUNTIME_DETAIL_INTERVAL_MS: z.coerce.number().int().min(250).max(300_000).default(5_000),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 });
 
@@ -50,6 +64,13 @@ export function loadConfig(
     sessionTtlMs: parsed.JC_WEB_SESSION_TTL_MS,
     bindHost: parsed.JC_WEB_BIND_HOST,
     bindPort: parsed.JC_WEB_BIND_PORT,
+    upstreamTimeoutMs: parsed.JC_WEB_UPSTREAM_TIMEOUT_MS,
+    streamIntervals: {
+      overview: parsed.JC_WEB_STREAM_OVERVIEW_INTERVAL_MS,
+      metrics: parsed.JC_WEB_STREAM_METRICS_INTERVAL_MS,
+      runtimeList: parsed.JC_WEB_STREAM_RUNTIME_LIST_INTERVAL_MS,
+      runtimeDetail: parsed.JC_WEB_STREAM_RUNTIME_DETAIL_INTERVAL_MS,
+    },
   };
 }
 

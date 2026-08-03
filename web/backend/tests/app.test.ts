@@ -661,6 +661,13 @@ async function createApp(fetch: typeof globalThis.fetch) {
       sessionTtlMs: 60_000,
       bindHost: "127.0.0.1",
       bindPort: 8790,
+      upstreamTimeoutMs: 30_000,
+      streamIntervals: {
+        overview: 15_000,
+        metrics: 1_000,
+        runtimeList: 10_000,
+        runtimeDetail: 5_000,
+      },
     },
     fetch,
     logger: false,

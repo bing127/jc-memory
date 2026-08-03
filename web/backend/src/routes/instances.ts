@@ -3,6 +3,7 @@ import type WebSocket from "ws";
 import { z } from "zod";
 
 import type { AuthService } from "../auth.js";
+import type { StreamIntervals } from "../config.js";
 import { attachInstanceStream } from "../instance-stream.js";
 import type { InstanceStore } from "../instances.js";
 import { parseServerMetrics } from "../metrics.js";
@@ -25,6 +26,7 @@ export async function registerInstanceRoutes(
   auth: AuthService,
   store: InstanceStore,
   upstream: UpstreamClient,
+  streamIntervals: StreamIntervals,
 ): Promise<void> {
   app.get("/api/v1/instances", async (request, reply) => {
     if (!requireSession(request, reply, auth)) return;
@@ -108,7 +110,7 @@ export async function registerInstanceRoutes(
         socket.close(1008, "instance_not_found");
         return;
       }
-      attachInstanceStream(socket, connection, upstream);
+      attachInstanceStream(socket, connection, upstream, streamIntervals);
     },
   );
 }

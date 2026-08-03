@@ -43,7 +43,9 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   const store = createInstanceStore(database, cipher);
   const auth = createAuthService(options.config);
   const upstream = createUpstreamClient(
-    options.fetch ? { fetch: options.fetch } : {},
+    options.fetch
+      ? { fetch: options.fetch, timeoutMs: options.config.upstreamTimeoutMs }
+      : { timeoutMs: options.config.upstreamTimeoutMs },
   );
 
   app.addHook("onClose", async () => database.close());
@@ -56,7 +58,7 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
   });
   app.get("/healthz", async () => ({ status: "ok" }));
   await registerSessionRoutes(app, auth);
-  await registerInstanceRoutes(app, auth, store, upstream);
+  await registerInstanceRoutes(app, auth, store, upstream, options.config.streamIntervals);
   await registerMemoryRoutes(app, auth, store, upstream);
   await registerRuntimeRoutes(app, auth, store, upstream);
 
