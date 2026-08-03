@@ -1,0 +1,21 @@
+# Hermes 内建语义记忆保持关闭，跨会话记忆仅由疆诚记忆 Provider 提供。
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+  provider: jc_memory
+  jc_memory:
+    base_url: http://127.0.0.1:8787
+    namespace_id: 00000000-0000-0000-0000-000000000001
+    tenant_id: null
+    user_id: null
+    agent_id: null
+    project_id: null
+    timeout_seconds: 5.0
+    recall:
+      max_seeds: 8
+      max_neighbors: 8
+      max_hops: 2
+      max_nodes: 32
+      timeout_ms: 1500
+
+# API Key 不写入 YAML，仅从 JC_MEMORY_API_KEY 环境变量读取。
