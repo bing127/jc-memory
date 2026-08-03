@@ -35,4 +35,6 @@ M3 在 `MemoryEngine::observe` 的权威持久化之前执行确定性风险评�
 
 当前检测器是版本化、完全离线、可重复的规则集合，不是通用 Prompt Injection 分类器、内容杀毒器或数据泄漏防护服务。未命中规则不等于内容可信；命中也可能需要人工复核。上层执行器仍必须把 Memory Packet 当作不可信数据，不能把召回内容拼接成更高优先级指令。
 
-`crates/memory-core/tests/poisoning.rs` 覆盖恶意 Prompt、正常安全讨论、重复争议声明、可疑 ToolResult、授权 Release/Reject、原文与 Evidence 保留，以及默认 Recall 隔离。
+规则来源已迁移到版本化 `config/security/quarantine.zh-CN.yaml`。`QuarantinePolicy` 在启动时使用严格 YAML Schema，拒绝未知字段、空词项、重复词项、超长词项、非有限或越界分数，以及零重复阈值；每次风险评估记录策略版本和原始 YAML SHA-256 摘要。外部策略读取或校验失败时直接阻止 Engine 启动，不静默使用另一套规则。
+
+`crates/memory-core/tests/poisoning.rs` 和 `crates/memory-security/tests/quarantine_policy.rs` 覆盖恶意 Prompt、正常安全讨论、重复争议声明、可疑 ToolResult、授权 Release/Reject、自定义规则、阈值变化、原文与 Evidence 保留，以及默认 Recall 隔离。

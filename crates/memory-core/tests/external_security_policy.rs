@@ -12,7 +12,7 @@ use jc_memory_security::RiskLabel;
 const API_KEY_SCOPE: &str = "fixture";
 
 fn policy_yaml() -> &'static str {
-    r#"
+    r"
 schema_version: 1
 policy_version: external-fixture-1
 quarantine_threshold: 0.8
@@ -32,7 +32,7 @@ suspicious_tool_result:
   authorization_markers: [fixture-only-authorization=granted]
   score: 0.9
 cross_scope_reference_score: 1.0
-"#
+    "
 }
 
 fn context(scope: &MemoryScope) -> AccessContext {
@@ -113,9 +113,8 @@ async fn engine_fails_closed_when_external_security_policy_is_missing() {
     let result =
         MemoryEngine::open(MemoryConfig::local(data.path()).with_security_rules_file(missing))
             .await;
-    let error = match result {
-        Ok(_) => panic!("缺失策略必须阻止 Engine 启动"),
-        Err(error) => error,
+    let Err(error) = result else {
+        panic!("缺失策略必须阻止 Engine 启动");
     };
 
     assert!(error.to_string().contains("quarantine"));

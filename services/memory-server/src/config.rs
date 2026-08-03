@@ -38,7 +38,7 @@ pub struct ServerConfig {
     pub request_timeout_ms: u64,
     /// 零外部模型混合检索配置。
     pub retrieval: RetrievalConfig,
-    /// SQLite 连接池与忙等待策略。
+    /// `SQLite` 连接池与忙等待策略。
     pub sqlite: SqliteRuntimeConfig,
     /// 可选的外部 Quarantine 规则文件。
     pub security_rules_file: Option<PathBuf>,
@@ -50,12 +50,12 @@ pub struct ServerConfig {
     pub runtime_provider: Option<RuntimeProviderConfig>,
 }
 
-/// SQLite 运行时连接池配置。
+/// `SQLite` 运行时连接池配置。
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SqliteRuntimeConfig {
     /// 最大连接数。
     pub max_connections: u32,
-    /// SQLite 忙等待毫秒数。
+    /// `SQLite` 忙等待毫秒数。
     pub busy_timeout_ms: u64,
 }
 
@@ -218,7 +218,7 @@ struct PartialConfig {
     tls: Option<PartialTls>,
     /// YAML 中的零模型检索配置。
     retrieval: Option<PartialRetrieval>,
-    /// YAML 中的 SQLite 运行配置。
+    /// YAML 中的 `SQLite` 运行配置。
     sqlite: Option<PartialSqlite>,
     /// YAML 中的安全规则配置。
     security: Option<PartialSecurity>,
@@ -393,7 +393,8 @@ impl ServerConfig {
             ));
         }
         let retrieval = retrieval_config(partial.retrieval.unwrap_or_default(), &lookup)?;
-        let sqlite = sqlite_config(partial.sqlite.unwrap_or_default(), &lookup)?;
+        let sqlite_partial = partial.sqlite.unwrap_or_default();
+        let sqlite = sqlite_config(&sqlite_partial, &lookup)?;
         let security_rules_file = string_value(&lookup, "JC_MEMORY_SECURITY_RULES_FILE")
             .map(PathBuf::from)
             .or_else(|| partial.security.and_then(|security| security.rules_file));
@@ -420,7 +421,7 @@ impl ServerConfig {
     }
 }
 
-fn sqlite_config<F>(partial: PartialSqlite, lookup: &F) -> Result<SqliteRuntimeConfig, ConfigError>
+fn sqlite_config<F>(partial: &PartialSqlite, lookup: &F) -> Result<SqliteRuntimeConfig, ConfigError>
 where
     F: Fn(&str) -> Option<String>,
 {

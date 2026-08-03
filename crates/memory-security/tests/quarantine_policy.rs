@@ -8,7 +8,7 @@ use jc_memory_protocol::{
 use jc_memory_security::{Admission, QuarantinePipeline, QuarantinePolicy, RiskContext, RiskLabel};
 
 fn valid_yaml() -> &'static str {
-    r#"
+    r"
 schema_version: 1
 policy_version: fixture-1
 quarantine_threshold: 0.8
@@ -34,7 +34,7 @@ suspicious_tool_result:
     - fixture authorization=granted
   score: 0.9
 cross_scope_reference_score: 1.0
-"#
+    "
 }
 
 fn fragment(text: &str) -> CognitiveFragment {

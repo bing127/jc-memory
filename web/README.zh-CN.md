@@ -44,6 +44,8 @@ openssl rand -base64 32
 - 使用独立、受限权限的控制面数据目录；
 - 不在日志、命令行历史或配置样例中保存真实 API Key。
 
+控制面 BFF 的上游超时和统一实例 WebSocket 的四类 Topic 周期由环境变量配置：`JC_WEB_UPSTREAM_TIMEOUT_MS` 默认 30 秒，`JC_WEB_STREAM_OVERVIEW_INTERVAL_MS`、`JC_WEB_STREAM_METRICS_INTERVAL_MS`、`JC_WEB_STREAM_RUNTIME_LIST_INTERVAL_MS`、`JC_WEB_STREAM_RUNTIME_DETAIL_INTERVAL_MS` 默认分别为 15 秒、1 秒、10 秒和 5 秒。上游超时范围为 `1..=300000` 毫秒，四类采样周期范围为 `250..=300000` 毫秒；非法、零值、非整数或越界值会阻止 BFF 启动。WebSocket 首轮快照仍由订阅消息立即触发，后续采样复用同一条连接的已校验周期。
+
 ## 启动
 
 安装依赖并同时启动前后端：

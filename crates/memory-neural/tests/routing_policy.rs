@@ -5,13 +5,13 @@ use jc_memory_neural::{DeterministicFallback, FallbackRoutingPolicy, QueryRouter
 use jc_memory_protocol::{MemoryScope, NamespaceId, RecallMode};
 
 fn valid_yaml() -> &'static str {
-    r#"
+    r"
 schema_version: 1
 policy_version: fixture-routing-1
 causal_keywords: [fixture-cause]
 current_state_keywords: [fixture-current]
 procedural_keywords: [fixture-how]
-"#
+    "
 }
 
 fn query(text: &str) -> RecallQuery {

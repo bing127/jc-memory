@@ -118,7 +118,7 @@ impl MemoryConfig {
         self
     }
 
-    /// 设置 SQLite 连接池上限；零值会在 Engine 启动时拒绝。
+    /// 设置 `SQLite` 连接池上限；零值会在 Engine 启动时拒绝。
     #[must_use]
     pub const fn with_sqlite_max_connections(mut self, max_connections: u32) -> Self {
         self.sqlite_max_connections = max_connections;

@@ -60,9 +60,10 @@ impl DeterministicFallback {
     /// 创建使用显式离线路由策略的 Fallback。
     #[must_use]
     pub fn with_routing_policy(policy: FallbackRoutingPolicy) -> Self {
-        let mut fallback = Self::default();
-        fallback.routing_policy = policy;
-        fallback
+        Self {
+            routing_policy: policy,
+            ..Self::default()
+        }
     }
 }
 

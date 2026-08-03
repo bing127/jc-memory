@@ -42,12 +42,16 @@ pub enum FallbackRoutingPolicyError {
 
 impl FallbackRoutingPolicy {
     /// 从 YAML 加载并校验离线路由策略。
+    ///
+    /// # Errors
+    ///
+    /// YAML 语法、未知字段或关键词范围不合法时返回错误。
     pub fn from_yaml_str(input: &str) -> Result<Self, FallbackRoutingPolicyError> {
         let raw: RawRoutingPolicy = yaml_serde::from_str(input)?;
         if raw.schema_version != 1 {
             return Err(FallbackRoutingPolicyError::Invalid("schema_version"));
         }
-        let policy_version = normalize(raw.policy_version, "policy_version")?;
+        let policy_version = normalize(&raw.policy_version, "policy_version")?;
         let causal_keywords = normalize_keywords(raw.causal_keywords, "causal_keywords")?;
         let current_state_keywords =
             normalize_keywords(raw.current_state_keywords, "current_state_keywords")?;
@@ -63,6 +67,10 @@ impl FallbackRoutingPolicy {
     }
 
     /// 返回编译内置策略。
+    ///
+    /// # Errors
+    ///
+    /// 编译内置策略不符合严格 Schema 时返回错误。
     pub fn builtin() -> Result<Self, FallbackRoutingPolicyError> {
         Self::from_yaml_str(BUILTIN_YAML)
     }
@@ -102,7 +110,7 @@ fn normalize_keywords(
     let mut normalized = Vec::with_capacity(keywords.len());
     let mut seen = HashSet::with_capacity(keywords.len());
     for keyword in keywords {
-        let keyword = normalize(keyword, field)?;
+        let keyword = normalize(&keyword, field)?;
         if keyword.len() > MAX_KEYWORD_LENGTH || !seen.insert(keyword.clone()) {
             return Err(FallbackRoutingPolicyError::Invalid(field));
         }
@@ -111,7 +119,7 @@ fn normalize_keywords(
     Ok(normalized)
 }
 
-fn normalize(value: String, field: &'static str) -> Result<String, FallbackRoutingPolicyError> {
+fn normalize(value: &str, field: &'static str) -> Result<String, FallbackRoutingPolicyError> {
     let value = value.trim().to_lowercase();
     if value.is_empty() {
         return Err(FallbackRoutingPolicyError::Invalid(field));

@@ -102,12 +102,16 @@ pub enum QuarantinePolicyError {
 
 impl QuarantinePolicy {
     /// 从原始 YAML 载荷加载并严格校验策略。
+    ///
+    /// # Errors
+    ///
+    /// YAML 语法、未知字段或规则范围不合法时返回错误。
     pub fn from_yaml_str(input: &str) -> Result<Self, QuarantinePolicyError> {
         let raw: RawPolicy = yaml_serde::from_str(input)?;
         if raw.schema_version != 1 {
             return Err(QuarantinePolicyError::Invalid("schema_version"));
         }
-        let policy_version = normalize_text(raw.policy_version, "policy_version")?;
+        let policy_version = normalize_text(&raw.policy_version, "policy_version")?;
         if policy_version.len() > MAX_POLICY_VERSION_LENGTH {
             return Err(QuarantinePolicyError::Invalid("policy_version"));
         }
@@ -173,6 +177,10 @@ impl QuarantinePolicy {
     }
 
     /// 返回编译内置的同一版本化策略。
+    ///
+    /// # Errors
+    ///
+    /// 编译内置策略不符合严格 Schema 时返回错误。
     pub fn builtin() -> Result<Self, QuarantinePolicyError> {
         Self::from_yaml_str(BUILTIN_YAML)
     }
@@ -270,7 +278,7 @@ fn normalize_markers(
     let mut normalized = Vec::with_capacity(markers.len());
     let mut seen = HashSet::with_capacity(markers.len());
     for marker in markers {
-        let marker = normalize_text(marker, field)?;
+        let marker = normalize_text(&marker, field)?;
         if marker.len() > MAX_MARKER_LENGTH || !seen.insert(marker.clone()) {
             return Err(QuarantinePolicyError::Invalid(field));
         }
@@ -279,7 +287,7 @@ fn normalize_markers(
     Ok(normalized)
 }
 
-fn normalize_text(value: String, field: &'static str) -> Result<String, QuarantinePolicyError> {
+fn normalize_text(value: &str, field: &'static str) -> Result<String, QuarantinePolicyError> {
     let value = value.trim().to_lowercase();
     if value.is_empty() {
         return Err(QuarantinePolicyError::Invalid(field));

@@ -2,6 +2,8 @@
 
 当前仓库提供 `jc-memory-sidecar` 的本地认证与生命周期核心，二进制名称为 `jcmemd`（守护进程）和 `jcmem`（控制命令）。
 
+Sidecar 可通过 `JC_MEMORY_SIDECAR_DAEMON_BIN` 显式指定守护进程可执行文件路径；未设置时使用当前 PATH 中的 `jcmemd`。该变量只影响本地进程启动，不进入 MemoryRequest、协议字段或远程 API。
+
 ## 已实现边界
 
 - 数据目录下生成 32 字节随机 Token，文件权限为 Unix `0600`。

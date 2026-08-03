@@ -57,7 +57,7 @@ docker compose -f deploy/docker/compose.yaml down
 部署前必须完成以下替换：
 
 1. 将 `deploy/kubernetes/deployment.yaml` 中的镜像改为已推送的不可变版本或 digest；
-2. 将 ConfigMap 中的 `namespace_id` 改为目标 Namespace UUID；
+2. 在 Secret 中设置目标 Namespace UUID；ConfigMap 只保存非 Secret 运行规则；
 3. 根据集群 StorageClass 调整 PVC；
 4. 使用真实随机 API Key 和有效 PEM 证书创建 Secret。
 
@@ -66,6 +66,7 @@ docker compose -f deploy/docker/compose.yaml down
 ```bash
 kubectl create secret generic jc-memory-server-secret \
   --from-literal=JC_MEMORY_API_KEY="sk-jcmemory-$(openssl rand -hex 17)" \
+  --from-literal=JC_MEMORY_NAMESPACE_ID="$(uuidgen)" \
   --from-file=tls.crt=./server.crt \
   --from-file=tls.key=./server.key
 ```

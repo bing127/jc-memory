@@ -106,6 +106,10 @@ impl QuarantinePipeline {
     }
 
     /// 创建使用编译内置策略的检测流水线。
+    ///
+    /// # Errors
+    ///
+    /// 编译内置策略不符合严格 Schema 时返回错误。
     pub fn builtin() -> Result<Self, crate::QuarantinePolicyError> {
         Ok(Self::new(QuarantinePolicy::builtin()?))
     }
