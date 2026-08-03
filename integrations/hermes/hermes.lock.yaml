@@ -1,0 +1,5 @@
+schema_version: hermes-integration-lock.v1
+repository: https://github.com/NousResearch/hermes-agent.git
+branch: main
+commit: ebf967ff2cecdc040cd9701b0cf52059c7e8da4b
+desktop_path: apps/desktop
