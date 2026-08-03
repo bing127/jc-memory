@@ -19,10 +19,21 @@ use tonic::transport::{Identity, ServerTlsConfig};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
     let config = ServerConfig::from_env()?;
-    let engine = MemoryEngine::open(MemoryConfig::local(&config.data_dir)).await?;
+    let mut memory_config = MemoryConfig::local(&config.data_dir)
+        .with_retrieval_config(config.retrieval.clone())
+        .with_busy_timeout(Duration::from_millis(config.sqlite.busy_timeout_ms))
+        .with_sqlite_max_connections(config.sqlite.max_connections);
+    if let Some(path) = &config.security_rules_file {
+        memory_config = memory_config.with_security_rules_file(path.clone());
+    }
+    let engine = MemoryEngine::open(memory_config).await?;
     let bus = EmbeddedCommandBus::new(engine);
-    let runtime_store =
-        SqliteStore::open(&SqliteConfig::new(config.data_dir.join("memory.sqlite3"))).await?;
+    let runtime_store = SqliteStore::open(
+        &SqliteConfig::new(config.data_dir.join("memory.sqlite3"))
+            .with_max_connections(config.sqlite.max_connections)
+            .with_busy_timeout(Duration::from_millis(config.sqlite.busy_timeout_ms)),
+    )
+    .await?;
     let runtime_service = config
         .runtime_provider
         .clone()
@@ -35,13 +46,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 model: provider.model,
                 auth,
                 timeout: Duration::from_millis(config.request_timeout_ms),
-                max_retries: 1,
-                retry_backoff: Duration::from_millis(100),
+                max_retries: config.runtime_provider_tuning.max_retries,
+                retry_backoff: Duration::from_millis(
+                    config.runtime_provider_tuning.retry_backoff_ms,
+                ),
             })?;
             Ok::<_, jc_memory_runtime::ModelError>(RuntimeService::new(
                 RuntimeRunner::from_store(&runtime_store),
                 Arc::new(provider),
-                Arc::new(CommandBusRuntimeBackend::new(bus.clone())),
+                Arc::new(CommandBusRuntimeBackend::with_recall_limits(
+                    bus.clone(),
+                    config.runtime_recall.limits(),
+                )),
                 ToolLoop::new(ToolRegistry::default(), ApprovalStore::default()),
             ))
         })

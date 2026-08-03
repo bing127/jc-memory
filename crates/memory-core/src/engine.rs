@@ -7,7 +7,10 @@ use jc_memory_protocol::{
     AccessContext, BlobId, CognitiveFragment, DenyReason, EventId, FragmentId, Operation,
     ValidityStatus,
 };
-use jc_memory_security::{Admission, RiskAssessment, SecurityInvariantViolation};
+use jc_memory_retrieval::{AliasDictionary, FusionError, QueryPlanner, RetrievalError};
+use jc_memory_security::{
+    Admission, QuarantinePipeline, QuarantinePolicy, RiskAssessment, SecurityInvariantViolation,
+};
 use jc_memory_storage::{
     BlobError, BlobOptions, BlobStore, MemoryRepository, RecoveryError, RecoveryManager,
     RepositoryFailpoint, SqliteConfig, SqliteMemoryRepository, SqliteProjectionStore, SqliteStore,
@@ -16,7 +19,7 @@ use jc_memory_storage::{
 use sha2::{Digest as _, Sha256};
 use tracing::Instrument as _;
 
-use crate::{HealthReport, HealthStatus, MemoryConfig};
+use crate::{HealthReport, HealthStatus, MemoryConfig, RetrievalConfig};
 
 /// Result of persisting one authoritative cognitive fragment and event.
 #[derive(Clone, Debug, PartialEq)]
@@ -95,6 +98,39 @@ pub enum MemoryError {
     /// 有界 Recall 流水线拒绝了派生图输入或被取消、超时。
     #[error("memory recall failed: {0}")]
     Recall(#[from] RecallEngineError),
+    /// 内置或显式检索词典不满足版本化 Schema。
+    #[error("memory retrieval dictionary is invalid: {0}")]
+    RetrievalDictionary(#[from] jc_memory_retrieval::DictionaryError),
+    /// 内置或显式 Quarantine 策略不满足版本化 Schema。
+    #[error("memory quarantine policy is invalid: {0}")]
+    QuarantinePolicy(#[from] jc_memory_security::QuarantinePolicyError),
+    /// Recall 查询无法生成有界确定性计划。
+    #[error("memory retrieval query is invalid: {0}")]
+    RetrievalPlan(#[from] RetrievalError),
+    /// 多来源候选包含损坏分数或无效融合参数。
+    #[error("memory retrieval fusion failed: {0}")]
+    RetrievalFusion(#[from] FusionError),
+    /// 混合检索预算或固定 Tokenizer 参数无效。
+    #[error("memory retrieval configuration is invalid: {0}")]
+    RetrievalConfig(#[from] crate::RetrievalConfigError),
+    /// 显式词典文件无法读取。
+    #[error("failed to read retrieval dictionary {path}: {source}")]
+    RetrievalDictionaryFile {
+        /// 无法读取的非 Secret 配置路径。
+        path: std::path::PathBuf,
+        /// 底层文件系统错误。
+        #[source]
+        source: std::io::Error,
+    },
+    /// 显式 Quarantine 规则文件无法读取。
+    #[error("failed to read quarantine policy {path}: {source}")]
+    QuarantinePolicyFile {
+        /// 无法读取的非 Secret 配置路径。
+        path: std::path::PathBuf,
+        /// 底层文件系统错误。
+        #[source]
+        source: std::io::Error,
+    },
     /// State 或 Graph 投影未能在 Recall deadline 内追平。
     #[error("memory projection timed out")]
     ProjectionTimedOut,
@@ -191,6 +227,9 @@ pub struct MemoryEngine {
     pub(crate) recovery: Arc<RecoveryManager>,
     pub(crate) consolidation_jobs: ConsolidationJobStore,
     pub(crate) consolidation_worker_id: String,
+    pub(crate) query_planner: QueryPlanner,
+    pub(crate) retrieval_config: RetrievalConfig,
+    pub(crate) quarantine_pipeline: QuarantinePipeline,
     event_factory: EventFactory,
     schema_version: i64,
 }
@@ -229,11 +268,18 @@ impl MemoryEngine {
         config: MemoryConfig,
         failpoint: Option<Arc<dyn RepositoryFailpoint>>,
     ) -> Result<Self, MemoryError> {
+        config.retrieval().validate()?;
         tokio::fs::create_dir_all(config.data_dir())
             .await
             .map_err(MemoryError::DataDirectory)?;
-        let sqlite_config =
-            SqliteConfig::new(config.database_path()).with_busy_timeout(config.busy_timeout());
+        if config.sqlite_max_connections() == 0 {
+            return Err(MemoryError::Storage(StorageError::InvalidConfiguration {
+                reason: "max_connections must be greater than zero",
+            }));
+        }
+        let sqlite_config = SqliteConfig::new(config.database_path())
+            .with_max_connections(config.sqlite_max_connections())
+            .with_busy_timeout(config.busy_timeout());
         let store = SqliteStore::open(&sqlite_config).await?;
         let schema_version = store.schema_version().await?;
         let blobs = BlobStore::open(config.blob_root(), BlobOptions::plain()).await?;
@@ -245,12 +291,47 @@ impl MemoryEngine {
         let projection = SqliteProjectionStore::from_store(&store);
         let recovery = Arc::new(RecoveryManager::from_stores(&store, blobs));
         let consolidation_jobs = ConsolidationJobStore::from_store(&store);
+        let dictionary = match &config.retrieval().aliases_file {
+            Some(path) => {
+                let input = tokio::fs::read_to_string(path).await.map_err(|source| {
+                    MemoryError::RetrievalDictionaryFile {
+                        path: path.clone(),
+                        source,
+                    }
+                })?;
+                AliasDictionary::from_yaml_str(&input)?
+            }
+            None => AliasDictionary::builtin()?,
+        };
+        let query_planner = QueryPlanner::new(
+            dictionary,
+            jc_memory_retrieval::RetrievalLimits {
+                max_expanded_terms: config.retrieval().max_expanded_terms,
+                ..Default::default()
+            },
+        )?;
+        let retrieval_config = config.retrieval().clone();
+        let quarantine_pipeline = match config.security_rules_file() {
+            Some(path) => {
+                let input = tokio::fs::read_to_string(path).await.map_err(|source| {
+                    MemoryError::QuarantinePolicyFile {
+                        path: path.to_path_buf(),
+                        source,
+                    }
+                })?;
+                QuarantinePipeline::new(QuarantinePolicy::from_yaml_str(&input)?)
+            }
+            None => QuarantinePipeline::builtin()?,
+        };
         Ok(Self {
             repository,
             projection,
             recovery,
             consolidation_jobs,
             consolidation_worker_id: format!("core-{}", jc_memory_consolidation::JobId::new()),
+            query_planner,
+            retrieval_config,
+            quarantine_pipeline,
             event_factory: EventFactory::new(),
             schema_version,
         })
@@ -329,10 +410,10 @@ impl MemoryEngine {
             jc_memory_events::validation::validate_fragment(&fragment)
                 .map_err(EventFactoryError::from)?;
             let risk_context = self.risk_context(&fragment).await?;
-            let risk_assessment =
-                jc_memory_security::QuarantinePipeline.assess(&fragment, risk_context);
-            let admission =
-                jc_memory_security::QuarantinePipeline.admission(&fragment, &risk_assessment);
+            let risk_assessment = self.quarantine_pipeline.assess(&fragment, risk_context);
+            let admission = self
+                .quarantine_pipeline
+                .admission(&fragment, &risk_assessment);
             match admission {
                 Admission::Accept => {}
                 Admission::AcceptUnverified => fragment.validity = ValidityStatus::Unverified,
@@ -376,10 +457,10 @@ impl MemoryEngine {
         jc_memory_events::validation::validate_fragment(&fragment)
             .map_err(EventFactoryError::from)?;
         let risk_context = self.risk_context(&fragment).await?;
-        let risk_assessment =
-            jc_memory_security::QuarantinePipeline.assess(&fragment, risk_context);
-        let admission =
-            jc_memory_security::QuarantinePipeline.admission(&fragment, &risk_assessment);
+        let risk_assessment = self.quarantine_pipeline.assess(&fragment, risk_context);
+        let admission = self
+            .quarantine_pipeline
+            .admission(&fragment, &risk_assessment);
         match admission {
             Admission::Accept => {}
             Admission::AcceptUnverified => fragment.validity = ValidityStatus::Unverified,

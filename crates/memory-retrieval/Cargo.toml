@@ -1,0 +1,19 @@
+[package]
+name = "jc-memory-retrieval"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+chrono.workspace = true
+hex.workspace = true
+jc-memory-protocol = { path = "../memory-protocol" }
+serde.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+yaml_serde.workspace = true
+
+[lints]
+workspace = true

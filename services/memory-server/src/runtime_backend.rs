@@ -18,13 +18,32 @@ use serde_json::{Map, json};
 #[derive(Clone)]
 pub struct CommandBusRuntimeBackend<B> {
     bus: Arc<B>,
+    recall_limits: RecallLimits,
 }
 
 impl<B> CommandBusRuntimeBackend<B> {
     /// 创建共享 `CommandBus` 的 Runtime 后端。
     #[must_use]
     pub fn new(bus: B) -> Self {
-        Self { bus: Arc::new(bus) }
+        Self {
+            bus: Arc::new(bus),
+            recall_limits: RecallLimits {
+                max_seeds: 8,
+                max_neighbors: 8,
+                max_hops: 3,
+                max_nodes: 64,
+                timeout_ms: 2_000,
+            },
+        }
+    }
+
+    /// 创建使用显式有界 Recall 配额的 Runtime 后端。
+    #[must_use]
+    pub fn with_recall_limits(bus: B, recall_limits: RecallLimits) -> Self {
+        Self {
+            bus: Arc::new(bus),
+            recall_limits,
+        }
     }
 }
 
@@ -78,13 +97,7 @@ where
                     text: input.to_owned(),
                     entities: Vec::new(),
                     at_time: None,
-                    limits: RecallLimits {
-                        max_seeds: 8,
-                        max_neighbors: 8,
-                        max_hops: 3,
-                        max_nodes: 64,
-                        timeout_ms: 2_000,
-                    },
+                    limits: self.recall_limits,
                 }),
                 "recall",
             )

@@ -355,6 +355,8 @@ impl CommandError {
             MemoryError::Event(_)
             | MemoryError::Identifier(_)
             | MemoryError::Edge(_)
+            | MemoryError::RetrievalPlan(_)
+            | MemoryError::RetrievalConfig(_)
             | MemoryError::InvalidStateMutation { .. }
             | MemoryError::ReviewTargetNotQuarantined { .. }
             | MemoryError::EmptyReviewReason => CommandErrorCode::InvalidArgument,
@@ -364,6 +366,11 @@ impl CommandError {
             | MemoryError::Storage(_)
             | MemoryError::Recovery(_)
             | MemoryError::Recall(_)
+            | MemoryError::RetrievalDictionary(_)
+            | MemoryError::QuarantinePolicy(_)
+            | MemoryError::QuarantinePolicyFile { .. }
+            | MemoryError::RetrievalDictionaryFile { .. }
+            | MemoryError::RetrievalFusion(_)
             | MemoryError::Packet(_)
             | MemoryError::ProjectionCheckpointCorrupt { .. }
             | MemoryError::ProjectionScopeMismatch { .. }

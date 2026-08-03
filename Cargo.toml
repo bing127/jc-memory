@@ -8,6 +8,7 @@ members = [
   "crates/memory-semantic",
   "crates/memory-graph",
   "crates/memory-surface",
+  "crates/memory-retrieval",
   "crates/memory-activation",
   "crates/memory-security",
   "crates/memory-neural",
