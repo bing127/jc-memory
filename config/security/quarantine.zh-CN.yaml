@@ -1,0 +1,48 @@
+schema_version: 1
+policy_version: builtin-2026-08-03
+quarantine_threshold: 0.8
+repeated_disputed_threshold: 2
+prompt_injection:
+  instruction_override_markers:
+    - ignore previous instructions
+    - ignore all previous instructions
+    - disregard previous instructions
+    - 忽略之前的指令
+    - 忽略所有先前指令
+  hidden_prompt_markers:
+    - system prompt
+    - hidden memory
+    - 隐藏提示词
+    - 系统提示词
+  disclosure_markers:
+    - reveal
+    - expose
+    - disclose
+    - show
+    - print
+    - 泄露
+    - 显示
+    - 输出
+  score: 0.95
+sensitive_data:
+  markers:
+    - -----begin private key-----
+    - api_key=
+    - api-key=
+    - password=
+    - access_token=
+    - secret_key=
+  score: 0.9
+repeated_disputed_claim:
+  score: 0.85
+suspicious_tool_result:
+  verified_markers:
+    - '"verified":true'
+    - '"verified": true'
+    - verified=true
+  authorization_markers:
+    - '"authorization":"granted"'
+    - '"authorization": "granted"'
+    - authorization=granted
+  score: 0.9
+cross_scope_reference_score: 1.0

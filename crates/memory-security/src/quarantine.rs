@@ -1,15 +1,13 @@
 //! 不可信记忆的风险聚合与准入决策。
 
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, sync::Arc};
 
 use jc_memory_protocol::{
     CognitiveFragment, EvidenceId, EvidenceRef, FragmentKind, SourceType, VerificationMethod,
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{injection, poisoning, sensitive};
-
-const QUARANTINE_THRESHOLD: f32 = 0.8;
+use crate::{injection, poisoning, policy::QuarantinePolicy, sensitive};
 
 /// 检测器为单个 Fragment 产生的稳定风险标签。
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -38,6 +36,12 @@ pub struct RiskAssessment {
     pub evidence: Vec<EvidenceRef>,
     /// 实际命中的检测器及其版本。
     pub detector_versions: Vec<String>,
+    /// 产生本次评估的隔离策略版本。
+    #[serde(default)]
+    pub policy_version: String,
+    /// 产生本次评估的隔离策略摘要，不包含规则正文。
+    #[serde(default)]
+    pub policy_sha256: String,
 }
 
 impl Default for RiskAssessment {
@@ -47,6 +51,8 @@ impl Default for RiskAssessment {
             score: 0.0,
             evidence: Vec::new(),
             detector_versions: Vec::new(),
+            policy_version: String::new(),
+            policy_sha256: String::new(),
         }
     }
 }
@@ -85,21 +91,46 @@ pub struct RiskContext {
 }
 
 /// 聚合确定性检测器并产生不可绕过的准入决策。
-#[derive(Clone, Copy, Debug, Default)]
-pub struct QuarantinePipeline;
+#[derive(Clone, Debug)]
+pub struct QuarantinePipeline {
+    policy: Arc<QuarantinePolicy>,
+}
 
 impl QuarantinePipeline {
+    /// 创建使用已校验策略的不可变检测流水线。
+    #[must_use]
+    pub fn new(policy: QuarantinePolicy) -> Self {
+        Self {
+            policy: Arc::new(policy),
+        }
+    }
+
+    /// 创建使用编译内置策略的检测流水线。
+    pub fn builtin() -> Result<Self, crate::QuarantinePolicyError> {
+        Ok(Self::new(QuarantinePolicy::builtin()?))
+    }
+
+    /// 返回当前流水线使用的策略。
+    #[must_use]
+    pub fn policy(&self) -> &QuarantinePolicy {
+        &self.policy
+    }
+
     /// 评估一个 Fragment；评估只读取原记录，不修改内容或 `EvidenceRef`。
     #[must_use]
-    pub fn assess(self, fragment: &CognitiveFragment, context: RiskContext) -> RiskAssessment {
+    pub fn assess(&self, fragment: &CognitiveFragment, context: RiskContext) -> RiskAssessment {
         let detections = [
-            injection::prompt_injection(fragment),
-            injection::cross_scope_reference(fragment, context),
-            poisoning::repeated_disputed_claim(fragment, context),
-            poisoning::suspicious_tool_result(fragment),
-            sensitive::sensitive_data(fragment),
+            injection::prompt_injection(fragment, &self.policy),
+            injection::cross_scope_reference(fragment, context, &self.policy),
+            poisoning::repeated_disputed_claim(fragment, context, &self.policy),
+            poisoning::suspicious_tool_result(fragment, &self.policy),
+            sensitive::sensitive_data(fragment, &self.policy),
         ];
-        let mut assessment = RiskAssessment::default();
+        let mut assessment = RiskAssessment {
+            policy_version: self.policy.version().to_owned(),
+            policy_sha256: self.policy.sha256().to_owned(),
+            ..RiskAssessment::default()
+        };
         for detection in detections.into_iter().flatten() {
             assessment.labels.insert(detection.label);
             assessment.score = assessment.score.max(detection.score);
@@ -121,8 +152,12 @@ impl QuarantinePipeline {
 
     /// 根据风险评估和来源类型返回准入决策。
     #[must_use]
-    pub fn admission(self, fragment: &CognitiveFragment, assessment: &RiskAssessment) -> Admission {
-        if assessment.score >= QUARANTINE_THRESHOLD
+    pub fn admission(
+        &self,
+        fragment: &CognitiveFragment,
+        assessment: &RiskAssessment,
+    ) -> Admission {
+        if assessment.score >= self.policy.quarantine_threshold()
             && let Some(label) = assessment.labels.iter().next().copied()
         {
             return Admission::Quarantine {

@@ -9,6 +9,7 @@ mod guard;
 mod injection;
 mod key;
 mod poisoning;
+mod policy;
 mod quarantine;
 mod retention;
 mod sensitive;
@@ -20,6 +21,7 @@ pub use export::GovernanceExportReceipt;
 pub use guard::{OutputGuard, SecurityInvariantViolation};
 pub use jc_memory_protocol::{AccessContext, Decision, DenyReason, Grant, Operation};
 pub use key::{FileKeyProvider, InMemoryKeyProvider, KeyError, KeyProvider, KeyRotationMetadata};
+pub use policy::{QuarantinePolicy, QuarantinePolicyError};
 pub use quarantine::{
     Admission, QuarantinePipeline, QuarantineReason, RiskAssessment, RiskContext, RiskLabel,
 };
