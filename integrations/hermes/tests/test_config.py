@@ -57,3 +57,40 @@ def test_config_rejects_missing_or_invalid_boundaries(
 ) -> None:
     with pytest.raises(JcMemoryConfigError, match=message):
         JcMemoryConfig.from_sources(config, environment)
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "",
+        "ftp://memory.example.com",
+        "https://user:pass@memory.example.com",
+        "https://memory.example.com/v1",
+    ],
+)
+def test_config_rejects_unsafe_base_urls(base_url: str) -> None:
+    with pytest.raises(JcMemoryConfigError, match="base_url"):
+        JcMemoryConfig.from_sources(
+            memory_config(base_url=base_url),
+            {"JC_MEMORY_API_KEY": "secret"},
+        )
+
+
+def test_config_rejects_unknown_fields_and_incomplete_or_out_of_range_limits() -> None:
+    with pytest.raises(JcMemoryConfigError, match="未知字段"):
+        JcMemoryConfig.from_sources(
+            memory_config(unexpected=True),
+            {"JC_MEMORY_API_KEY": "secret"},
+        )
+
+    for recall in [
+        {"max_seeds": 0, "max_neighbors": 9, "max_hops": 2, "max_nodes": 40, "timeout_ms": 1500},
+        {"max_seeds": 5, "max_neighbors": 9, "max_hops": 2, "max_nodes": 40, "timeout_ms": 0},
+        {"max_seeds": 5, "max_neighbors": 9, "max_hops": 99, "max_nodes": 40, "timeout_ms": 1500},
+        {"max_seeds": 5, "max_neighbors": 9, "max_hops": 2, "max_nodes": 40, "timeout_ms": 1500, "unknown": 1},
+    ]:
+        with pytest.raises(JcMemoryConfigError, match="recall"):
+            JcMemoryConfig.from_sources(
+                memory_config(recall=recall),
+                {"JC_MEMORY_API_KEY": "secret"},
+            )
