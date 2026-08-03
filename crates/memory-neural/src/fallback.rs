@@ -9,6 +9,7 @@ use jc_memory_protocol::{
 use jc_memory_surface::CognitiveSurface;
 use sha2::{Digest, Sha256};
 
+use crate::routing::FallbackRoutingPolicy;
 use crate::{
     Classification, ContradictionDetector, ContradictionScore, DevicePolicy, EdgePredictor,
     Embedding, EventClassifier, FragmentEncoder, ImportancePredictor, ImportanceScore,
@@ -32,6 +33,7 @@ pub struct DeterministicFallback {
     reranker: ModelManifest,
     surface: ModelManifest,
     contradiction: ModelManifest,
+    routing_policy: FallbackRoutingPolicy,
 }
 
 impl Default for DeterministicFallback {
@@ -49,7 +51,18 @@ impl Default for DeterministicFallback {
                 "fragment-batch",
                 "contradiction-score-batch",
             ),
+            routing_policy: FallbackRoutingPolicy::builtin().expect("内置离线路由策略必须始终有效"),
         }
+    }
+}
+
+impl DeterministicFallback {
+    /// 创建使用显式离线路由策略的 Fallback。
+    #[must_use]
+    pub fn with_routing_policy(policy: FallbackRoutingPolicy) -> Self {
+        let mut fallback = Self::default();
+        fallback.routing_policy = policy;
+        fallback
     }
 }
 
@@ -144,11 +157,11 @@ impl QueryRouter for DeterministicFallback {
         let normalized = normalize(&query.text);
         let mode = if query.at_time.is_some() {
             RecallMode::HistoricalState
-        } else if contains_any(&normalized, &["为什么", "原因", "why", "because"]) {
+        } else if self.routing_policy.matches_causal(&normalized) {
             RecallMode::Causal
-        } else if contains_any(&normalized, &["当前", "现在", "current", "status"]) {
+        } else if self.routing_policy.matches_current_state(&normalized) {
             RecallMode::CurrentState
-        } else if contains_any(&normalized, &["步骤", "如何", "怎么", "how", "procedure"]) {
+        } else if self.routing_policy.matches_procedural(&normalized) {
             RecallMode::Procedural
         } else if !query.entities.is_empty() {
             RecallMode::Entity
@@ -400,8 +413,4 @@ fn strip_negation(value: &str) -> Option<&str> {
         .strip_prefix("not ")
         .or_else(|| value.strip_prefix("不 "))
         .or_else(|| value.strip_prefix('不'))
-}
-
-fn contains_any(value: &str, needles: &[&str]) -> bool {
-    needles.iter().any(|needle| value.contains(needle))
 }

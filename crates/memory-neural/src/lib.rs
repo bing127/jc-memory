@@ -8,6 +8,8 @@ pub mod fallback;
 pub mod manifest;
 /// ONNX Manifest 校验、CPU Session 和确定性 Fallback。
 pub mod onnx;
+/// 版本化离线路由关键词策略。
+pub mod routing;
 /// 神经能力接口及派生输出类型。
 pub mod traits;
 
@@ -16,6 +18,7 @@ pub use circuit_breaker::{
 };
 pub use fallback::DeterministicFallback;
 pub use manifest::{DevicePolicy, ModelManifest, ModelManifestSpec};
+pub use routing::{FallbackRoutingPolicy, FallbackRoutingPolicyError};
 pub use traits::{
     Classification, ContradictionDetector, ContradictionScore, EdgePredictor, Embedding,
     EventClassifier, FragmentEncoder, ImportancePredictor, ImportanceScore, NeuralError,

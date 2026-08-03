@@ -1597,6 +1597,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "yaml_serde",
 ]
 
 [[package]]

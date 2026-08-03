@@ -1,0 +1,18 @@
+schema_version: 1
+policy_version: builtin-2026-08-03
+causal_keywords:
+  - 为什么
+  - 原因
+  - why
+  - because
+current_state_keywords:
+  - 当前
+  - 现在
+  - current
+  - status
+procedural_keywords:
+  - 步骤
+  - 如何
+  - 怎么
+  - how
+  - procedure
