@@ -2,7 +2,7 @@
 
 - **状态：** 已确认
 - **日期：** 2026-08-03
-- **目标宿主：** `NousResearch/hermes-agent` 默认分支
+- **目标宿主：** `NousResearch/hermes-agent` 默认分支的 Hermes Desktop
 - **记忆系统：** 疆诚记忆（Jiangcheng Memory）
 - **接入方式：** 独立 `jc-memory-server` + Hermes Python HTTP Provider
 
@@ -67,11 +67,15 @@ Python Provider、配置解析、契约测试、启动脚本和对 Hermes 的最
 ## 4. 总体架构
 
 ```text
-Hermes CLI / Gateway
+Hermes Desktop（Electron + React）
+        |
+        | JSON-RPC / WebSocket
+        v
+Hermes Desktop Backend（hermes serve / tui_gateway）
         |
         | 1. 创建或恢复 Session
         v
-JcMemorySessionStore -------> jc-memory-server -------> SQLite WAL + BlobStore
+JcMemory Provider ----------> jc-memory-server -------> SQLite WAL + BlobStore
         |
         | 2. 模型调用前 Recall
         v
@@ -102,7 +106,7 @@ jc-memory-server
 8. **Turn 完成：** 原子提交本 Turn 的 Fragment/Event 及顺序关系；
 9. **进程关闭：** 拒绝新 Turn，等待在途提交完成，但不由单个 Hermes 进程关闭共享 `jc-memory-server`。
 
-若 Hermes 当前版本提供稳定 Provider、Hook 或 Plugin 接口，优先使用公开扩展点；否则维护最小源代码 Patch。不得通过会话结束后扫描日志的方式冒充实时接入。
+当前目标版本已经提供 `MemoryProvider`、`MemoryManager` 和用户插件发现机制，接入必须作为 `$HERMES_HOME/plugins/` 下的独立 Provider 完成，不修改 Desktop React 聊天逻辑。Desktop 继续通过 `hermes serve` 使用同一 Agent 后端。不得通过会话结束后扫描日志的方式冒充实时接入。
 
 ## 6. 数据映射
 
@@ -184,7 +188,7 @@ Hermes 原有长期记忆检索和注入必须关闭。验收期间若发现第�
 1. **Python 单元测试：** 配置、Scope、消息映射、Prompt 注入、错误映射和 Secret 脱敏；
 2. **协议契约测试：** 使用真实 `jc-memory-server` 和临时 SQLite，验证 Observe/Commit/Recall/Correct/Forget；
 3. **Hermes 运行时 E2E：** 运行克隆的真实 Hermes 入口，经过真实 Session、模型调用前 Hook、工具结果回调和关闭生命周期；
-4. **手动验收：** 用户自行配置模型 Key，通过 Hermes CLI 或官方 UI 完成跨 Session 对话。
+4. **Desktop 手动验收：** 用户在 Hermes Desktop 中自行配置模型 Key，通过桌面聊天界面完成跨 Session 对话。
 
 Fixture 只验证协议兼容，不得标记为 Hermes 实机通过。没有用户模型 Key 时，自动化测试可以验证真实 Hermes 调用链到模型边界，但不能描述为真实模型对话完成。
 
@@ -192,11 +196,11 @@ Fixture 只验证协议兼容，不得标记为 Hermes 实机通过。没有用�
 
 ### 12.1 全量写入
 
-在 Session A 中输入一个唯一事实和一个项目偏好，要求 Hermes 调用至少一个工具。控制台必须看到用户消息、助手回复、Tool Call、Tool Result、Session/Turn 关系和原始 EvidenceRef。
+在 Hermes Desktop 的 Session A 中输入一个唯一事实和一个项目偏好，要求 Hermes 调用至少一个工具。疆诚记忆控制台必须看到用户消息、助手回复、Tool Call、Tool Result、Session/Turn 关系和原始 EvidenceRef。
 
 ### 12.2 删除本地状态后恢复
 
-完全退出 Hermes，备份后移走 Hermes 原有记忆数据库和会话持久化目录，再启动 Session B。Hermes 必须仅通过疆诚记忆恢复 Session A 的历史并回答唯一事实。
+完全退出 Hermes Desktop，备份后移走 Hermes 原有语义记忆文件，再启动 Desktop 并创建 Session B。Session B 不加载 Session A 的聊天记录，但必须仅通过疆诚记忆 Recall 回答唯一事实。Hermes 的 `state.db` 在第一条闭环中只作为 Desktop 会话导航与当前聊天记录缓存，不得参与跨 Session Recall；后续删除该派生缓存的恢复验收必须单独记录。
 
 ### 12.3 跨 Session Recall
 
@@ -225,7 +229,7 @@ Session B 不携带 Session A 的 Prompt 或本地聊天记录。回答必须实
 - 官方 Hermes 精确 Commit SHA 已记录且真实入口可运行；
 - Hermes 原有持久化记忆和长期 Recall 已确认关闭；
 - 所有可持久化记忆类型均通过疆诚记忆读写；
-- 删除 Hermes 本地记忆后仍能恢复和跨 Session 召回；
+- 删除 Hermes 原有语义记忆后仍能跨 Session 召回；`state.db` 只作为 Desktop 会话导航派生缓存，不得成为 Recall 来源；
 - Recall 内容可追溯到原始 Fragment/Event/EvidenceRef；
 - Prediction、Inference、Plan 和 ToolResult 未被错误升级为 Verified Fact；
 - Tenant、Agent 和 Workspace 隔离通过；
