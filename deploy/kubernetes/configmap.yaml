@@ -7,10 +7,77 @@ data:
     bind: 0.0.0.0:8787
     grpc_bind: 0.0.0.0:8788
     data_dir: /var/lib/jc-memory
-    namespace_id: 00000000-0000-7000-8000-000000000003
     max_in_flight: 64
     max_requests_per_second: 128
     request_timeout_ms: 30000
+    retrieval:
+      aliases_file: /etc/jc-memory/retrieval/aliases.zh-CN.yaml
+    security:
+      rules_file: /etc/jc-memory/security/quarantine.zh-CN.yaml
+    sqlite:
+      max_connections: 4
+      busy_timeout_ms: 5000
+    runtime:
+      provider:
+        max_retries: 1
+        retry_backoff_ms: 100
+      recall:
+        max_seeds: 8
+        max_neighbors: 8
+        max_hops: 3
+        max_nodes: 64
+        timeout_ms: 2000
+  aliases.zh-CN.yaml: |
+    schema_version: jcmem.retrieval-aliases.v1
+    dictionary_version: 2026-08-03.1
+    language: zh-CN
+    groups:
+      - concept: project_codename
+        terms:
+          - project codename
+          - codename
+          - 项目代号
+          - 验收代号
+          - 代号
+          - 叫什么
+      - concept: preferred_color
+        terms:
+          - preferred color
+          - favorite color
+          - 首选颜色
+          - 偏好颜色
+          - 喜欢什么颜色
+      - concept: database
+        terms:
+          - database
+          - db
+          - 数据库
+  quarantine.zh-CN.yaml: |
+    schema_version: 1
+    policy_version: builtin-2026-08-03
+    quarantine_threshold: 0.8
+    repeated_disputed_threshold: 2
+    prompt_injection:
+      instruction_override_markers:
+        - ignore previous instructions
+      hidden_prompt_markers:
+        - system prompt
+      disclosure_markers:
+        - reveal
+      score: 0.95
+    sensitive_data:
+      markers:
+        - password=
+      score: 0.9
+    repeated_disputed_claim:
+      score: 0.85
+    suspicious_tool_result:
+      verified_markers:
+        - '"verified":true'
+      authorization_markers:
+        - authorization=granted
+      score: 0.9
+    cross_scope_reference_score: 1.0
     tls:
       cert_file: /etc/jc-memory/tls/tls.crt
       key_file: /etc/jc-memory/tls/tls.key

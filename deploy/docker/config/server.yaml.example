@@ -4,3 +4,28 @@ data_dir: /var/lib/jc-memory
 max_in_flight: 64
 max_requests_per_second: 128
 request_timeout_ms: 30000
+retrieval:
+  aliases_file: /etc/jc-memory/retrieval/aliases.zh-CN.yaml
+  lexical_limit_factor: 4
+  trigram_limit_factor: 4
+  entity_limit_factor: 2
+  recent_limit: 32
+  rrf_k: 60
+  max_expanded_terms: 24
+  min_trigram_chars: 3
+  min_candidate_score: 0.2
+security:
+  rules_file: /etc/jc-memory/security/quarantine.zh-CN.yaml
+sqlite:
+  max_connections: 4
+  busy_timeout_ms: 5000
+runtime:
+  provider:
+    max_retries: 1
+    retry_backoff_ms: 100
+  recall:
+    max_seeds: 8
+    max_neighbors: 8
+    max_hops: 3
+    max_nodes: 64
+    timeout_ms: 2000

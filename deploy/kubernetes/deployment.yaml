@@ -39,6 +39,11 @@ spec:
                 secretKeyRef:
                   name: jc-memory-server-secret
                   key: JC_MEMORY_API_KEY
+            - name: JC_MEMORY_NAMESPACE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: jc-memory-server-secret
+                  key: JC_MEMORY_NAMESPACE_ID
           ports:
             - name: http
               containerPort: 8787
@@ -74,6 +79,12 @@ spec:
               mountPath: /etc/jc-memory/server.yaml
               subPath: server.yaml
               readOnly: true
+            - name: retrieval
+              mountPath: /etc/jc-memory/retrieval
+              readOnly: true
+            - name: security
+              mountPath: /etc/jc-memory/security
+              readOnly: true
             - name: tls
               mountPath: /etc/jc-memory/tls
               readOnly: true
@@ -94,6 +105,18 @@ spec:
               - key: tls.key
                 path: tls.key
                 mode: 0400
+        - name: retrieval
+          configMap:
+            name: jc-memory-server-config
+            items:
+              - key: aliases.zh-CN.yaml
+                path: aliases.zh-CN.yaml
+        - name: security
+          configMap:
+            name: jc-memory-server-config
+            items:
+              - key: quarantine.zh-CN.yaml
+                path: quarantine.zh-CN.yaml
         - name: data
           persistentVolumeClaim:
             claimName: jc-memory-server-data

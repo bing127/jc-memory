@@ -11,10 +11,13 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 jc-memory \
     && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin jc-memory \
-    && mkdir -p /etc/jc-memory /var/lib/jc-memory \
+    && mkdir -p /etc/jc-memory/retrieval /etc/jc-memory/security /var/lib/jc-memory \
     && chown -R 10001:10001 /var/lib/jc-memory
 
 COPY --from=builder /src/target/release/jc-memory-server /usr/local/bin/jc-memory-server
+COPY --from=builder /src/config/retrieval/aliases.zh-CN.yaml /etc/jc-memory/retrieval/aliases.zh-CN.yaml
+COPY --from=builder /src/config/security/quarantine.zh-CN.yaml /etc/jc-memory/security/quarantine.zh-CN.yaml
+COPY --from=builder /src/deploy/docker/config/server.yaml.example /etc/jc-memory/server.yaml
 
 ENV JC_MEMORY_CONFIG_FILE=/etc/jc-memory/server.yaml
 
