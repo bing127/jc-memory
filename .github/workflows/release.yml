@@ -83,7 +83,7 @@ jobs:
           scripts/release/package.sh --version "${{ inputs.version }}" --target "${{ matrix.target }}" --input "target/release/${{ matrix.target }}" --output "target/private-release/${{ matrix.target }}"
           scripts/release/verify.sh --input "target/private-release/${{ matrix.target }}" --version "${{ inputs.version }}"
       - name: 上传私有 Actions Artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: jcmem-${{ inputs.version }}-${{ matrix.target }}
           path: target/private-release/${{ matrix.target }}
@@ -113,7 +113,7 @@ jobs:
           scripts/release/package.sh --version "${{ inputs.version }}" --target sdk-linux-x64 --input target/sdk-build --output target/private-release/sdk
           scripts/release/verify.sh --input target/private-release/sdk --version "${{ inputs.version }}"
       - name: 上传私有 SDK Artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: jcmem-${{ inputs.version }}-sdks
           path: target/private-release/sdk
@@ -147,7 +147,7 @@ jobs:
           scripts/release/package.sh --version "${{ inputs.version }}" --target "${{ matrix.target }}" --input "target/mobile-build/${{ matrix.target }}" --output "target/private-release/${{ matrix.target }}"
           scripts/release/verify.sh --input "target/private-release/${{ matrix.target }}" --version "${{ inputs.version }}"
       - name: 上传私有 Mobile Artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: jcmem-${{ inputs.version }}-${{ matrix.target }}-unsigned
           path: target/private-release/${{ matrix.target }}
