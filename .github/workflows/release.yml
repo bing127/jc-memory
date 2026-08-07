@@ -28,7 +28,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout requested tag
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           ref: ${{ inputs.ref }}
@@ -66,7 +66,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout requested tag
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ inputs.ref }}
       - name: 安装固定 Rust 工具链和目标
@@ -97,7 +97,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout requested tag
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ inputs.ref }}
       - name: 安装 SDK 构建工具
@@ -135,7 +135,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout requested tag
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ inputs.ref }}
       - name: 构建未签名 Mobile 输入

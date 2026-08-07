@@ -36,7 +36,7 @@ jobs:
         os: ${{ fromJSON(inputs.windows_only && '["windows-latest"]' || '["ubuntu-latest","windows-latest","macos-latest"]') }}
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: 安装固定 Rust 工具链
         shell: bash
         run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component rustfmt --component clippy
